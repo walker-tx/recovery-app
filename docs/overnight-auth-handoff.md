@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** Fresh review approved correction commit `676e12d`; its source contract now bounds each stale-profile-error assertion to the corresponding `onChangeText` callback.
+- **Next action:** review
+- **Last known-good commit:** The sensitive-auth-data verification is green on top of reviewed commit `0e4e172`; see the current implementation commit.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran the focused profile screen contract (2/2), the mobile package TypeScript check, and `git diff --check HEAD^ HEAD`; all passed with only the existing module-type warning.
-- **Tests added in current section:** The source contract selects each profile field and extracts its own `onChangeText` callback before requiring the corresponding setter and `setFormError(null)`.
-- **Review status:** Approved with no actionable findings across architecture, simplicity, security/privacy, accessibility, adversarial/test quality, and product fit. The independent skeptic downgraded a lexical-decoy candidate to a non-actionable limitation of intentionally static source coverage.
-- **Blocking condition:** None. Mounted native behavior and the remaining section 7 simulator, sign-out-history, and sensitive-data checks remain explicit verification gaps.
-- **Next bounded action:** Implement only the next bounded section 7 verification for the unchecked sensitive-auth-data/public-result requirement; start with the smallest meaningful failing contract or record a verification exception if automation would be speculative.
+- **Last successful checks:** The focused profile suite passed 3/3, the backend package TypeScript check passed, the bounded production-source privacy inspection passed, and `git diff --check` passed.
+- **Tests added in current section:** Profile public-result coverage now explicitly rejects owner identity, user email, document ID, and creation-time metadata.
+- **Review status:** Awaiting fresh review of the sensitive-auth-data verification transition.
+- **Blocking condition:** None. Section 7 simulator accessibility/layout checks and protected-route history after sign-out remain explicit verification gaps.
+- **Next bounded action:** Freshly review only the sensitive-auth-data verification commit for correctness, architecture, simplicity, auth security/privacy, Convex authorization, accessibility applicability, product fidelity, and test quality.
+
+## Section 7 sensitive-auth-data verification implementation
+
+The profile behavior suite now explicitly asserts that the authenticated public profile result excludes its server-owned owner ID, user email, Convex document ID, and creation-time metadata in addition to matching the narrow display-only shape. A temporary regression probe added a database identifier to the public mapper; the focused suite failed 1/3 at Convex return validation as intended, and the mutation was restored before the green run. No red state was committed.
+
+A bounded production-source inspection found no console logging, verification-code identifiers, or access/refresh-token identifiers in application-owned mobile or Convex production source. It also confirmed that sign-in routes provider failures through the fixed safe-error mapper, profile and sign-out handlers ignore caught provider values, and the only application-defined public profile functions use explicit narrow return validators and the `publicProfile` mapper. Password is the only configured provider, so no application code generates or delivers verification codes. This source inspection is a verification check rather than a claim about arbitrary future code or provider internals.
+
+`mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` passed 3/3, `mise exec -- pnpm --filter @recovery/backend run check` passed, the bounded production-source privacy inspection passed, and `git diff --check` passed. No production code, mobile behavior, dependency, Expo configuration, generated Convex file, or deployment state changed.
 
 ## Section 7 stale profile-save-error regression correction cycle 2 final review
 

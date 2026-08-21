@@ -69,10 +69,15 @@ describe("profiles", () => {
       displayName: "Taylor Reed",
       onboardingComplete: true,
     });
-    await expect(firstUser.query(api.profiles.getMine, {})).resolves.toEqual({
+    const publicProfile = await firstUser.query(api.profiles.getMine, {});
+    expect(publicProfile).toEqual({
       displayName: "Taylor Reed",
       onboardingComplete: true,
     });
+    expect(publicProfile).not.toHaveProperty("ownerId");
+    expect(publicProfile).not.toHaveProperty("email");
+    expect(publicProfile).not.toHaveProperty("_id");
+    expect(publicProfile).not.toHaveProperty("_creationTime");
 
     const storedProfiles = await t.run(async (ctx) => await ctx.db.query("profiles").collect());
     expect(storedProfiles).toHaveLength(2);
