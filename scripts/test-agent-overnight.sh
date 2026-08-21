@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/recovery-supervisor.XXXXXX")
+trap 'rm -rf "$FIXTURE"' EXIT
+
+mkdir -p "$FIXTURE/scripts" "$FIXTURE/docs" "$FIXTURE/packages/backend" "$FIXTURE/fake-bin"
+cp "$ROOT/scripts/agent-overnight.sh" "$FIXTURE/scripts/"
+cp "$ROOT/docs/overnight-auth-plan.md" "$ROOT/docs/overnight-auth-handoff.md" "$FIXTURE/docs/"
+cp "$ROOT/.gitignore" "$FIXTURE/"
+
+python3 - "$FIXTURE" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+plan = root / "docs/overnight-auth-plan.md"
+plan.write_text(plan.read_text().replace("- [ ]", "- [x]"))
+handoff = root / "docs/overnight-auth-handoff.md"
+handoff.write_text(handoff.read_text().replace("**Next action:** blocked", "**Next action:** implement"))
+PY
+
+printf '%s\n' 'CONVEX_DEPLOYMENT=local:test' > "$FIXTURE/packages/backend/.env.local"
+
+cat > "$FIXTURE/fake-bin/kit" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+root=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--root" ]; then root=$2; shift 2; else shift; fi
+done
+cd "$root"
+python3 - <<'PY'
+from pathlib import Path
+p = Path("docs/overnight-auth-handoff.md")
+p.write_text(p.read_text().replace("**Next action:** implement", "**Next action:** review"))
+PY
+git add docs/overnight-auth-handoff.md
+git commit -m "Fake implementation transition" >/dev/null
+echo OVERNIGHT_RESULT=progress
+echo 'session_id: fake-session-001'
+EOF
+chmod +x "$FIXTURE/fake-bin/kit" "$FIXTURE/scripts/agent-overnight.sh"
+
+cd "$FIXTURE"
+git init -b agent/test >/dev/null
+git config user.name "Supervisor Test"
+git config user.email "supervisor@example.invalid"
+git add .
+git commit -m baseline >/dev/null
+
+if CONVEX_DEPLOYMENT=dev:cloud PATH="$FIXTURE/fake-bin:$PATH" scripts/agent-overnight.sh --dry-run >/dev/null 2>&1; then
+  echo "conflicting inherited deployment was not rejected" >&2
+  exit 1
+fi
+
+git checkout --detach >/dev/null 2>&1
+if PATH="$FIXTURE/fake-bin:$PATH" scripts/agent-overnight.sh --dry-run >/dev/null 2>&1; then
+  echo "detached HEAD was not rejected" >&2
+  exit 1
+fi
+git checkout agent/test >/dev/null 2>&1
+
+PATH="$FIXTURE/fake-bin:$PATH" scripts/agent-overnight.sh --dry-run >/dev/null
+mkdir -p .agent-overnight/supervisor.lock
+if PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 scripts/agent-overnight.sh --once >/dev/null 2>&1; then
+  echo "concurrent supervisor lock was not rejected" >&2
+  exit 1
+fi
+rm -rf .agent-overnight/supervisor.lock
+PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 SUCCESS_PAUSE_SECONDS=0 scripts/agent-overnight.sh --once >/dev/null
+
+grep -q '^\- \*\*Next action:\*\* review$' docs/overnight-auth-handoff.md
+[ "$(git rev-list --count HEAD)" -eq 2 ]
+[ "$(stat -f '%Lp' .agent-overnight)" = "700" ]
+[ "$(stat -f '%Lp' .agent-overnight/overnight.log)" = "600" ]
+[ "$(stat -f '%Lp' .agent-overnight/sessions.tsv)" = "600" ]
+grep -q $'\tfake-session-001\t' .agent-overnight/sessions.tsv
+
+echo "agent-overnight supervisor self-test passed"
