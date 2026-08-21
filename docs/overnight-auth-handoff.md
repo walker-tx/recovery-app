@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** The profile stale-save-error implementation in this handoff is green and awaits fresh review.
-- **Correction cycles for current section:** 0
-- **Last successful checks:** The focused profile screen contract passed 2/2, the full mobile test command passed 16/16, and the mobile package TypeScript check passed.
-- **Tests added in current section:** The profile screen contract proves that editing either profile field clears a stale sanitized save error.
-- **Review status:** The profile stale-save-error implementation awaits fresh review.
-- **Blocking condition:** None.
-- **Next bounded action:** Freshly review the profile stale-save-error implementation commit; do not edit production code during review or begin another section 7 item.
+- **Next action:** correct
+- **Last known-good commit:** The invalid sign-in field focus implementation in `03aab16` remains the latest green implementation approved by fresh review.
+- **Correction cycles for current section:** 1
+- **Last successful checks:** Fresh review reran the focused profile screen contract (2/2), the mobile package TypeScript check, and `git diff --check 232872a..175fd65`; all passed with only the existing module-type warning.
+- **Tests added in current section:** The profile screen source contract intends to prove both field handlers clear a stale save error, but fresh review verified that its first-name match can cross the display-name field boundary and pass from the wrong handler.
+- **Review status:** Fresh review of `175fd65` found one blocking P3 test-quality defect; production behavior appears correct, but the regression does not independently protect the first-name path.
+- **Blocking condition:** The first-name contract assertion can pass after removing `setFormError(null)` from the first-name handler because its regex begins at the display-name handler and spans across JSX.
+- **Next bounded action:** Correct only the profile stale-save-error regression: first demonstrate that removing the first-name clear is detected, then bound the contract to each corresponding field/handler, rerun focused and mobile package checks, and set Next action to review without changing the correction count.
+
+## Section 7 stale profile-save-error clearing review
+
+Fresh review of `175fd65` found no production correctness, architecture, simplicity, auth security/privacy, accessibility, adversarial-behavior, or product-fidelity defect. Both production change handlers clear the sanitized form-level save error, preserve the other value, and independently clear the edited field's validation error. State remains feature-local; pending inputs remain non-editable; the backend, authorization, token storage, dependencies, Expo configuration, generated files, and deployment state are unchanged. Six read-only review lenses reported no findings.
+
+One blocking P3 test-quality finding survived an independent skeptic review. In `profile-screen-contract.test.ts`, the `firstNameHandler` regex may start at the display-name `onChangeText` and span across JSX until `setFirstName(value)`. A read-only mutation probe removed only the first-name handler's `setFormError(null)` and verified that the captured text still included the display-name handler's clear, so both assertions would remain green. The correction must bound each assertion to its corresponding `TextField` or handler; production code should not change unless the corrected regression demonstrates a separate behavior defect.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/features/onboarding/profile-screen-contract.test.ts` (2/2 passed with only the existing module-type warning), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check 232872a..175fd65` (passed). The source contract still does not mount React Native behavior, so alert removal, focus retention, and VoiceOver/TalkBack behavior remain device-verification gaps alongside the open section 7 simulator, sign-out-history, and sensitive-data checks. No production code or deployment state changed during review.
 
 ## Section 7 stale profile-save-error clearing implementation
 
