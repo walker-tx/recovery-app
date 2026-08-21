@@ -1,5 +1,3 @@
-export const MIN_PASSWORD_LENGTH = 10;
-
 type SignInValidation = {
   email?: string;
   password?: string;
@@ -19,8 +17,8 @@ export function getSignInValidation(
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
     errors.email = "Enter a valid email address.";
   }
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    errors.password = `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+  if (password.length === 0) {
+    errors.password = "Enter your password.";
   }
 
   return errors;

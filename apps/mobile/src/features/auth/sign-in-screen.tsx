@@ -36,13 +36,13 @@ export function SignInScreen({ onBack }: SignInScreenProps) {
     setFormError(null);
     if (Object.keys(errors).length > 0) return;
 
-    await guard.run(async () => {
+    await guard.run({ email, password }, async (submittedValues) => {
       setIsPending(true);
       try {
         const result = await signIn("password", {
-          email: normalizeEmail(email),
+          email: normalizeEmail(submittedValues.email),
           flow: "signIn",
-          password,
+          password: submittedValues.password,
         });
         if (!result.signingIn) throw new Error("Sign-in did not create a session");
       } catch (error) {

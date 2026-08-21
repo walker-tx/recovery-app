@@ -11,15 +11,14 @@ test("normalizes returning-user email addresses", () => {
   assert.equal(normalizeEmail("  Person@Example.COM \n"), "person@example.com");
 });
 
-test("validates email and the ten-character password guidance", () => {
-  assert.deepEqual(getSignInValidation("not-an-email", "short"), {
+test("validates sign-in email and accepts existing eight-character passwords", () => {
+  assert.deepEqual(getSignInValidation("not-an-email", "password"), {
     email: "Enter a valid email address.",
-    password: "Password must be at least 10 characters.",
   });
-  assert.deepEqual(
-    getSignInValidation("person@example.com", "long-enough"),
-    {},
-  );
+  assert.deepEqual(getSignInValidation("person@example.com", "password"), {});
+  assert.deepEqual(getSignInValidation("person@example.com", ""), {
+    password: "Enter your password.",
+  });
 });
 
 test("maps every provider failure to a sanitized message", () => {

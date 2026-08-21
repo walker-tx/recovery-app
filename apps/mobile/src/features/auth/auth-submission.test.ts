@@ -15,8 +15,9 @@ test("two immediate submissions make one auth call", async () => {
     await pending;
   };
 
-  const first = guard.run(authenticate);
-  const second = guard.run(authenticate);
+  const values = { email: "person@example.com", password: "password" };
+  const first = guard.run(values, authenticate);
+  const second = guard.run(values, authenticate);
   release();
 
   assert.equal(await second, false);
@@ -24,17 +25,22 @@ test("two immediate submissions make one auth call", async () => {
   assert.equal(calls, 1);
 });
 
-test("a failed submission unlocks retry without changing entered values", async () => {
-  const values = { email: "person@example.com", password: "long-enough" };
+test("a failed submission unlocks retry without changing submitted values", async () => {
+  const values = { email: "person@example.com", password: "password" };
   const guard = createSubmissionGuard();
+  let receivedValues: typeof values | undefined;
 
-  await assert.rejects(guard.run(async () => {
-    throw new Error("provider detail");
-  }));
+  await assert.rejects(
+    guard.run(values, async (submittedValues) => {
+      receivedValues = submittedValues;
+      throw new Error("provider detail");
+    }),
+  );
 
+  assert.equal(receivedValues, values);
   assert.deepEqual(values, {
     email: "person@example.com",
-    password: "long-enough",
+    password: "password",
   });
-  assert.equal(await guard.run(async () => undefined), true);
+  assert.equal(await guard.run(values, async () => undefined), true);
 });
