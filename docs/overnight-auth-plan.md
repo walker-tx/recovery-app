@@ -245,7 +245,7 @@ Acceptance: reset remains unavailable with a reviewed package blocker; no reset 
   - [x] Render an accessible named progress state while auth or authenticated profile restoration is pending.
   - [x] Prevent duplicate sign-out requests with the same synchronous guard used by sign-in.
 - [ ] Test compact layouts, keyboard visibility, enlarged text, and logical screen-reader order on the available simulator.
-- [x] Confirm sign-out removes protected app routes from navigation history.
+- [ ] Confirm sign-out removes protected app routes from navigation history.
 - [x] Confirm no console code or sensitive auth data is returned by a public function or displayed in ordinary UI.
 
 Acceptance: automated checks pass, manual-only gaps are explicit, and no known high-severity auth or accessibility issue remains hidden.

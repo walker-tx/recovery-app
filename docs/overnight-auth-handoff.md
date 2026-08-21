@@ -3,14 +3,24 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** Sign-out protected-route history verification (this commit; predecessor `4b52be5`).
-- **Correction cycles for current section:** 0
-- **Last successful checks:** The focused sign-out history test passed 1/1, the existing auth route contract passed, the full mobile auth test set passed 10/10, the mobile package TypeScript check passed, and `git diff --check` passed.
-- **Tests added in current section:** A focused contract verifies the root layout places signed-out and authenticated-app groups behind complementary `Stack.Protected` guards, then exercises the pinned stack router's route-name transition and rejects retention of `(app)` after only `(auth)` remains available.
-- **Review status:** Pending fresh review of the sign-out protected-route history verification.
-- **Blocking condition:** None. Section 7 simulator checks for compact layouts, keyboard visibility, enlarged text, and logical screen-reader order remain explicit verification gaps.
-- **Next bounded action:** Freshly review only the sign-out protected-route history verification commit for correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality; do not edit production code.
+- **Next action:** correct
+- **Last known-good commit:** `b694efe` (green checks, but fresh review found the sign-out-to-route-transition contract incomplete).
+- **Correction cycles for current section:** 1
+- **Last successful checks:** Fresh review reran the focused sign-out history and authenticated-home contracts together (2/2 passed with only existing module-type warnings), the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Tests added in current section:** The current focused contract verifies complementary root route guards and the pinned stack router's route-name filtering, but it does not connect the Sign out button's handler to `signOut()` and the resulting authenticated-to-unauthenticated route transition.
+- **Review status:** One blocking P2 test-quality/product finding requires correction. Architecture, simplicity, security/privacy, accessibility, and the remaining adversarial/product review reported no additional findings; an independent skeptic confirmed the blocker.
+- **Blocking condition:** The checklist claim is not yet supported end to end: replacing `await signOut()` with a no-op leaves both current focused contracts green while the user remains authenticated and `(app)` remains available.
+- **Next bounded action:** Add the smallest source contract connecting `onPress={handleSignOut}` through the guarded callback to `await signOut()`, demonstrate that regression red with a temporary no-op mutation, then rerun the focused history/home contracts and mobile package check. Do not change production behavior unless the corrected regression exposes a separate defect.
+
+## Section 7 sign-out protected-route history verification review
+
+Fresh review of `b694efe` found one blocking P2 test-quality/product defect. `auth-route-history.test.ts` proves that the current root layout exposes complementary protected auth/app groups and that the installed Expo Router 57 stack removes `(app)` when the test directly supplies only `(auth)` as an available route. It does not exercise or statically connect the Sign out button, `handleSignOut`, the guarded callback, and `await signOut()`. The existing authenticated-home contract asserts only submission-guard wiring. Replacing `await signOut()` with a resolved no-op would therefore leave both contracts green while tapping Sign out leaves the session authenticated and prevents the tested route-name transition from occurring.
+
+The smallest correction does not require a mounted React Native harness: bound a source assertion to the Sign out button/handler and its guarded callback, and require that callback to await the Convex Auth `signOut()` action. Keep the existing root-guard and pinned-router assertions. Production code is currently correct and should remain unchanged unless the corrected regression exposes a separate defect. The checklist item is reopened until this connection is covered.
+
+Architecture, simplicity, security/privacy, accessibility, and the other adversarial/product lenses found no additional actionable findings. No backend, Convex authorization, token storage, dependency, Expo configuration, generated code, or deployment boundary changed. Static coverage still does not prove auth-provider propagation, native back gestures, compact layouts, keyboard visibility, enlarged text, logical screen-reader order, or VoiceOver/TalkBack behavior. The independent skeptic confirmed the P2 blocker and the bounded source-contract correction.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/features/auth/auth-route-history.test.ts apps/mobile/src/features/auth/authenticated-home-screen-contract.test.ts` (2/2 passed with only existing module-type warnings), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check` (passed). No production code or deployment state changed during review.
 
 ## Section 7 sign-out protected-route history verification implementation
 
