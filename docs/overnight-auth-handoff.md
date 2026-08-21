@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** `547b175` approved the prior section 7 display-name return-key implementation. The stale sign-in-error clearing implementation is green and awaiting fresh review.
+- **Next action:** implement
+- **Last known-good commit:** `c6d8943` is the approved section 7 stale sign-in-error clearing implementation. Section 7 hardening continues.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** The focused sign-in state test passed 2/2, the full mobile policy/state command passed 13/13, the mobile package TypeScript check passed, and `git diff --check` passed; tests emitted only the existing module-type warnings.
-- **Tests added in current section:** `sign-in-state.test.ts` now verifies that editing either screen-owned credential clears a stale sanitized authentication error.
-- **Review status:** The stale sign-in-error clearing implementation awaits fresh review.
+- **Last successful checks:** Fresh review reran the focused sign-in state test (2/2 passed), the full mobile policy/state command (13/13 passed), the mobile package TypeScript check (passed), and `git diff --check` (passed); tests emitted only the existing module-type warnings.
+- **Tests added in current section:** `sign-in-state.test.ts` verifies that editing either screen-owned credential clears a stale sanitized authentication error while preserving the other credential.
+- **Review status:** Fresh review approved the stale sign-in-error clearing implementation with no actionable findings.
 - **Blocking condition:** None.
-- **Next bounded action:** Freshly review the stale sign-in-error clearing commit. Do not begin another section 7 behavior in the same invocation.
+- **Next bounded action:** Implement or verify one remaining section 7 hardening behavior, starting with the smallest meaningful behavior test or bounded static/device check. Do not combine multiple checklist behaviors in one invocation.
+
+## Section 7 stale sign-in-error clearing review
+
+Fresh review of `c6d8943` found no actionable findings across correctness, architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fidelity, and test quality. Both credential inputs directly dispatch the tested reducer actions, which clear only the stale sanitized form error while preserving the unedited credential. Inputs remain non-editable during submission, duplicate-submit protection is unchanged, and transient state remains in the existing pure feature-local reducer. No backend, authorization, token, logging, dependency, configuration, generated-code, or deployment boundary changed. An independent skeptic confirmed approval.
+
+The reducer test and direct wiring inspection establish the static behavior but do not prove the mounted native input-to-alert-removal path. VoiceOver/TalkBack handling when the alert disappears remains a device-verification gap, alongside the existing compact-layout, keyboard, enlarged-text, logical screen-reader-order, sign-out-history, and sensitive-data/UI checks.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/features/auth/sign-in-state.test.ts` (2/2 passed), the full six-file mobile policy/state command (13/13 passed), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check` (passed); tests emitted only the existing module-type warnings. No production code or deployment state changed during review.
 
 ## Section 7 stale sign-in-error clearing implementation
 
