@@ -8,6 +8,14 @@ type ProfileValidation = {
   firstName?: string;
 };
 
+export function getFirstInvalidProfileField(
+  errors: ProfileValidation,
+): keyof ProfileValidation | null {
+  if (errors.displayName !== undefined) return "displayName";
+  if (errors.firstName !== undefined) return "firstName";
+  return null;
+}
+
 export function getAuthenticatedDestination(
   profile: ProfileSummary,
 ): "onboarding" | "app" | null {

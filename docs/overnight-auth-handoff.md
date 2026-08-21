@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** `448329b` is the approved section 5 profile onboarding, protected-home, and sign-out implementation. Section 6 remains completed through the reviewed reset privacy deferral.
+- **Next action:** review
+- **Last known-good commit:** `448329b` is the approved section 5 profile onboarding, protected-home, and sign-out implementation. Section 6 remains completed through the reviewed reset privacy deferral; the current section 7 implementation awaits fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review passed all 8 mobile policy/state tests and all 3 profile backend tests, the auth route contract, mobile and backend package TypeScript checks, and `git diff --check`. The implementation commit also passed `mise run check` and Expo Doctor 17/17 with only a bundled-native-module fetch warning.
-- **Tests added in current section:** None yet. Section 5 coverage remains `onboarding-policy.test.ts` for routing/normalization/limits and `profiles.test.ts` for validation, ownership, persistence, and public shape.
-- **Review status:** Section 5 is approved with no blocking findings. Architecture, simplicity, security/privacy, Convex authorization, accessibility, adversarial behavior, product fit, and test quality were reviewed; the deterministic authz scan found zero hits in all four target shapes.
+- **Last successful checks:** The focused onboarding policy test passed 3/3, all mobile policy/state tests passed 9/9 with only existing module-type warnings, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Tests added in current section:** `onboarding-policy.test.ts` now verifies deterministic first-invalid-field priority for display-name, first-name-only, and valid profile states.
+- **Review status:** The first section 7 hardening implementation is green and awaits fresh review.
 - **Blocking condition:** None.
-- **Next bounded action:** Implement exactly one smallest justified section 7 hardening behavior test-first. Prioritize the profile keyboard/focus path or another bounded automated item; keep device-only verification explicit rather than adding broad test infrastructure.
+- **Next bounded action:** Freshly review the current section 7 profile invalid-field focus commit. Do not begin another hardening behavior in that invocation.
+
+## Section 7 invalid profile field focus implementation
+
+Invalid profile submission now deterministically focuses the first field with an error: display name first, then optional first name when it alone exceeds its limit. The screen keeps native input refs and uses the tested policy result after setting the non-color-only field errors; valid submission behavior is unchanged. This is one bounded accessibility hardening behavior and does not claim the remaining keyboard, field-error association, screen-reader, layout, or device checks are complete.
+
+The focused test first failed with the intended missing-export `SyntaxError` for `getFirstInvalidProfileField`; no red state was committed. After implementation, `mise exec -- node --test apps/mobile/src/features/onboarding/onboarding-policy.test.ts` passed 3/3. The full mobile policy/state command passed 9/9 with only existing module-type warnings, `mise exec -- pnpm --filter @recovery/mobile run check` passed, and `git diff --check` passed. No dependency, Expo configuration, backend, generated Convex file, or deployment state changed.
 
 ## Section 5 mobile profile and authenticated-home final review
 

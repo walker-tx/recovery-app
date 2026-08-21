@@ -1,6 +1,6 @@
 import { useMutation } from "convex/react";
 import { useRef, useState } from "react";
-import { View } from "react-native";
+import { View, type TextInput } from "react-native";
 
 import { api } from "@recovery/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Typography } from "@/components/ui/text";
 import {
   DISPLAY_NAME_MAX_LENGTH,
   FIRST_NAME_MAX_LENGTH,
+  getFirstInvalidProfileField,
   getProfileValidation,
   normalizeProfileInput,
 } from "./onboarding-policy";
@@ -20,6 +21,8 @@ type FieldErrors = ReturnType<typeof getProfileValidation>;
 export function ProfileScreen() {
   const completeProfile = useMutation(api.profiles.complete);
   const submissionRunning = useRef(false);
+  const displayNameRef = useRef<TextInput>(null);
+  const firstNameRef = useRef<TextInput>(null);
   const [displayName, setDisplayName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -32,7 +35,12 @@ export function ProfileScreen() {
     const errors = getProfileValidation(displayName, firstName);
     setFieldErrors(errors);
     setFormError(null);
-    if (Object.keys(errors).length > 0) return;
+    const firstInvalidField = getFirstInvalidProfileField(errors);
+    if (firstInvalidField !== null) {
+      if (firstInvalidField === "displayName") displayNameRef.current?.focus();
+      else firstNameRef.current?.focus();
+      return;
+    }
 
     submissionRunning.current = true;
     setIsPending(true);
@@ -81,6 +89,7 @@ export function ProfileScreen() {
               setFieldErrors((current) => ({ ...current, displayName: undefined }));
             }}
             placeholder="How should we welcome you?"
+            ref={displayNameRef}
             returnKeyType="next"
             textContentType="name"
             value={displayName}
@@ -97,6 +106,7 @@ export function ProfileScreen() {
               setFieldErrors((current) => ({ ...current, firstName: undefined }));
             }}
             onSubmitEditing={handleSubmit}
+            ref={firstNameRef}
             returnKeyType="done"
             textContentType="givenName"
             value={firstName}

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   getAuthenticatedDestination,
+  getFirstInvalidProfileField,
   getProfileValidation,
   normalizeProfileInput,
 } from "./onboarding-policy.ts";
@@ -36,4 +37,19 @@ test("validates and normalizes profile input", () => {
     displayName: "Steady Walker",
     firstName: undefined,
   });
+});
+
+test("chooses the first invalid profile field for focus", () => {
+  assert.equal(
+    getFirstInvalidProfileField({
+      displayName: "Enter a display name.",
+      firstName: "Use 50 characters or fewer.",
+    }),
+    "displayName",
+  );
+  assert.equal(
+    getFirstInvalidProfileField({ firstName: "Use 50 characters or fewer." }),
+    "firstName",
+  );
+  assert.equal(getFirstInvalidProfileField({}), null);
 });
