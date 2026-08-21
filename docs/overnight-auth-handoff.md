@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** `8fade53` is the approved section 7 invalid-profile-field focus implementation. Section 6 remains completed through the reviewed reset privacy deferral, and section 7 continues with its remaining bounded hardening work.
+- **Next action:** review
+- **Last known-good commit:** `a05357b` is the approved section 7 invalid-profile-field focus implementation. Section 6 remains completed through the reviewed reset privacy deferral; the current field-error association implementation awaits fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran the focused onboarding policy test (3/3 passed with only the existing module-type warning), the mobile package TypeScript check (passed), and `git diff --check` (passed).
-- **Tests added in current section:** `onboarding-policy.test.ts` verifies deterministic first-invalid-field priority for display-name, first-name-only, and valid profile states.
-- **Review status:** Fresh review approved `8fade53` with no actionable findings.
+- **Last successful checks:** The focused field-accessibility test passed 2/2, all mobile policy/state tests passed 11/11 with only existing module-type warnings, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Tests added in current section:** `field-accessibility.test.ts` verifies that errors and descriptions are exposed from the input accessibility hint, error text replaces a valid-state description, and caller-provided hints are preserved.
+- **Review status:** The section 7 field-error association implementation is green and awaits fresh review.
 - **Blocking condition:** None.
-- **Next bounded action:** Implement exactly one remaining section 7 hardening behavior test-first, starting with programmatic association between profile field errors and their inputs. Do not combine it with device-only checks or another hardening behavior.
+- **Next bounded action:** Freshly review the current section 7 field-error association commit. Do not begin another hardening behavior in that invocation.
+
+## Section 7 field-error association implementation
+
+The shared `TextField` now exposes its current error or valid-state description through the native input's `accessibilityHint`, so assistive technology encounters the field message while focused on the input rather than relying only on a separate alert node. A caller-provided hint is preserved and combined with the field message. Visible, selectable, non-color-only error text and existing field focus behavior remain unchanged. This bounded change applies consistently to profile and sign-in fields without adding interaction-test infrastructure, and it does not claim device-level VoiceOver or TalkBack behavior has been verified.
+
+The focused test first failed with the intended `ERR_MODULE_NOT_FOUND` for the absent field-accessibility policy; no red state was committed. After implementation, `mise exec -- node --test apps/mobile/src/components/ui/field-accessibility.test.ts` passed 2/2 with only the existing module-type warning. The full mobile policy/state command passed 11/11 with only existing module-type warnings, `mise exec -- pnpm --filter @recovery/mobile run check` passed, and `git diff --check` passed. No dependency, Expo configuration, backend, generated Convex file, or deployment state changed.
 
 ## Section 7 invalid profile field focus review
 
