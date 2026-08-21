@@ -182,11 +182,11 @@ Do not start unattended work until this preflight is complete.
 
 ### 1. Verify pinned APIs and record the concrete flow contract
 
-- [ ] Inspect installed Convex Auth `0.0.95` Password and Email provider source/types. Record exact signup-verification and reset flow names, arguments, expiry behavior, resend replacement behavior, session invalidation behavior, and supported token generation hook in this document or a focused adjacent note.
-- [ ] Inspect Expo Router `57.0.15` installed types for `Stack.Protected` and confirm the route-group guard shape.
-- [ ] Confirm the local console provider can be implemented without a new delivery dependency.
-- [ ] Establish version-compatible mobile interaction and Convex test commands only where they immediately support the first behavior tests; do not add placeholder tests or unrelated infrastructure.
-- [ ] Run existing mobile and backend checks.
+- [x] Inspect installed Convex Auth `0.0.95` Password and Email provider source/types. Record exact signup-verification and reset flow names, arguments, expiry behavior, resend replacement behavior, session invalidation behavior, and supported token generation hook in this document or a focused adjacent note. See `docs/auth-flow-contract.md`.
+- [x] Inspect Expo Router `57.0.15` installed types for `Stack.Protected` and confirm the route-group guard shape. See `docs/auth-flow-contract.md`.
+- [x] Confirm the local console provider can be implemented without a new delivery dependency.
+- [x] Establish version-compatible mobile interaction and Convex test commands only where they immediately support the first behavior tests; do not add placeholder tests or unrelated infrastructure. The bounded per-section strategy and current baseline commands are in `docs/auth-flow-contract.md`; test dependencies are deferred until substantive behavior exists.
+- [x] Run existing mobile and backend checks.
 
 Acceptance: the plan contains no guessed version-sensitive API, baseline checks pass, and each upcoming behavior task has a concrete executable red-test strategy or a recorded verification exception.
 
