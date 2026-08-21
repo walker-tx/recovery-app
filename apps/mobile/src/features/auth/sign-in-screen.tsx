@@ -8,6 +8,7 @@ import { TextField } from "@/components/ui/field";
 import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
 import {
+  getFirstInvalidSignInField,
   getSignInValidation,
   normalizeEmail,
   toSafeSignInError,
@@ -24,6 +25,7 @@ type FieldErrors = ReturnType<typeof getSignInValidation>;
 export function SignInScreen({ onBack }: SignInScreenProps) {
   const { signIn } = useAuthActions();
   const guard = useRef(createSubmissionGuard()).current;
+  const emailInput = useRef<TextInput>(null);
   const passwordInput = useRef<TextInput>(null);
   const [{ email, password, formError }, dispatch] = useReducer(
     reduceSignInState,
@@ -36,7 +38,12 @@ export function SignInScreen({ onBack }: SignInScreenProps) {
     const errors = getSignInValidation(email, password);
     setFieldErrors(errors);
     dispatch({ type: "submissionStarted" });
-    if (Object.keys(errors).length > 0) return;
+    const firstInvalidField = getFirstInvalidSignInField(errors);
+    if (firstInvalidField !== null) {
+      if (firstInvalidField === "email") emailInput.current?.focus();
+      else passwordInput.current?.focus();
+      return;
+    }
 
     await guard.run({ email, password }, async (submittedValues) => {
       setIsPending(true);
@@ -89,6 +96,7 @@ export function SignInScreen({ onBack }: SignInScreenProps) {
             }}
             onSubmitEditing={() => passwordInput.current?.focus()}
             placeholder="you@example.com"
+            ref={emailInput}
             returnKeyType="next"
             textContentType="emailAddress"
             value={email}

@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** `8412a24` duplicate sign-out prevention is green and approved by fresh review.
+- **Next action:** review
+- **Last known-good commit:** The invalid sign-in field focus implementation in the current commit is green and awaits fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran the focused sign-out wiring and submission-guard tests (3/3), the mobile package TypeScript check, and `git diff --check`; all passed.
-- **Tests added in current section:** The authenticated-home contract verifies that sign-out is wired through the synchronous submission guard; the existing guard behavior tests prove immediate duplicate requests collapse to one call and failure unlocks retry.
-- **Review status:** Fresh review of `8412a24` found no actionable findings.
+- **Last successful checks:** The focused sign-in policy test passed 4/4, the full mobile policy/state suite passed 15/15, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Tests added in current section:** Sign-in policy coverage proves invalid-field focus priority: email before password, password when it is the only invalid field, and no focus target for valid input.
+- **Review status:** The invalid sign-in field focus implementation awaits fresh review.
 - **Blocking condition:** None.
-- **Next bounded action:** Implement exactly one remaining section 7 hardening item test-first, or document one bounded manual verification result if device access is available. Do not begin final section 8 verification in the same transition.
+- **Next bounded action:** Freshly review the current implementation commit across correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality. Do not edit production code during review.
+
+## Section 7 invalid sign-in field focus implementation
+
+Invalid sign-in submission now focuses the first field with a validation error: email first, then password when it alone is invalid. The screen keeps native input refs and uses the tested policy result before any authentication request; valid submission, credential retention, safe error mapping, and duplicate-submit prevention are unchanged. This bounded accessibility hardening does not claim mounted iOS, Android, VoiceOver, or TalkBack behavior has been verified.
+
+The focused test first failed with the intended missing-export `SyntaxError` for `getFirstInvalidSignInField`; no red state was committed. After implementation, `mise exec -- node --test apps/mobile/src/features/auth/auth-policy.test.ts` passed 4/4. The full mobile policy/state command passed 15/15 with only the existing module-type warnings, `mise exec -- pnpm --filter @recovery/mobile run check` passed, and `git diff --check` passed. No dependency, Expo configuration, backend, generated Convex file, or deployment state changed.
 
 ## Section 7 duplicate sign-out prevention review
 

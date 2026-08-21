@@ -24,6 +24,12 @@ export function getSignInValidation(
   return errors;
 }
 
+export function getFirstInvalidSignInField(errors: SignInValidation) {
+  if (errors.email) return "email" as const;
+  if (errors.password) return "password" as const;
+  return null;
+}
+
 export function toSafeSignInError(_error: unknown) {
   return "We couldn't sign you in. Check your email and password, then try again.";
 }

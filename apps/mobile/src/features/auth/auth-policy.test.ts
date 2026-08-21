@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getFirstInvalidSignInField,
   getSignInValidation,
   normalizeEmail,
   toSafeSignInError,
@@ -19,6 +20,21 @@ test("validates sign-in email and accepts existing eight-character passwords", (
   assert.deepEqual(getSignInValidation("person@example.com", ""), {
     password: "Enter your password.",
   });
+});
+
+test("prioritizes the first invalid sign-in field for focus", () => {
+  assert.equal(
+    getFirstInvalidSignInField({
+      email: "Enter a valid email address.",
+      password: "Enter your password.",
+    }),
+    "email",
+  );
+  assert.equal(
+    getFirstInvalidSignInField({ password: "Enter your password." }),
+    "password",
+  );
+  assert.equal(getFirstInvalidSignInField({}), null);
 });
 
 test("maps every provider failure to a sanitized message", () => {
