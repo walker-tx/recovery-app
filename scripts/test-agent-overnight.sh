@@ -47,13 +47,30 @@ done
 cd "$root"
 [ "${CONVEX_DEPLOYMENT:-}" = "anonymous:anonymous-agent" ]
 [ "${CONVEX_AGENT_MODE:-}" = "anonymous" ]
-python3 - <<'PY'
+: "${FAKE_NEXT_ACTION:?}" "${FAKE_NEXT_COUNT:?}"
+python3 - "$FAKE_NEXT_ACTION" "$FAKE_NEXT_COUNT" <<'PY'
 from pathlib import Path
+import re
+import sys
+
+action, count = sys.argv[1:]
 p = Path("docs/overnight-auth-handoff.md")
-p.write_text(p.read_text().replace("**Next action:** implement", "**Next action:** review"))
+text = re.sub(
+    r"^- \*\*Next action:\*\* .+$",
+    f"- **Next action:** {action}",
+    p.read_text(),
+    flags=re.MULTILINE,
+)
+text = re.sub(
+    r"^- \*\*Correction cycles for current section:\*\* .+$",
+    f"- **Correction cycles for current section:** {count}",
+    text,
+    flags=re.MULTILINE,
+)
+p.write_text(text)
 PY
 git add docs/overnight-auth-handoff.md
-git commit -m "Fake implementation transition" >/dev/null
+git commit -m "Fake transition to $FAKE_NEXT_ACTION/$FAKE_NEXT_COUNT" >/dev/null
 echo OVERNIGHT_RESULT=progress
 echo 'session_id: fake-session-001'
 EOF
@@ -95,13 +112,30 @@ if PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 scripts/agent-ov
   exit 1
 fi
 rm -rf .agent-overnight/supervisor.lock
-PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 SUCCESS_PAUSE_SECONDS=0 scripts/agent-overnight.sh --once >/dev/null
+FAKE_NEXT_ACTION=review FAKE_NEXT_COUNT=0 PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 SUCCESS_PAUSE_SECONDS=0 scripts/agent-overnight.sh --once >/dev/null
 
 grep -q '^\- \*\*Next action:\*\* review$' docs/overnight-auth-handoff.md
-[ "$(git rev-list --count HEAD)" -eq 2 ]
 [ "$(stat -f '%Lp' .agent-overnight)" = "700" ]
 [ "$(stat -f '%Lp' .agent-overnight/overnight.log)" = "600" ]
 [ "$(stat -f '%Lp' .agent-overnight/sessions.tsv)" = "600" ]
-grep -q $'\tfake-session-001\t' .agent-overnight/sessions.tsv
+
+# Approved/accepted-deferred review advances and resets the count.
+FAKE_NEXT_ACTION=implement FAKE_NEXT_COUNT=0 PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 SUCCESS_PAUSE_SECONDS=0 scripts/agent-overnight.sh --once >/dev/null
+# Drive both correction cycles through their exact accepted transitions.
+FAKE_NEXT_ACTION=review FAKE_NEXT_COUNT=0 PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 SUCCESS_PAUSE_SECONDS=0 scripts/agent-overnight.sh --once >/dev/null
+FAKE_NEXT_ACTION=correct FAKE_NEXT_COUNT=1 PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 SUCCESS_PAUSE_SECONDS=0 scripts/agent-overnight.sh --once >/dev/null
+FAKE_NEXT_ACTION=review FAKE_NEXT_COUNT=1 PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 SUCCESS_PAUSE_SECONDS=0 scripts/agent-overnight.sh --once >/dev/null
+FAKE_NEXT_ACTION=correct FAKE_NEXT_COUNT=2 PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 SUCCESS_PAUSE_SECONDS=0 scripts/agent-overnight.sh --once >/dev/null
+FAKE_NEXT_ACTION=review FAKE_NEXT_COUNT=2 PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 SUCCESS_PAUSE_SECONDS=0 scripts/agent-overnight.sh --once >/dev/null
+set +e
+FAKE_NEXT_ACTION=blocked FAKE_NEXT_COUNT=2 PATH="$FIXTURE/fake-bin:$PATH" INVOCATION_TIMEOUT_SECONDS=60 SUCCESS_PAUSE_SECONDS=0 scripts/agent-overnight.sh --once >/dev/null
+blocked_status=$?
+set -e
+[ "$blocked_status" -eq 3 ]
+
+grep -q '^\- \*\*Next action:\*\* blocked$' docs/overnight-auth-handoff.md
+grep -q '^\- \*\*Correction cycles for current section:\*\* 2$' docs/overnight-auth-handoff.md
+[ "$(git rev-list --count HEAD)" -eq 9 ]
+[ "$(grep -c $'\tfake-session-001\t' .agent-overnight/sessions.tsv)" -eq 8 ]
 
 echo "agent-overnight supervisor self-test passed"

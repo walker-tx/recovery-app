@@ -2,7 +2,7 @@
 
 ## Objective
 
-Build and validate a local-first password authentication and profile-onboarding flow based on the Recovery Tracker auth artifact, using the repository-owned React Native design system, Expo Router, and the pinned Convex Auth version. Work must finish in reviewable, validated commits and remain recoverable after a provider or process interruption.
+Build and validate the safe local-first subset of password authentication and profile onboarding supported by the pinned Convex Auth version, based on the Recovery Tracker auth artifact and using the repository-owned React Native design system and Expo Router. Verified package limitations may defer an unsafe flow without blocking independent safe work. Work must finish in reviewable, validated commits and remain recoverable after a provider or process interruption.
 
 Artifact reference: <https://claude.ai/code/artifact/00dd61ff-dd96-4c83-abed-5e88ffbd2638>
 
@@ -23,11 +23,9 @@ Artifact reference: <https://claude.ai/code/artifact/00dd61ff-dd96-4c83-abed-5e8
 
 - Auth restoration without flashing the wrong route.
 - Expo Router partitions for unauthenticated, onboarding, and authenticated users.
-- Artifact-aligned welcome, sign-in, sign-up, verification, reset-request, reset-code, new-password, and profile screens.
-- Server-enforced normalized email and a minimum password length of ten characters.
-- Cryptographically generated six-digit, single-use signup and reset codes.
-- Code expiry and resend behavior supported by the installed auth package.
-- Console-only local delivery that fails closed unless explicitly enabled in the local Convex environment.
+- Artifact-aligned welcome, returning-user sign-in, and profile screens. Signup, verification, and reset screens are included only when their privacy and safety gates permit exposure.
+- Normalized email and safe returning-user password sign-in behavior.
+- Documented future requirements for cryptographically generated six-digit codes, expiry, resend, and console-only local delivery; no code-generating provider is enabled in this milestone.
 - Server-owned profile data: display name, optional first name, and onboarding completion.
 - Protected authenticated placeholder home and sign-out.
 - Sanitized, non-color-only errors and accessible busy/disabled states.
@@ -64,11 +62,6 @@ apps/mobile/src/app/
     _layout.tsx
     index.tsx
     sign-in.tsx
-    sign-up.tsx
-    verify-email.tsx
-    forgot-password.tsx
-    reset-code.tsx
-    reset-password.tsx
   (onboarding)/
     _layout.tsx
     profile.tsx
@@ -77,7 +70,7 @@ apps/mobile/src/app/
     index.tsx
 ```
 
-The exact number of reset routes may be reduced if the installed Convex Auth API supports a clearer state machine without losing deep-link-free navigation or independent form lifecycles. Keep route files composition-only.
+Deferred signup, verification, and reset routes are intentionally omitted while their gates fail. A future reviewed milestone may add them without changing the route boundaries above. Keep route files composition-only.
 
 ## Local email policy
 
@@ -99,11 +92,11 @@ Before exposing signup or considering reset complete, inspect and test the insta
 
 1. Do not add an unsafe account-discovery endpoint.
 2. Do not query auth tables from the client.
-3. Leave the reset feature disabled or incomplete behind a clearly recorded blocker.
-4. Commit only safe preparatory UI or provider-independent work.
-5. Record the exact package limitation and a proposed separately reviewed solution.
+3. Leave the affected signup or reset feature unavailable behind a clearly recorded accepted deferral.
+4. Continue safe preparatory UI and provider-independent work; an accepted feature-level deferral is not a run-wide blocker.
+5. Record the exact package limitation, verification evidence, and a proposed separately reviewed solution.
 
-Uniform wording alone must not be described as protocol-level enumeration resistance. For pinned 0.0.95, both signup and reset currently fail this gate as recorded in `docs/auth-flow-contract.md`; provider-independent sign-in and preparatory UI may proceed, but signup and reset controls remain unavailable pending a separately reviewed solution or product-decision revision.
+Uniform wording alone must not be described as protocol-level enumeration resistance. For pinned 0.0.95, both signup and reset fail this gate as recorded in `docs/auth-flow-contract.md`. The operator has accepted their deferral for this milestone: provider-independent sign-in, routing, profile onboarding, protected home, sign-out, and hardening proceed, while signup, verification, and reset controls remain unavailable pending a separately reviewed solution or package change.
 
 ## Test-driven delivery and review loop
 
@@ -134,7 +127,7 @@ Agents hand off through repository state, not through private conversation histo
 - review findings and correction-cycle count;
 - assumptions, blockers, and the next bounded action.
 
-A fresh agent must verify the handoff against `git status`, `git log`, and the actual files. The repository wins when prose and code disagree. Review agents do not silently fix findings: they record them and hand off to a correction invocation, preserving an independent review lens.
+A fresh agent must verify the handoff against `git status`, `git log`, and the actual files. The repository wins when prose and code disagree. Review agents do not silently fix findings: they record them and hand off to a correction invocation, preserving an independent review lens. A reviewed package limitation explicitly accepted for deferral is recorded as deferred/complete for that section and advances with `Next action: implement`; `blocked` is reserved for conditions that prevent remaining safe work or require an unapproved product/security decision.
 
 ## Runner contract
 
@@ -201,10 +194,10 @@ Acceptance: the plan contains no guessed version-sensitive API, baseline checks 
 
 Acceptance: cold restoration renders neither auth nor authenticated content prematurely; unauthenticated users cannot render app routes; authenticated users cannot remain on auth routes; TypeScript passes.
 
-### 3. Build the password welcome, sign-in, and sign-up screens
+### 3. Build the password welcome and returning-user sign-in screens
 
-- [ ] Implement artifact-aligned native screens using existing `Screen`, `Button`, `TextField`, `Typography`, and `Card` primitives.
-- [ ] Keep sign-in and sign-up as independent route-local form lifecycles, but do not expose signup while its privacy gate is blocked.
+- [ ] Implement artifact-aligned native welcome and sign-in screens using existing `Screen`, `Button`, `TextField`, `Typography`, and `Card` primitives.
+- [ ] Keep sign-in route-local form state independent and omit signup routes and controls while the accepted privacy deferral applies.
 - [ ] Normalize email and enforce client guidance matching the ten-character server rule.
 - [ ] Prevent duplicate submission and preserve entered values after failure.
 - [ ] Map expected failures to sanitized user-facing messages; never render raw provider payloads.
@@ -212,18 +205,14 @@ Acceptance: cold restoration renders neither auth nor authenticated content prem
 
 Acceptance: existing password sign-in works; signup remains unavailable while its privacy gate fails; labels, autocomplete, keyboard settings, busy states, alerts, touch targets, safe areas, font scaling, and keyboard reachability are preserved; mobile check passes.
 
-### 4. Configure local console signup verification
+### 4. Defer local signup verification behind verified package gates
 
-- [ ] Add the server-side ten-character password requirement.
-- [ ] Configure Password signup verification with a secure six-digit code and explicit console delivery mode only after the signup privacy gate permits exposure.
-- [ ] Ensure missing delivery configuration fails closed.
-- [ ] Add the verification screen, resend cooldown, change-email path, pending state, and safe errors.
-- [ ] Ensure signup does not enter authenticated onboarding until verification succeeds.
-- [ ] Cover delivery failure after replacement-code creation: start cooldown only after successful delivery and permit immediate retry after failure.
-- [ ] Cover overlapping replacement requests with forced reversed delivery completion; do not expose signup/resend unless the last delivered code is redeemable across clients and retries (the concurrent-resend safety gate).
-- [ ] Cover a lost verification response or partial SecureStore write with awaited best-effort sign-out, fail-closed restoration when cleanup fails, and normal password sign-in as the supported re-authentication path; do not promise a fresh code or exactly-once completion.
+- [x] Verify and record the pinned signup account-enumeration behavior.
+- [x] Verify and record replacement-before-delivery, concurrent resend, and non-atomic provider token-persistence behavior.
+- [x] Keep signup, verification, resend, and their navigation controls unavailable for this milestone.
+- [x] Require `AUTH_LOG_LEVEL` and `AUTH_LOG_SECRETS` to remain unset and assign an environment/log-output smoke check before any future code-generating provider is enabled.
 
-Acceptance: if both the privacy and concurrent-resend safety gates are resolved, the code appears only in explicitly allowed local backend logs, package DEBUG/secret logging remains disabled, an incorrect code fails safely, a resent code replaces the prior code, the last delivered overlapping code remains redeemable, delivery failures allow immediate retry, successful verification signs the user in without duplicate client submission, and lost-response/partial-persistence recovery reaches normal sign-in without rendering protected routes. Backend, mobile state-machine, and bounded SecureStore fault-injection checks pass. Otherwise signup remains unavailable and the blocker stays explicit.
+Acceptance: the deferral is explicit and reviewed; no signup or verification control is exposed; no application code generates or returns a code; safe independent work continues. A future milestone must resolve the privacy and concurrent-resend gates and explicitly accept or replace the provider-owned token-persistence behavior before enabling signup.
 
 ### 5. Add server-owned profile onboarding
 
@@ -236,16 +225,13 @@ Acceptance: if both the privacy and concurrent-resend safety gates are resolved,
 
 Acceptance: profile state is Convex-owned, onboarding survives restart, no caller can read or mutate another profile, auth restoration and profile loading are distinct states, and backend/mobile checks pass.
 
-### 6. Add safe password reset when the privacy gate permits
+### 6. Defer password reset behind the verified privacy gate
 
-- [ ] Verify reset initiation behavior against the privacy gate above before exposing the feature.
-- [ ] Configure a separate console reset provider with secure six-digit codes.
-- [ ] Add request, neutral sent/code-entry, and new-password states.
-- [ ] Apply the same ten-character rule and safe error mapping.
-- [ ] State that successful reset signs out other devices; do not offer a toggle.
-- [ ] Verify successful reset signs in the current user and invalidates previous sessions according to package behavior.
+- [x] Verify and record that pinned reset initiation exposes account-dependent outcomes.
+- [x] Keep reset request, code entry, new-password routes, and controls unavailable for this milestone.
+- [x] Preserve the future requirement that successful reset signs out other devices without offering a toggle.
 
-Acceptance: absent and existing addresses receive indistinguishable application-level responses where supported; codes remain server-only except for local logs; previous sessions are invalidated; checks pass. If the package cannot meet the privacy gate safely, record the blocker and leave reset unavailable.
+Acceptance: reset remains unavailable with a reviewed package blocker; no reset delivery or account-discovery endpoint exists; safe independent work continues. A future milestone must demonstrate indistinguishable initiation behavior before exposing reset.
 
 ### 7. Harden behavior and accessibility
 
@@ -275,7 +261,7 @@ Stop unattended work and record a blocker when any of the following occurs:
 
 - The selected Convex deployment is not unambiguously local.
 - A command requests production, cloud deployment, destructive data access, secrets, OAuth credentials, or interactive product input.
-- The installed API cannot implement a required security property without undocumented auth-table writes or an unauthenticated account-discovery endpoint.
+- The installed API cannot implement a required security property for remaining safe work without undocumented auth-table writes or an unauthenticated account-discovery endpoint. A reviewed feature-level limitation already accepted for deferral does not stop independent work.
 - Two attempts fail with the same provider, package, build, or test error without measurable progress.
 - The working tree contains unrelated or ambiguous changes that cannot be attributed safely.
 - A check fails and the cause cannot be corrected within the current bounded task.
@@ -294,4 +280,4 @@ Stop unattended work and record a blocker when any of the following occurs:
 
 ## Completion definition
 
-The run succeeds when password signup, six-digit local verification, display-name onboarding, returning sign-in, safe password reset (or an explicit verified package blocker), protected home, and sign-out work against a local Convex deployment; required checks pass; completed work is committed; and all deferred or manual integration work is plainly documented.
+The run succeeds when returning-user password sign-in, display-name onboarding, protected home, and sign-out work against a local Convex deployment; signup/verification and reset remain unavailable behind their explicit reviewed package deferrals; required checks pass; completed work is committed; and all deferred or manual integration work is plainly documented. Enabling signup, verification, or reset is not required for this milestone and must not be done by weakening the non-enumeration policy.

@@ -280,8 +280,9 @@ REVIEW:
 - Use a fresh review lens and applicable review skills/subagents. Do not edit production code.
 - Review the last feature/correction commit for correctness, architecture, simplicity, auth security/privacy, Convex authorization, accessibility, product fidelity, and test quality.
 - For backend auth code, use Convex-specific review/authz skills.
-- If blocking findings exist and the current correction count is less than 2, increment it by exactly 1, set Next action to correct, and commit only verified review documentation.
-- If blocking findings exist and the current correction count is already 2, set Next action to blocked; never request a third correction cycle.
+- Classify findings by scope. A verified package limitation explicitly accepted for feature-level deferral is not a blocker for independent safe work: record the deferral, mark that section complete/deferred, reset the correction count to 0, and advance with Next action implement.
+- If a blocking finding affects the current deliverable or remaining safe work and the current correction count is less than 2, increment it by exactly 1, set Next action to correct, and commit only verified review documentation.
+- If such a blocking finding remains when the current correction count is already 2, set Next action to blocked; never request a third correction cycle.
 - Keep `Correction cycles for current section` as a bare non-negative integer with no explanatory prose.
 - If no blocking findings exist, record approval, reset the correction count to 0 for the next section, check/advance only the completed checklist state, set Next action to implement or complete, and commit only the verified review handoff.
 
@@ -301,7 +302,8 @@ HARD LIMITS:
 - Never run convex deploy, select/switch deployments, use cloud/prod, add Resend/OAuth/groups, expose verification codes to clients, use fixed codes, bypass verification, reveal account/provider existence, edit generated Convex files, or display raw provider errors.
 - Do not print secrets or verification codes in your response.
 - Use bounded commands and the smallest useful checks.
-- If blocked, record a verified blocker in the handoff when useful, set Next action to blocked, commit documentation only if appropriate, and exit.
+- Use Next action blocked only when a condition prevents remaining safe work or requires an unapproved product/security decision. An operator-approved feature deferral must not stop independent work.
+- If run-wide blocked, record the verified blocker in the handoff when useful, set Next action to blocked, commit documentation only if appropriate, and exit.
 
 End your response with exactly one marker: OVERNIGHT_RESULT=progress, OVERNIGHT_RESULT=blocked, or OVERNIGHT_RESULT=complete.
 EOF
