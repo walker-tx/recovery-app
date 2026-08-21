@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** `c6d8943` is the approved section 7 stale sign-in-error clearing implementation. Section 7 hardening continues.
+- **Next action:** review
+- **Last known-good commit:** The accessible restoration-loading implementation in the current commit is green and awaits fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran the focused sign-in state test (2/2 passed), the full mobile policy/state command (13/13 passed), the mobile package TypeScript check (passed), and `git diff --check` (passed); tests emitted only the existing module-type warnings.
-- **Tests added in current section:** `sign-in-state.test.ts` verifies that editing either screen-owned credential clears a stale sanitized authentication error while preserving the other credential.
-- **Review status:** Fresh review approved the stale sign-in-error clearing implementation with no actionable findings.
+- **Last successful checks:** The focused auth route contract passed, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Tests added in current section:** The auth route contract now verifies that pending auth/profile restoration renders a named progress state instead of returning a blank tree.
+- **Review status:** The accessible restoration-loading implementation awaits fresh review.
 - **Blocking condition:** None.
-- **Next bounded action:** Implement or verify one remaining section 7 hardening behavior, starting with the smallest meaningful behavior test or bounded static/device check. Do not combine multiple checklist behaviors in one invocation.
+- **Next bounded action:** Freshly review the current implementation commit across correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality. Do not edit production code during review.
+
+## Section 7 accessible restoration-loading implementation
+
+Auth restoration and authenticated profile loading now render a visible `ActivityIndicator` and loading message in a progressbar-labeled accessibility group instead of a blank tree. Route guards still remain unavailable until restoration finishes, so the change adds loading feedback without flashing unauthenticated, onboarding, or authenticated content. This bounded change does not claim device-level screen-reader announcement behavior has been verified.
+
+The focused auth route contract first failed with the two intended messages because the pending branch still returned `null` and no accessible loading name existed; no red state was committed. After implementation, `bash scripts/test-auth-route-contract.sh` passed, `mise exec -- pnpm --filter @recovery/mobile run check` passed, and `git diff --check` passed. No dependency, Expo configuration, backend, generated Convex file, or deployment state changed.
 
 ## Section 7 stale sign-in-error clearing review
 

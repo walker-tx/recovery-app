@@ -23,7 +23,9 @@ require_file() {
 }
 
 require_text "$root_layout" 'useConvexAuth' 'root routing does not read Convex Auth restoration state'
-require_text "$root_layout" 'if (isLoading || (isAuthenticated && destination === null)) return null' 'route guards render before auth or profile restoration finishes'
+require_text "$root_layout" 'if (isLoading || (isAuthenticated && destination === null)) return <RestorationLoading />' 'route guards render before auth or profile restoration finishes'
+require_text "$root_layout" 'accessibilityLabel="Loading your account"' 'restoration loading state has no accessible name'
+require_text "$root_layout" 'accessibilityRole="progressbar"' 'restoration loading state does not identify its progress semantics'
 require_text "$root_layout" '<Stack.Protected guard={!isAuthenticated}>' 'auth routes are not protected from authenticated users'
 require_text "$root_layout" '<Stack.Protected guard={isAuthenticated && destination === "onboarding"}>' 'onboarding routes are not protected by authenticated profile state'
 require_text "$root_layout" '<Stack.Protected guard={isAuthenticated && destination === "app"}>' 'app routes are not protected by authenticated profile state'

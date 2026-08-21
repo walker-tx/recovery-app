@@ -9,7 +9,7 @@ import { ConvexReactClient, useQuery } from "convex/react";
 import * as SecureStore from "expo-secure-store";
 import { Stack } from "expo-router/stack";
 import { StatusBar } from "expo-status-bar";
-import { View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 
 import { api } from "@recovery/backend/convex/_generated/api";
 import { Screen } from "@/components/ui/screen";
@@ -41,7 +41,7 @@ function AuthenticatedRoutes() {
   const profile = useQuery(api.profiles.getMine, isAuthenticated ? {} : "skip");
   const destination = getAuthenticatedDestination(profile);
 
-  if (isLoading || (isAuthenticated && destination === null)) return null;
+  if (isLoading || (isAuthenticated && destination === null)) return <RestorationLoading />;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -55,6 +55,22 @@ function AuthenticatedRoutes() {
         <Stack.Screen name="(app)" />
       </Stack.Protected>
     </Stack>
+  );
+}
+
+function RestorationLoading() {
+  return (
+    <Screen contentClassName="w-full max-w-[520px] self-center">
+      <View
+        accessible
+        accessibilityLabel="Loading your account"
+        accessibilityRole="progressbar"
+        className="items-center gap-md"
+      >
+        <ActivityIndicator />
+        <Typography className="text-ink-muted">Loading your account…</Typography>
+      </View>
+    </Screen>
   );
 }
 
