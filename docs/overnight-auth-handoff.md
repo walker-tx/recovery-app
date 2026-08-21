@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** `27caa0b` is the approved section 7 field-error association implementation. Section 6 remains completed through the reviewed reset privacy deferral, and section 7 hardening continues.
+- **Next action:** review
+- **Last known-good commit:** `cad4d24` approved the section 7 field-error association implementation. The current display-name return-key implementation is green and awaits fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran the focused field-accessibility test (2/2 passed with only the existing module-type warning), the mobile package TypeScript check (passed), and `git diff --check` (passed).
-- **Tests added in current section:** `field-accessibility.test.ts` verifies that errors and descriptions are exposed from the input accessibility hint, error text replaces a valid-state description, and caller-provided hints are preserved.
-- **Review status:** Fresh review approved the section 7 field-error association implementation with no actionable findings.
+- **Last successful checks:** The focused return-key contract test passed 1/1, the full mobile policy/state command passed 12/12 with only existing module-type warnings, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Tests added in current section:** `profile-screen-contract.test.ts` verifies that the display-name field keeps its next return key, submits without dismissing the keyboard, and focuses the first-name field.
+- **Review status:** The section 7 display-name return-key implementation awaits fresh review.
 - **Blocking condition:** None.
-- **Next bounded action:** Implement one next section 7 hardening behavior, starting with the smallest meaningful behavior test. Do not combine multiple hardening behaviors in one invocation.
+- **Next bounded action:** Fresh-review the display-name return-key implementation commit. Do not edit production code during review.
+
+## Section 7 display-name return-key implementation
+
+The profile screen now handles the display-name keyboard return action by focusing the optional first-name input. Its `submitBehavior="submit"` keeps the keyboard active while focus advances, matching the existing `returnKeyType="next"`. This is one bounded keyboard-accessibility hardening behavior and does not claim device-level keyboard, compact-layout, enlarged-text, or screen-reader verification.
+
+Because the repository has no rendered mobile interaction harness and introducing one for this single wiring behavior would be broad infrastructure, the smallest meaningful test is a static screen contract over the production `TextField` props. It first failed with the intended assertion because the display-name field had no `onSubmitEditing` focus handoff; no red state was committed. After implementation, `mise exec -- node --test apps/mobile/src/features/onboarding/profile-screen-contract.test.ts` passed 1/1 with only the existing module-type warning. The full mobile policy/state command passed 12/12 with only existing module-type warnings, `mise exec -- pnpm --filter @recovery/mobile run check` passed, and `git diff --check` passed. No dependency, Expo configuration, backend, generated Convex file, or deployment state changed.
 
 ## Section 7 field-error association review
 

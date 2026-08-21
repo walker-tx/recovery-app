@@ -88,9 +88,11 @@ export function ProfileScreen() {
               setDisplayName(value);
               setFieldErrors((current) => ({ ...current, displayName: undefined }));
             }}
+            onSubmitEditing={() => firstNameRef.current?.focus()}
             placeholder="How should we welcome you?"
             ref={displayNameRef}
             returnKeyType="next"
+            submitBehavior="submit"
             textContentType="name"
             value={displayName}
           />

@@ -238,6 +238,7 @@ Acceptance: reset remains unavailable with a reviewed package blocker; no reset 
 - [ ] Add the smallest justified mobile tests for validation, safe error mapping, duplicate-submit prevention, and accessible labels/alerts if a compatible test harness can be introduced without broad infrastructure. Otherwise document bounded manual checks rather than adding speculative tooling.
   - [x] Focus the first invalid profile field after validation fails, with focused policy coverage for field priority.
   - [x] Associate field errors and descriptions with their native text inputs through accessibility hints, preserving caller-provided hints.
+  - [x] Advance the display-name return key to the first-name field without dismissing the keyboard.
 - [ ] Test compact layouts, keyboard visibility, enlarged text, and logical screen-reader order on the available simulator.
 - [ ] Confirm sign-out removes protected app routes from navigation history.
 - [ ] Confirm no console code or sensitive auth data is returned by a public function or displayed in ordinary UI.
