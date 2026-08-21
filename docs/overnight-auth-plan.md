@@ -90,11 +90,11 @@ The exact number of reset routes may be reduced if the installed Convex Auth API
 - Require an explicit local Convex environment value such as `AUTH_EMAIL_DELIVERY=console`. Missing or unknown delivery configuration must fail closed.
 - Before implementing the guard, inspect the pinned Convex CLI/runtime for a trustworthy local-deployment indicator. If none exists, document that console mode is controlled by local deployment configuration and must never be set in cloud or production environments. Do not invent an unreliable production detector.
 
-## Privacy and reset gate
+## Signup and reset privacy gate
 
-The mobile app must always show the same reset-request result whether the address is absent, password-based, or social-only. Raw provider errors must not reach the user.
+Unauthenticated signup and reset must not reveal whether the address is absent, password-based, verified, unverified, or social-only through errors, delivery, completion, or authentication outcomes. Raw provider errors must not reach the user. Uniform wording alone is insufficient when protocol behavior differs.
 
-Before considering reset complete, inspect and test the installed Password reset initiation behavior. If `@convex-dev/auth` exposes account existence through its public response or another observable application-level result that cannot be safely normalized with supported APIs:
+Before exposing signup or considering reset complete, inspect and test the installed Password initiation behavior. If `@convex-dev/auth` exposes account existence through its public response or another observable application-level result that cannot be safely normalized with supported APIs:
 
 1. Do not add an unsafe account-discovery endpoint.
 2. Do not query auth tables from the client.
@@ -102,7 +102,7 @@ Before considering reset complete, inspect and test the installed Password reset
 4. Commit only safe preparatory UI or provider-independent work.
 5. Record the exact package limitation and a proposed separately reviewed solution.
 
-Uniform wording alone must not be described as protocol-level enumeration resistance.
+Uniform wording alone must not be described as protocol-level enumeration resistance. For pinned 0.0.95, both signup and reset currently fail this gate as recorded in `docs/auth-flow-contract.md`; provider-independent sign-in and preparatory UI may proceed, but signup and reset controls remain unavailable pending a separately reviewed solution or product-decision revision.
 
 ## Test-driven delivery and review loop
 
@@ -203,23 +203,25 @@ Acceptance: cold restoration renders neither auth nor authenticated content prem
 ### 3. Build the password welcome, sign-in, and sign-up screens
 
 - [ ] Implement artifact-aligned native screens using existing `Screen`, `Button`, `TextField`, `Typography`, and `Card` primitives.
-- [ ] Keep sign-in and sign-up as independent route-local form lifecycles.
+- [ ] Keep sign-in and sign-up as independent route-local form lifecycles, but do not expose signup while its privacy gate is blocked.
 - [ ] Normalize email and enforce client guidance matching the ten-character server rule.
 - [ ] Prevent duplicate submission and preserve entered values after failure.
 - [ ] Map expected failures to sanitized user-facing messages; never render raw provider payloads.
 - [ ] Omit Apple and Google buttons rather than displaying nonfunctional controls.
 
-Acceptance: existing password sign-in works; signup reaches the next state supported at that point; labels, autocomplete, keyboard settings, busy states, alerts, touch targets, safe areas, font scaling, and keyboard reachability are preserved; mobile check passes.
+Acceptance: existing password sign-in works; signup remains unavailable while its privacy gate fails; labels, autocomplete, keyboard settings, busy states, alerts, touch targets, safe areas, font scaling, and keyboard reachability are preserved; mobile check passes.
 
 ### 4. Configure local console signup verification
 
 - [ ] Add the server-side ten-character password requirement.
-- [ ] Configure Password signup verification with a secure six-digit code and explicit console delivery mode.
+- [ ] Configure Password signup verification with a secure six-digit code and explicit console delivery mode only after the signup privacy gate permits exposure.
 - [ ] Ensure missing delivery configuration fails closed.
 - [ ] Add the verification screen, resend cooldown, change-email path, pending state, and safe errors.
 - [ ] Ensure signup does not enter authenticated onboarding until verification succeeds.
+- [ ] Cover delivery failure after replacement-code creation: start cooldown only after successful delivery and permit immediate retry after failure.
+- [ ] Cover a lost verification response or SecureStore failure with recovery to fresh-code request or normal sign-in; do not claim exactly-once completion.
 
-Acceptance: the code appears only in local backend logs, an incorrect code fails safely, a resent code replaces the prior code, a successful code signs the user in exactly once, and mobile/backend checks pass.
+Acceptance: if the privacy gate is resolved, the code appears only in explicitly allowed local backend logs, an incorrect code fails safely, a resent code replaces the prior code, delivery failures allow immediate retry, successful verification signs the user in without duplicate client submission, lost-response recovery is available, and mobile/backend checks pass. Otherwise signup remains unavailable and the blocker stays explicit.
 
 ### 5. Add server-owned profile onboarding
 
