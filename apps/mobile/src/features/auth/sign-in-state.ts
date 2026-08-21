@@ -22,9 +22,9 @@ export function reduceSignInState(
 ): SignInState {
   switch (action.type) {
     case "emailChanged":
-      return { ...state, email: action.value };
+      return { ...state, email: action.value, formError: null };
     case "passwordChanged":
-      return { ...state, password: action.value };
+      return { ...state, password: action.value, formError: null };
     case "submissionStarted":
       return { ...state, formError: null };
     case "authenticationFailed":

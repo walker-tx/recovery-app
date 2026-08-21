@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** `cce230b` is the approved section 7 display-name return-key implementation. Section 7 hardening continues.
+- **Next action:** review
+- **Last known-good commit:** `547b175` approved the prior section 7 display-name return-key implementation. The stale sign-in-error clearing implementation is green and awaiting fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran the focused return-key contract test (1/1 passed), the full mobile policy/state command (12/12 passed), the mobile package TypeScript check (passed), and `git diff --check` (passed); tests emitted only the existing module-type warnings.
-- **Tests added in current section:** `profile-screen-contract.test.ts` verifies that the display-name field keeps its next return key, submits without dismissing the keyboard, and focuses the first-name field.
-- **Review status:** Fresh review approved the section 7 display-name return-key implementation with no actionable findings.
+- **Last successful checks:** The focused sign-in state test passed 2/2, the full mobile policy/state command passed 13/13, the mobile package TypeScript check passed, and `git diff --check` passed; tests emitted only the existing module-type warnings.
+- **Tests added in current section:** `sign-in-state.test.ts` now verifies that editing either screen-owned credential clears a stale sanitized authentication error.
+- **Review status:** The stale sign-in-error clearing implementation awaits fresh review.
 - **Blocking condition:** None.
-- **Next bounded action:** Implement or verify one remaining section 7 hardening behavior, starting with the smallest meaningful behavior test or bounded static/device check. Do not combine multiple checklist behaviors in one invocation.
+- **Next bounded action:** Freshly review the stale sign-in-error clearing commit. Do not begin another section 7 behavior in the same invocation.
+
+## Section 7 stale sign-in-error clearing implementation
+
+After a failed sign-in, editing either the email or password now clears the stale form-level authentication error while preserving the other credential. The screen already dispatches these reducer actions directly from each input, so the behavior remains owned by the existing feature-local reducer and requires no new UI state or dependency. Field-level validation errors continue to clear independently in the input handlers.
+
+The focused reducer test first failed 1/2 with the intended mismatch because `emailChanged` retained the prior form error; no red state was committed. After implementation, `mise exec -- node --test apps/mobile/src/features/auth/sign-in-state.test.ts` passed 2/2. The full six-file mobile policy/state command passed 13/13 with only the existing module-type warnings, `mise exec -- pnpm --filter @recovery/mobile run check` passed, and `git diff --check` passed. No dependency, Expo configuration, backend, generated Convex file, or deployment state changed.
 
 ## Section 7 display-name return-key review
 

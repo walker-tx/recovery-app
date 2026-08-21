@@ -21,3 +21,20 @@ test("an authentication failure preserves the screen-owned credentials", () => {
     },
   );
 });
+
+test("editing either credential clears a stale authentication error", () => {
+  const failed = {
+    email: "person@example.com",
+    password: "password",
+    formError: "Unable to sign in. Check your details and try again.",
+  };
+
+  assert.deepEqual(
+    reduceSignInState(failed, { type: "emailChanged", value: "new@example.com" }),
+    { ...failed, email: "new@example.com", formError: null },
+  );
+  assert.deepEqual(
+    reduceSignInState(failed, { type: "passwordChanged", value: "new-password" }),
+    { ...failed, password: "new-password", formError: null },
+  );
+});
