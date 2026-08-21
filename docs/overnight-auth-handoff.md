@@ -3,14 +3,14 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 1. Verify pinned APIs and record the concrete flow contract
-- **Next action:** correct
-- **Last known-good commit:** `6e1024e` (`Correct pinned auth flow contract`), reviewed with blocking documentation findings
+- **Next action:** review
+- **Last known-good commit:** pending correction commit (parent `a59a61f`)
 - **Correction cycles for current section:** 2
-- **Last successful checks:** Review inspection of `6e1024e` against `88fcf5e`; installed-source verification for `@convex-dev/auth` 0.0.95; `git diff --check 88fcf5e 6e1024e` (pass). The correction commit recorded passing focused static, mobile, backend, and diff checks.
-- **Tests added in current section:** No tests were added by this review-only transition.
-- **Review status:** Changes requested. Architecture, simplicity, and accessibility found no blockers. Security/privacy, adversarial behavior, product fit, and test quality found the five blocking contract gaps below.
-- **Blocking condition:** Section 1 cannot be approved until the logging policy, test-layer strategies, concurrent replacement-code race, and partial token-persistence/lost-response behavior are corrected. Signup and reset exposure remain gated independently by account-dependent outcomes in pinned 0.0.95.
-- **Next bounded action:** Perform correction cycle 2 of 2 for section 1 documentation only. Turn each finding below into a focused static contract assertion and demonstrate red; correct the contract, plan, and handoff; rerun focused and package checks; commit green; set Next action to `review`; do not begin routing implementation.
+- **Last successful checks:** Focused five-finding static contract check (red: all five assertions failed before correction; green: all five passed); `mise exec -- pnpm --filter @recovery/mobile run check` (pass); `mise exec -- pnpm --filter @recovery/backend run check` (pass); `git diff --check` (pass).
+- **Tests added in current section:** No test dependency was added for this documentation correction. The focused Python static contract check covered logging flags, section 3 submission behavior, split section 4 test layers, reversed delivery completion, and partial token-persistence recovery.
+- **Review status:** Correction cycle 2 of 2 is complete and awaiting fresh review. The five findings from review commit `a844438` are addressed in the contract and plan without production-code changes.
+- **Blocking condition:** Signup remains unavailable behind both the pinned package's account-enumeration privacy gate and a concurrent-resend safety gate; reset remains unavailable behind its privacy gate. These gates do not block fresh review of section 1 or later provider-independent routing/sign-in work.
+- **Next bounded action:** Freshly review this correction commit against installed source for correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and executable test quality. Because the correction count is already 2, set Next action to `blocked` if any blocking section 1 finding remains; otherwise approve section 1, reset the correction count to 0 for section 2, and set Next action to `implement`. Do not begin routing implementation in the review invocation.
 
 ## Findings and decisions
 
@@ -20,17 +20,17 @@ This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must 
 - Password reset is gated on verified non-enumerating behavior from supported pinned APIs. The pinned 0.0.95 `reset` implementation currently fails this gate because absent and existing password accounts have observably different outcomes; keep reset unavailable pending a separately reviewed solution.
 - Each feature uses red/green/refactor, then a fresh review, with at most two correction cycles.
 
-## Blocking review findings for `6e1024e`
+## Corrections applied for review findings on `6e1024e`
 
-1. **Plaintext package DEBUG logging remains permitted (security/privacy, P2):** `docs/auth-flow-contract.md:47` allows `AUTH_LOG_LEVEL=DEBUG` in the verified local environment, while the plan requires plaintext codes to be printed only by the explicitly enabled console provider. Pinned `mutations/createVerificationCode.ts:27` passes the plaintext code to package logging independently of `AUTH_EMAIL_DELIVERY`, and `implementation/utils.ts:65-68` emits it at DEBUG. Require package DEBUG logging and `AUTH_LOG_SECRETS` to remain disabled whenever auth codes can be generated, including local console-delivery runs.
-2. **Section 3 test is at the wrong behavior boundary (test quality/product, P2):** `docs/auth-flow-contract.md:54` assigns duplicate-submit prevention to a pure policy test. Such a test cannot prove that the rendered handler synchronously enters pending state and makes only one auth call after two taps. Use a focused mobile interaction/state-machine test, defer it to the section 7 interaction harness, or record an explicit task-specific simulator exception; keep the pure test for normalization, password guidance, and safe error mapping only.
-3. **Section 4 backend test overclaims mobile coverage (test quality/product, P2):** `docs/auth-flow-contract.md:55` assigns client cooldown, lost-response recovery, and SecureStore failure recovery to `convex/auth.test.ts`. Backend tests can verify replacement, consumption, and delivery ordering, but cannot observe React Native cooldown state, client retry/navigation, or SecureStore faults. Split backend and mobile strategies or record explicit bounded simulator/fault-injection exceptions for the mobile-only cases.
-4. **Overlapping replacement requests can deliver a stale code last (adversarial/product, P2):** Pinned `signIn.ts:124-153` commits each replacement code before awaiting delivery, and `mutations/createVerificationCode.ts:94-108` deletes the prior code. Two overlapping actions can commit A then B but deliver B then A, leaving the last-delivered code invalid. Extend the contract and section 4 strategy/acceptance to cover reversed delivery completion; one-screen duplicate-submit prevention does not cover retries, restarts, or multiple clients.
-5. **Lost response and SecureStore failure have unmodeled partial states (adversarial/product, P2):** Pinned `verifyCodeAndSignIn.ts:73-84,206-230` commits session creation and code consumption before the response, while `react/client.tsx:98-120,175-206` retries network failures and installs in-memory, access, and refresh tokens non-atomically. A retry can see a consumed code, and storage failure can leave mixed in-memory/persisted/rendered state. Document deterministic cleanup or re-authentication, test or explicitly except these fault paths, and use normal sign-in as the clearly supported recovery after successful signup verification rather than claiming a fresh verification code is always available.
+1. The contract now requires both `AUTH_LOG_LEVEL=DEBUG` and `AUTH_LOG_SECRETS=true` to remain unset for every code-generating run, including local console delivery, and records that the code-creation DEBUG call bypasses `maybeRedact`.
+2. Section 3 keeps normalization, password guidance, and safe-error mapping in pure policy tests, moves duplicate-submit behavior to a focused submission state-machine test, and requires a bounded simulator double-tap wiring check.
+3. Section 4 now separates backend code-lifecycle/concurrency tests from mobile verification-state tests and records a bounded SecureStore fault-injection simulator exception for provider-owned token writes.
+4. The contract and plan add a concurrent-resend safety gate with a forced reversed-delivery-completion test; signup/resend remains unavailable unless the last delivered code is redeemable across overlapping clients and retries.
+5. Lost-response and partial token-write states now require no protected navigation before success, discarded verification state, awaited best-effort sign-out, fail-closed restoration if cleanup fails, and normal password sign-in as the supported recovery. A fresh code and exactly-once completion are explicitly not promised.
 
 ## Review coverage
 
-Fresh lenses covered architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fit, and test quality against exact commit `6e1024e` and pinned installed source. An independent skeptic confirmed all five deduplicated findings as P2 blockers. No production code was edited, no deployment-affecting command was run, and runtime/device behavior remains unverified by this static review.
+The correction was checked against the exact pinned source paths cited by review, including logging redaction, replacement-code ordering, session/code consumption, client network retries, token persistence, and sign-out cleanup. No production code was edited, no deployment-affecting command was run, and runtime/device behavior remains unverified by this documentation correction. A fresh review is required before section 1 can be approved.
 
 ## Recovery note
 

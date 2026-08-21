@@ -86,6 +86,7 @@ The exact number of reset routes may be reduced if the installed Convex Auth API
 - Never return the code to the mobile client or expose it from a public Convex function.
 - Print recipient, purpose, code, and expiration only from the explicitly enabled local console delivery provider.
 - A resend replaces the previous code. Codes remain single-use and are verified with the matching normalized email.
+- Treat overlapping replacement requests as a concurrent-resend safety gate: force reversed delivery completion in a backend test and require the last delivered code to remain redeemable before exposing signup/resend. Client pending state is not cross-client serialization.
 - Prefer a ten-minute expiration and a sixty-second client resend cooldown when supported. Do not claim server enforcement that the package does not provide.
 - Require an explicit local Convex environment value such as `AUTH_EMAIL_DELIVERY=console`. Missing or unknown delivery configuration must fail closed.
 - Before implementing the guard, inspect the pinned Convex CLI/runtime for a trustworthy local-deployment indicator. If none exists, document that console mode is controlled by local deployment configuration and must never be set in cloud or production environments. Do not invent an unreliable production detector.
@@ -219,9 +220,10 @@ Acceptance: existing password sign-in works; signup remains unavailable while it
 - [ ] Add the verification screen, resend cooldown, change-email path, pending state, and safe errors.
 - [ ] Ensure signup does not enter authenticated onboarding until verification succeeds.
 - [ ] Cover delivery failure after replacement-code creation: start cooldown only after successful delivery and permit immediate retry after failure.
-- [ ] Cover a lost verification response or SecureStore failure with recovery to fresh-code request or normal sign-in; do not claim exactly-once completion.
+- [ ] Cover overlapping replacement requests with forced reversed delivery completion; do not expose signup/resend unless the last delivered code is redeemable across clients and retries (the concurrent-resend safety gate).
+- [ ] Cover a lost verification response or partial SecureStore write with awaited best-effort sign-out, fail-closed restoration when cleanup fails, and normal password sign-in as the supported re-authentication path; do not promise a fresh code or exactly-once completion.
 
-Acceptance: if the privacy gate is resolved, the code appears only in explicitly allowed local backend logs, an incorrect code fails safely, a resent code replaces the prior code, delivery failures allow immediate retry, successful verification signs the user in without duplicate client submission, lost-response recovery is available, and mobile/backend checks pass. Otherwise signup remains unavailable and the blocker stays explicit.
+Acceptance: if both the privacy and concurrent-resend safety gates are resolved, the code appears only in explicitly allowed local backend logs, package DEBUG/secret logging remains disabled, an incorrect code fails safely, a resent code replaces the prior code, the last delivered overlapping code remains redeemable, delivery failures allow immediate retry, successful verification signs the user in without duplicate client submission, and lost-response/partial-persistence recovery reaches normal sign-in without rendering protected routes. Backend, mobile state-machine, and bounded SecureStore fault-injection checks pass. Otherwise signup remains unavailable and the blocker stays explicit.
 
 ### 5. Add server-owned profile onboarding
 
