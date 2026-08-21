@@ -2,15 +2,23 @@
 
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
-- **Current section:** 3. Build the password welcome and returning-user sign-in screens
-- **Next action:** review
-- **Last known-good commit:** This correction commit (`HEAD` after commit) is green but section 3 remains unapproved; `0dff1a7` is the last approved feature state.
-- **Correction cycles for current section:** 2
+- **Current section:** 5. Add server-owned profile onboarding
+- **Next action:** implement
+- **Last known-good commit:** `dab694c` is the approved section 3 feature state; this review handoff commit changes documentation only.
+- **Correction cycles for current section:** 0
 - **Last successful checks:** `mise exec -- pnpm --filter @recovery/mobile exec node --experimental-strip-types --test src/features/auth/auth-policy.test.ts src/features/auth/auth-submission.test.ts src/features/auth/sign-in-state.test.ts` passed 6/6; `mise exec -- pnpm --filter @recovery/mobile run check` passed; and `git diff --check` passed. Node emitted only the existing package-module-type warnings during focused tests.
-- **Tests added in current section:** `sign-in-state.test.ts` now drives the exact authentication-failure transition used by the screen and asserts that its authoritative email/password state remains unchanged while the sanitized form error is recorded.
-- **Review status:** Correction cycle 2 addresses the remaining test-quality blocker from the review of `b37f7d6` and now awaits the final allowed fresh review for this section.
-- **Blocking condition:** None known pending fresh review. If a blocking finding remains after this second correction, set Next action to blocked rather than requesting another correction. The package's direct sign-in errors/timing remain an inherited nonblocking limitation because the mobile flow sanitizes displayed failures and signup/reset remain deferred.
-- **Next bounded action:** Freshly review this section 3 correction for correctness, architecture, simplicity, auth security/privacy, Convex authorization, accessibility, product fidelity, and test quality. Do not edit production code or begin profile onboarding during that review.
+- **Tests added in current section:** None yet. Section 3's approved `sign-in-state.test.ts` drives the exact authentication-failure transition used by the screen and verifies that authoritative email/password state remains unchanged while the sanitized form error is recorded.
+- **Review status:** Section 3 is approved after the final correction review. Fresh architecture, simplicity, security/privacy, Convex authorization, accessibility, adversarial, product, and test-quality lenses found no blocking issue in `dab694c`; an independent skeptic confirmed the empty blocker shortlist.
+- **Blocking condition:** None. Pinned-provider sign-in timing/error behavior and mounted/device accessibility behavior remain documented nonblocking hardening gaps.
+- **Next bounded action:** Implement only the first coherent server-owned profile-onboarding slice from section 5, beginning with the smallest backend behavior test and intended red result. Activate Convex, Convex test, and deployment-guard skills as applicable; do not run a deployment-affecting command unless the target is unambiguously local.
+
+## Section 3 correction cycle 2 final review
+
+No actionable blocking findings survived verification. The reducer is the authoritative owner used by `SignInScreen`, its authentication-failure transition preserves both credentials while accepting only a sanitized error message, duplicate submission remains synchronously guarded, and no production backend or public Convex contract changed. The deterministic Convex authorization scan found no application-defined public query/mutation, client-supplied identity, document-ownership, PII-by-ID, or parent-container write shape.
+
+The shared field primitive does not yet programmatically associate field errors with inputs, and invalid submission does not focus the first invalid field. Both behaviors predate `dab694c`, were not worsened by the correction, and remain nonblocking section 7 accessibility hardening work alongside mounted retention/double-tap checks, compact layout, keyboard, enlarged text, and VoiceOver/TalkBack verification. The inherited account-dependent provider timing/error behavior remains a package-level limitation; the mobile UI renders only a fixed sanitized failure, and signup/reset remain unavailable under the accepted deferral.
+
+Fresh review reran the focused mobile auth command (6/6), the mobile TypeScript check passed, and `git diff --check` passed; focused tests emitted only the existing package-module-type warnings. No production code, dependency, Expo configuration, generated Convex file, or deployment state changed during review.
 
 ## Section 3 correction cycle 2
 
