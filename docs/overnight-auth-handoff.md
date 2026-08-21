@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 5. Add server-owned profile onboarding
-- **Next action:** review
-- **Last known-good commit:** `fa9c7ba` remains the green production feature commit; the current correction commit adds green cross-user mutation regression coverage without changing production code.
-- **Correction cycles for current section:** 1
-- **Last successful checks:** Correction reran `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` (3/3 passed), `mise exec -- pnpm --filter @recovery/backend run check` (passed), and `git diff --check` (passed). The feature commit also recorded a successful bounded local sync against `anonymous:anonymous-agent`.
-- **Tests added in current section:** `profiles.test.ts` now covers unauthenticated read/write rejection, absent-profile behavior, distinct writes by two authenticated owners, per-owner read isolation, first-owner update persistence, two owner-linked stored rows, blank-name validation, and narrow public return shape. During correction, owner-specific expectations first failed 1/3 because the second owner had not written a profile; after adding that mutation, the suite passed 3/3.
-- **Review status:** Correction cycle 1 is green and awaits fresh review. Production code is unchanged. The mobile profile screen, onboarding routing, and authenticated home remain unchecked and must not begin before this correction is approved.
-- **Blocking condition:** None pending fresh review.
-- **Next bounded action:** Fresh-review the correction commit for test quality and Convex ownership coverage. Do not edit production code. If no blocking finding remains, approve the backend portion, preserve the unchecked mobile subsection, reset the correction count to 0, and set Next action to implement the artifact-aligned profile screen and onboarding routing.
+- **Next action:** implement
+- **Last known-good commit:** `73e3e65` is the approved green backend correction commit; it closes the profile mutation-isolation test gap without changing production code.
+- **Correction cycles for current section:** 0
+- **Last successful checks:** Fresh review reran `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` (3/3 passed), `mise exec -- pnpm --filter @recovery/backend run check` (passed), and `git diff --check` (passed). The feature commit also recorded a successful bounded local sync against `anonymous:anonymous-agent`.
+- **Tests added in current section:** `profiles.test.ts` covers unauthenticated read/write rejection, absent-profile behavior, distinct writes by two authenticated owners, per-owner read isolation, first-owner update persistence, two owner-linked stored rows, blank-name validation, and narrow public return shape. During correction, owner-specific expectations first failed 1/3 because the second owner had not written a profile; after adding that mutation, the suite passed 3/3.
+- **Review status:** Fresh review approved correction cycle 1 with no actionable findings. The backend portion of section 5 is complete; the artifact-aligned mobile profile screen, onboarding routing, and authenticated home remain unchecked.
+- **Blocking condition:** None.
+- **Next bounded action:** Implement the artifact-aligned profile screen and route authenticated users according to profile loading/completion state, beginning with the smallest meaningful mobile behavior test and preserving the existing route/restoration boundaries. Do not begin section 6 or hardening in the same invocation.
+
+## Section 5 backend correction cycle 1 final review
+
+Fresh read-only review found no actionable findings in `73e3e65`. The second authenticated identity now invokes `api.profiles.complete`, reads its distinct profile, and coexists with the first owner's later update; the test also proves exactly two rows linked to the two distinct owner IDs. This closes the documented mutation-isolation regression gap. The production functions remain server-authenticated, owner-indexed, bounded, validated, and narrow in their public return shape.
+
+Architecture, simplicity, security/privacy, Convex authorization, adversarial behavior, product fit, and test quality lenses reported no findings; accessibility was not applicable to this backend-only test/documentation correction. The deterministic Convex authorization scan found no client-supplied identity, missing ownership check, PII-by-client-ID query, or unchecked parent-container write shape. An independent skeptic confirmed approval.
+
+Fresh review reran `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` (3/3 passed), `mise exec -- pnpm --filter @recovery/backend run check` (passed), and `git diff --check` (passed). No production code or deployment state changed. Mobile/device behavior remains unverified and belongs to the next implementation and later hardening work.
 
 ## Section 5 backend correction cycle 1
 
