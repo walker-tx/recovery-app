@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getPasswordProfile } from "./auth-policy.ts";
+import { getPasswordProfile } from "./authPolicy.ts";
 
 test("normalizes returning-user identity without applying creation length rules", () => {
   assert.deepEqual(

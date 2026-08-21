@@ -1,7 +1,7 @@
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
 
-import { getPasswordProfile } from "./auth-policy";
+import { getPasswordProfile } from "./authPolicy";
 
 const MIN_PASSWORD_LENGTH = 10;
 

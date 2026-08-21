@@ -216,10 +216,10 @@ Acceptance: the deferral is explicit and reviewed; no signup or verification con
 
 ### 5. Add server-owned profile onboarding
 
-- [ ] Add a minimal profile table with owner ID, display name, optional first name, and onboarding-completion state.
-- [ ] Add the owner-first index required by the query contract.
-- [ ] Add narrow authenticated `getMine` and completion/update behavior with validators and server-derived identity.
-- [ ] Add backend tests for unauthenticated rejection, owner success, cross-user isolation where applicable, validation, persistence, and public return shape.
+- [x] Add a minimal profile table with owner ID, display name, optional first name, and onboarding-completion state.
+- [x] Add the owner-first index required by the query contract.
+- [x] Add narrow authenticated `getMine` and completion/update behavior with validators and server-derived identity.
+- [x] Add backend tests for unauthenticated rejection, owner success, cross-user isolation where applicable, validation, persistence, and public return shape.
 - [ ] Add the artifact-aligned profile screen and route authenticated incomplete users through it.
 - [ ] Route completed users into the minimal authenticated home.
 

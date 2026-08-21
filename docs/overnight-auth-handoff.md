@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 5. Add server-owned profile onboarding
-- **Next action:** implement
-- **Last known-good commit:** `dab694c` is the approved section 3 feature state; this review handoff commit changes documentation only.
+- **Next action:** review
+- **Last known-good commit:** `57fdc50` is the approved section 3 handoff state; the section 5 backend feature commit containing this handoff awaits fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** `mise exec -- pnpm --filter @recovery/mobile exec node --experimental-strip-types --test src/features/auth/auth-policy.test.ts src/features/auth/auth-submission.test.ts src/features/auth/sign-in-state.test.ts` passed 6/6; `mise exec -- pnpm --filter @recovery/mobile run check` passed; and `git diff --check` passed. Node emitted only the existing package-module-type warnings during focused tests.
-- **Tests added in current section:** None yet. Section 3's approved `sign-in-state.test.ts` drives the exact authentication-failure transition used by the screen and verifies that authoritative email/password state remains unchanged while the sanitized form error is recorded.
-- **Review status:** Section 3 is approved after the final correction review. Fresh architecture, simplicity, security/privacy, Convex authorization, accessibility, adversarial, product, and test-quality lenses found no blocking issue in `dab694c`; an independent skeptic confirmed the empty blocker shortlist.
-- **Blocking condition:** None. Pinned-provider sign-in timing/error behavior and mounted/device accessibility behavior remain documented nonblocking hardening gaps.
-- **Next bounded action:** Implement only the first coherent server-owned profile-onboarding slice from section 5, beginning with the smallest backend behavior test and intended red result. Activate Convex, Convex test, and deployment-guard skills as applicable; do not run a deployment-affecting command unless the target is unambiguously local.
+- **Last successful checks:** `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` passed 3/3; `mise exec -- pnpm --filter @recovery/backend exec node --experimental-strip-types --test convex/auth-policy.test.ts` passed 2/2 with only the existing package-module-type warning; `mise exec -- pnpm --filter @recovery/backend run check` passed; bounded local `CONVEX_AGENT_MODE=anonymous mise exec -- pnpm --dir packages/backend exec convex dev --once` completed against `anonymous:anonymous-agent`; and `git diff --check` passed.
+- **Tests added in current section:** `profiles.test.ts` exercises the registered generated API for unauthenticated read/write rejection, absent-profile behavior, normalized create/update persistence, cross-user isolation, single-profile ownership, blank-name validation, and narrow public return shape. Its initial run failed 3/3 for the intended missing `profiles` module.
+- **Review status:** The first section 5 backend slice is implemented and green but not yet reviewed. The mobile profile screen, onboarding routing, and authenticated home remain unchecked and must not begin before this feature commit is approved.
+- **Blocking condition:** None.
+- **Next bounded action:** Fresh-review only the section 5 backend feature commit. Activate Convex reviewer and authz skills; inspect correctness, architecture, simplicity, validators, ownership/index behavior, privacy, generated-code provenance, test quality, and the narrowly necessary auth-policy module rename/test tooling changes. Do not edit production code during review.
+
+## Section 5 backend profile implementation
+
+The backend now owns one profile per authenticated user in a `profiles` table indexed by `ownerId`. Public `getMine` and `complete` functions derive the user ID from Convex Auth, declare argument and return validators, use the owner index, return no owner metadata, normalize names, reject blank display names, and upsert only the caller's profile in one transaction. The generated API was refreshed by the local Convex CLI; no generated file was hand-edited.
+
+The new behavior test initially failed all three cases with `Could not find module for: "profiles"`, demonstrating the intended missing registered capability; no red state was committed. The green run passed 3/3 and covers unauthenticated rejection, absent-profile behavior, owner create/update persistence, cross-user isolation, a single owned row, blank display-name rejection, and public shape through `api.profiles`. The existing auth policy tests still pass 2/2.
+
+The first local sync exposed that the existing hyphenated `auth-policy.ts` filename was not a valid Convex module path, so it was renamed without behavior changes to `authPolicy.ts`. The colocated Convex test harness adds exact `convex-test`, Vitest, and Vite development dependencies plus their required TypeScript types. After those bounded setup corrections, backend TypeScript passed, the local-anonymous sync completed, generated API types include `profiles`, and `git diff --check` passed. No cloud or production deployment was selected or changed.
 
 ## Section 3 correction cycle 2 final review
 

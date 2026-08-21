@@ -9,7 +9,9 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as authPolicy from "../authPolicy.js";
 import type * as http from "../http.js";
+import type * as profiles from "../profiles.js";
 
 import type {
   ApiFromModules,
@@ -19,7 +21,9 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  authPolicy: typeof authPolicy;
   http: typeof http;
+  profiles: typeof profiles;
 }>;
 
 /**
