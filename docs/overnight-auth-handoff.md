@@ -3,14 +3,24 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 5. Add server-owned profile onboarding
-- **Next action:** review
-- **Last known-good commit:** `57fdc50` is the approved section 3 handoff state; the section 5 backend feature commit containing this handoff awaits fresh review.
-- **Correction cycles for current section:** 0
-- **Last successful checks:** `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` passed 3/3; `mise exec -- pnpm --filter @recovery/backend exec node --experimental-strip-types --test convex/auth-policy.test.ts` passed 2/2 with only the existing package-module-type warning; `mise exec -- pnpm --filter @recovery/backend run check` passed; bounded local `CONVEX_AGENT_MODE=anonymous mise exec -- pnpm --dir packages/backend exec convex dev --once` completed against `anonymous:anonymous-agent`; and `git diff --check` passed.
-- **Tests added in current section:** `profiles.test.ts` exercises the registered generated API for unauthenticated read/write rejection, absent-profile behavior, normalized create/update persistence, cross-user isolation, single-profile ownership, blank-name validation, and narrow public return shape. Its initial run failed 3/3 for the intended missing `profiles` module.
-- **Review status:** The first section 5 backend slice is implemented and green but not yet reviewed. The mobile profile screen, onboarding routing, and authenticated home remain unchecked and must not begin before this feature commit is approved.
-- **Blocking condition:** None.
-- **Next bounded action:** Fresh-review only the section 5 backend feature commit. Activate Convex reviewer and authz skills; inspect correctness, architecture, simplicity, validators, ownership/index behavior, privacy, generated-code provenance, test quality, and the narrowly necessary auth-policy module rename/test tooling changes. Do not edit production code during review.
+- **Next action:** correct
+- **Last known-good commit:** `fa9c7ba` is the green section 5 backend feature commit; fresh review found one blocking test-coverage gap that requires correction.
+- **Correction cycles for current section:** 1
+- **Last successful checks:** Fresh review reran `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` (3/3 passed), `mise exec -- pnpm --filter @recovery/backend run check` (passed), and `git diff --check` (passed). The feature commit also recorded a successful bounded local sync against `anonymous:anonymous-agent`.
+- **Tests added in current section:** `profiles.test.ts` covers unauthenticated read/write rejection, absent-profile behavior, first-owner create/update persistence, second-owner read isolation, single-profile ownership, blank-name validation, and narrow public return shape. Its initial run failed 3/3 for the intended missing `profiles` module. Fresh review verified that it does not yet exercise the second owner's write path.
+- **Review status:** The production ownership/index implementation is sound, but the section 5 acceptance claim that cross-user mutation isolation is tested is not yet demonstrated. The mobile profile screen, onboarding routing, and authenticated home remain unchecked and must not begin before the correction is reviewed and approved.
+- **Blocking condition:** `profiles.test.ts` never calls `api.profiles.complete` as the second authenticated user, so a regression that lets a second user overwrite the first user's profile would escape the suite.
+- **Next bounded action:** Add a regression to the existing two-user backend test that writes a distinct second profile, proves each identity still reads its own values, and proves two owner-linked rows persist. Demonstrate the intended red result before any fix, keep production changes limited to what the regression requires, rerun the focused backend test and package check, preserve correction count 1, and set Next action to review.
+
+## Section 5 backend fresh review of `fa9c7ba`
+
+One P2 blocking test-quality finding survived fresh review: the test creates two users but only the first user invokes `complete`; the second user performs a read only. The current production mutation correctly derives `ownerId` server-side and performs an owner-indexed lookup, but the test would not catch a future mutation regression that located and patched the first existing profile for a second caller. This contradicts the section acceptance and handoff claim that cross-user mutation isolation is covered.
+
+No Convex authorization defect was found. The auth foundation is present, public functions accept no caller-supplied identity or document/container ID, both endpoints authenticate with `getAuthUserId`, reads are bounded by `by_owner`, writes target only the owner-scoped result, and public results omit owner and Convex metadata. Architecture, correctness, security/privacy, accessibility applicability, product scope, and generated API changes produced no other blocking findings.
+
+Two nonblocking P3 items were recorded for later cleanup/hardening rather than expanding this correction: profile strings have no application-level maximum yet, so define product-appropriate bounds before the mobile profile form ships; and the explicit test `import.meta.glob` plus direct Vite typings/dependency are unnecessary for the conventional `packages/backend/convex` layout supported by installed `convex-test` 0.0.56. Neither item violates the current backend acceptance or permits cross-user access.
+
+Fresh review reran the focused profile suite (3/3), backend TypeScript check, and `git diff --check`; all passed. Review used architecture, simplicity, security/privacy, Convex authorization, accessibility, adversarial, and product/test-quality lenses plus an independent skeptic. No production code or deployment state changed.
 
 ## Section 5 backend profile implementation
 
