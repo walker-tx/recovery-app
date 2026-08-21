@@ -280,13 +280,14 @@ REVIEW:
 - Use a fresh review lens and applicable review skills/subagents. Do not edit production code.
 - Review the last feature/correction commit for correctness, architecture, simplicity, auth security/privacy, Convex authorization, accessibility, product fidelity, and test quality.
 - For backend auth code, use Convex-specific review/authz skills.
-- If blocking findings exist, record precise actionable findings in the handoff, increment/preserve the correction count as directed by the plan, set Next action to correct, and commit only verified review documentation.
+- If blocking findings exist and the current correction count is less than 2, increment it by exactly 1, set Next action to correct, and commit only verified review documentation.
+- If blocking findings exist and the current correction count is already 2, set Next action to blocked; never request a third correction cycle.
 - Keep `Correction cycles for current section` as a bare non-negative integer with no explanatory prose.
-- If no blocking findings exist, record approval, reset the correction count for the next section, check/advance only the completed checklist state, set Next action to implement or complete, and commit only the verified review handoff.
+- If no blocking findings exist, record approval, reset the correction count to 0 for the next section, check/advance only the completed checklist state, set Next action to implement or complete, and commit only the verified review handoff.
 
 CORRECT:
 - Turn each blocking finding into a regression test first and demonstrate the intended red result. Do not commit red.
-- Apply the smallest fix, rerun focused and package checks, update the handoff, commit while green, and set Next action to review.
+- Apply the smallest fix, rerun focused and package checks, update the handoff, commit while green, preserve the current correction count unchanged, and set Next action to review.
 - Stop rather than exceed two correction cycles.
 
 RECOVERY:

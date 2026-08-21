@@ -5,7 +5,7 @@ This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must 
 - **Current section:** 1. Verify pinned APIs and record the concrete flow contract
 - **Next action:** correct
 - **Last known-good commit:** `6e1024e` (`Correct pinned auth flow contract`), reviewed with blocking documentation findings
-- **Correction cycles for current section:** 1
+- **Correction cycles for current section:** 2
 - **Last successful checks:** Review inspection of `6e1024e` against `88fcf5e`; installed-source verification for `@convex-dev/auth` 0.0.95; `git diff --check 88fcf5e 6e1024e` (pass). The correction commit recorded passing focused static, mobile, backend, and diff checks.
 - **Tests added in current section:** No tests were added by this review-only transition.
 - **Review status:** Changes requested. Architecture, simplicity, and accessibility found no blockers. Security/privacy, adversarial behavior, product fit, and test quality found the five blocking contract gaps below.
