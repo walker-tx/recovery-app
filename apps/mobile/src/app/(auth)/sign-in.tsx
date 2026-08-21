@@ -1,13 +1,9 @@
-import { Screen } from "@/components/ui/screen";
-import { Typography } from "@/components/ui/text";
+import { useRouter } from "expo-router";
+
+import { SignInScreen } from "@/features/auth/sign-in-screen";
 
 export default function SignInRoute() {
-  return (
-    <Screen contentClassName="w-full max-w-[520px] self-center">
-      <Typography variant="display">Sign in</Typography>
-      <Typography className="text-ink-muted">
-        Returning-user sign-in will be available here.
-      </Typography>
-    </Screen>
-  );
+  const router = useRouter();
+
+  return <SignInScreen onBack={() => router.back()} />;
 }

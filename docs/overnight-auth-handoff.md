@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 3. Build the password welcome and returning-user sign-in screens
-- **Next action:** implement
-- **Last known-good commit:** The section 2 review commit containing this handoff (`Approve protected auth routes`).
+- **Next action:** review
+- **Last known-good commit:** The section 3 implementation commit containing this handoff (`Add returning-user password sign-in`).
 - **Correction cycles for current section:** 0
-- **Last successful checks:** `bash scripts/test-auth-route-contract.sh` passed with `Auth route contract passed.`; `mise exec -- pnpm --filter @recovery/mobile run check` passed (`tsc --noEmit`, exit 0).
-- **Tests added in current section:** Section 2 added `scripts/test-auth-route-contract.sh`. Its recorded red result identified missing restoration handling, protected route groups, replacement routes, and obsolete segmented routing; its implementation and review reruns passed. Section 3 has not started.
-- **Review status:** Section 2 is approved with no blocking findings. Routing/restoration behavior matches the installed Expo Router and Convex Auth contracts and the section acceptance criteria. A confirmed P3 startup accessibility gap is deferred to section 7: auth restoration currently returns `null`, so assistive technology receives no loading status. Runtime simulator restoration, route-history behavior, and assistive-technology behavior remain unverified.
-- **Blocking condition:** None. Signup/verification and reset remain unavailable; no routes, controls, providers, or code generation for those deferred flows were added.
-- **Next bounded action:** Implement only section 3 returning-user welcome and sign-in behavior, beginning with the smallest meaningful policy/submission behavior test and its intended red result.
+- **Last successful checks:** `mise exec -- pnpm --filter @recovery/mobile exec node --experimental-strip-types --test src/features/auth/auth-policy.test.ts src/features/auth/auth-submission.test.ts` passed 5/5; `mise exec -- pnpm --filter @recovery/mobile run check` passed; `mise exec -- pnpm --filter @recovery/backend run check` passed; `bash scripts/test-auth-route-contract.sh` passed with `Auth route contract passed.`; `mise run check` passed 2/2 tasks; `mise run doctor` passed 17/17 checks.
+- **Tests added in current section:** `auth-policy.test.ts` recorded the intended red `ERR_MODULE_NOT_FOUND` for the missing normalization, ten-character guidance, and safe-error policy, then passed 3/3. `auth-submission.test.ts` recorded the intended red `ERR_MODULE_NOT_FOUND` for the missing submission guard, then passed 2/2 for immediate duplicate suppression, failure unlock, and value retention.
+- **Review status:** Section 3 implementation is green and awaits fresh review. The feature uses local form state, the existing design-system controls, normalized sign-in parameters, a synchronous submission guard, and one sanitized provider-independent failure message. The backend Password profile accepts only returning-user `signIn`, normalizes email server-side, and rejects passwords shorter than the ten-character rule; signup, verification, reset, OAuth, and provider-specific controls remain unavailable.
+- **Blocking condition:** None. No code-generating provider or deferred-flow route/control was added. Runtime simulator double-tap, keyboard, compact-layout, enlarged-text, and screen-reader behavior remain unverified and must be assessed during review/hardening rather than inferred from TypeScript.
+- **Next bounded action:** Fresh-review only the section 3 implementation commit for correctness, architecture, simplicity, auth privacy/security, backend flow restriction, accessibility, product fidelity, and test quality. Do not edit production code during review.
+
+## Section 3 implementation
+
+The welcome and returning-user sign-in routes now compose capability screens under `features/auth`. The sign-in screen preserves email/password values after failure, disables editable controls while pending, blocks immediate duplicate auth calls synchronously, supplies email/password autofill and keyboard metadata, and renders validation/provider failures as non-color-only alerts without displaying raw provider errors. The provider profile is the server-side normalization boundary and rejects every Password flow except `signIn`, preserving the accepted signup/reset deferrals.
+
+Red evidence was captured before production files existed. Both test commands failed specifically because their imported policy/submission modules were absent; no red state was committed. After implementation, the combined focused run passed all five assertions. An initial mobile TypeScript check exposed missing Node test types and an invalid typed absolute route; adding the section's test type dependency/config and using the typed relative route resolved those failures before the final green checks. No deployment-affecting command was run.
 
 ## Section 2 review
 

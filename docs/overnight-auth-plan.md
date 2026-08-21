@@ -196,12 +196,12 @@ Acceptance: cold restoration renders neither auth nor authenticated content prem
 
 ### 3. Build the password welcome and returning-user sign-in screens
 
-- [ ] Implement artifact-aligned native welcome and sign-in screens using existing `Screen`, `Button`, `TextField`, `Typography`, and `Card` primitives.
-- [ ] Keep sign-in route-local form state independent and omit signup routes and controls while the accepted privacy deferral applies.
-- [ ] Normalize email and enforce client guidance matching the ten-character server rule.
-- [ ] Prevent duplicate submission and preserve entered values after failure.
-- [ ] Map expected failures to sanitized user-facing messages; never render raw provider payloads.
-- [ ] Omit Apple and Google buttons rather than displaying nonfunctional controls.
+- [x] Implement artifact-aligned native welcome and sign-in screens using existing `Screen`, `Button`, `TextField`, `Typography`, and `Card` primitives.
+- [x] Keep sign-in route-local form state independent and omit signup routes and controls while the accepted privacy deferral applies.
+- [x] Normalize email and enforce client guidance matching the ten-character server rule.
+- [x] Prevent duplicate submission and preserve entered values after failure.
+- [x] Map expected failures to sanitized user-facing messages; never render raw provider payloads.
+- [x] Omit Apple and Google buttons rather than displaying nonfunctional controls.
 
 Acceptance: existing password sign-in works; signup remains unavailable while its privacy gate fails; labels, autocomplete, keyboard settings, busy states, alerts, touch targets, safe areas, font scaling, and keyboard reachability are preserved; mobile check passes.
 

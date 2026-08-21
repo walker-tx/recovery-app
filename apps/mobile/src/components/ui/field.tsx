@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, type ReactNode, type Ref } from "react";
 import { TextInput, View, type TextInputProps, type ViewProps } from "react-native";
 
 import { colors } from "@/theme/tokens";
@@ -15,7 +15,7 @@ export function Field({ children, className, description, error, label, required
   );
 }
 
-type TextFieldProps = TextInputProps & { label: string; description?: string; error?: string | null; required?: boolean; containerClassName?: string; containerStyle?: ViewProps["style"] };
+type TextFieldProps = TextInputProps & { label: string; ref?: Ref<TextInput>; description?: string; error?: string | null; required?: boolean; containerClassName?: string; containerStyle?: ViewProps["style"] };
 export function TextField({ className, containerClassName, containerStyle, description, error, label, required, ...props }: TextFieldProps) {
   const id = useId();
   return (
