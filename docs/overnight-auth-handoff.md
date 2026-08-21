@@ -2,15 +2,19 @@
 
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
-- **Current section:** 2. Establish routing and restoration boundaries
-- **Next action:** review
-- **Last known-good commit:** The section 2 implementation commit containing this handoff (`Add protected auth routes`).
+- **Current section:** 3. Build the password welcome and returning-user sign-in screens
+- **Next action:** implement
+- **Last known-good commit:** The section 2 review commit containing this handoff (`Approve protected auth routes`).
 - **Correction cycles for current section:** 0
-- **Last successful checks:** `bash scripts/test-auth-route-contract.sh` passed; `mise exec -- pnpm --filter @recovery/mobile run check` passed.
-- **Tests added in current section:** Added `scripts/test-auth-route-contract.sh`. Red before production edits: it reported missing restoration handling, protected route groups, replacement routes, and obsolete segmented routing. Green after implementation: `Auth route contract passed.`
-- **Review status:** Section 2 implementation awaits a fresh review. The static contract verifies guards are withheld during restoration, missing configuration avoids auth hooks, all three groups are protected, exactly one index route owns `/`, and the obsolete segmented auth route is gone. Runtime simulator restoration remains unverified and must be considered during review/final device verification.
+- **Last successful checks:** `bash scripts/test-auth-route-contract.sh` passed with `Auth route contract passed.`; `mise exec -- pnpm --filter @recovery/mobile run check` passed (`tsc --noEmit`, exit 0).
+- **Tests added in current section:** Section 2 added `scripts/test-auth-route-contract.sh`. Its recorded red result identified missing restoration handling, protected route groups, replacement routes, and obsolete segmented routing; its implementation and review reruns passed. Section 3 has not started.
+- **Review status:** Section 2 is approved with no blocking findings. Routing/restoration behavior matches the installed Expo Router and Convex Auth contracts and the section acceptance criteria. A confirmed P3 startup accessibility gap is deferred to section 7: auth restoration currently returns `null`, so assistive technology receives no loading status. Runtime simulator restoration, route-history behavior, and assistive-technology behavior remain unverified.
 - **Blocking condition:** None. Signup/verification and reset remain unavailable; no routes, controls, providers, or code generation for those deferred flows were added.
-- **Next bounded action:** Freshly review only the section 2 implementation commit for routing correctness, restoration behavior, architecture, simplicity, security/privacy, accessibility, product fidelity, and test quality; do not begin section 3.
+- **Next bounded action:** Implement only section 3 returning-user welcome and sign-in behavior, beginning with the smallest meaningful policy/submission behavior test and its intended red result.
+
+## Section 2 review
+
+Fresh read-only lenses covered correctness, architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fit, and test quality for `542d904`. No backend code changed, so Convex authorization review was not applicable. The independent skeptic confirmed the only candidate: returning `null` during restoration removed the prior labeled loading indicator. It classified this as a non-blocking P3 accessibility gap owned by section 7 rather than a failure of section 2 routing acceptance. No production code was edited during review.
 
 ## Operator-approved safe deferral
 
