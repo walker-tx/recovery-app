@@ -2,15 +2,15 @@
 
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
-- **Current section:** Manual preflight
-- **Next action:** blocked
-- **Last known-good commit:** `cdaeb4c` (`Initial commit`)
+- **Current section:** 1. Verify pinned APIs and record the concrete flow contract
+- **Next action:** implement
+- **Last known-good commit:** `f000f0c` (`Add overnight auth supervisor`)
 - **Correction cycles for current section:** 0
-- **Last successful checks:** `bash -n` for both supervisor scripts; isolated fake-Kit self-test covering valid implement→review, inherited deployment rejection, detached-HEAD rejection, single-instance lock rejection, dry-run, one-invocation mode, clean commit enforcement, and private runtime permissions, and explicit Kit session-ID manifest capture; `git diff --check`.
-- **Tests added in current section:** `scripts/test-agent-overnight.sh` exercises the supervisor without invoking the real Kit provider or any deployment.
-- **Review status:** Two fresh read-only reliability reviews were completed. Their process-group, deployment pinning, state-transition, correction-limit, resume, retry, locking, detached-HEAD, log-permission, dry-run, and `--once` findings were corrected. A final operator review and committed baseline are still required.
-- **Blocking condition:** The operator must review and commit the plan/runner, then complete every manual preflight checkbox in `docs/overnight-auth-plan.md`.
-- **Next bounded action:** Commit the reviewed supervisor baseline, create the overnight branch, complete local Convex preflight interactively, mark and commit the preflight checklist, then change this action to `implement`.
+- **Last successful checks:** Backend TypeScript check; bounded anonymous-local Convex sync/codegen; console email environment verification; Expo and Convex endpoint checks; iOS bundle compilation with the local Convex URL; `bash -n` for both supervisor scripts; isolated fake-Kit supervisor self-test; `git diff --check`.
+- **Tests added in current section:** `scripts/test-agent-overnight.sh` now covers anonymous-local deployment pinning, agent-mode pinning, conflicting inherited values, and cloud rejection without invoking Kit or a deployment.
+- **Review status:** Manual preflight is complete. The supervisor accepts and pins the CLI's anonymous-local deployment while continuing to reject cloud targets.
+- **Blocking condition:** None.
+- **Next bounded action:** Inspect pinned Convex Auth and Expo Router APIs, record the concrete flow contract, run baseline checks, commit the implementation transition, and set the next action to `review`.
 
 ## Findings and decisions
 

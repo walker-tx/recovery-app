@@ -23,6 +23,7 @@ ACTIVE_PID=""
 WATCHDOG_PID=""
 LOCK_HELD=0
 LOCAL_DEPLOYMENT=""
+LOCAL_AGENT_MODE=""
 RUN_ID=$(date -u '+%Y%m%dT%H%M%SZ')-$$
 
 usage() {
@@ -130,8 +131,24 @@ validate_local_deployment() {
   [ -f "$deployment_file" ] || { echo "Missing local Convex selection at packages/backend/.env.local." >&2; return 1; }
   count=$(grep -Ec '^CONVEX_DEPLOYMENT=' "$deployment_file" || true)
   [ "$count" -eq 1 ] || { echo "Expected exactly one CONVEX_DEPLOYMENT assignment; found $count." >&2; return 1; }
-  grep -Eq '^CONVEX_DEPLOYMENT=local:[A-Za-z0-9._-]+$' "$deployment_file" || { echo "Convex deployment is not unambiguously local." >&2; return 1; }
+  grep -Eq '^CONVEX_DEPLOYMENT=(local|anonymous):[A-Za-z0-9._-]+$' "$deployment_file" || { echo "Convex deployment is not unambiguously local." >&2; return 1; }
   selected=$(sed -n 's/^CONVEX_DEPLOYMENT=//p' "$deployment_file")
+  case "$selected" in
+    anonymous:*)
+      if [ -n "${CONVEX_AGENT_MODE:-}" ] && [ "$CONVEX_AGENT_MODE" != "anonymous" ]; then
+        echo "Inherited CONVEX_AGENT_MODE conflicts with the selected anonymous-local deployment." >&2
+        return 1
+      fi
+      LOCAL_AGENT_MODE=anonymous
+      ;;
+    local:*)
+      if [ -n "${CONVEX_AGENT_MODE:-}" ]; then
+        echo "Inherited CONVEX_AGENT_MODE conflicts with the selected local deployment." >&2
+        return 1
+      fi
+      LOCAL_AGENT_MODE=""
+      ;;
+  esac
   if [ -n "${CONVEX_DEPLOYMENT:-}" ] && [ "$CONVEX_DEPLOYMENT" != "$selected" ]; then
     echo "Inherited CONVEX_DEPLOYMENT conflicts with the selected local deployment." >&2
     return 1
@@ -293,7 +310,7 @@ run_kit_with_timeout() {
   local prompt=$2
   : > "$attempt_log"
 
-  CONVEX_DEPLOYMENT="$LOCAL_DEPLOYMENT" perl -MPOSIX=setsid -e 'setsid() or die "setsid failed: $!"; exec @ARGV or die "exec failed: $!"' -- \
+  CONVEX_DEPLOYMENT="$LOCAL_DEPLOYMENT" CONVEX_AGENT_MODE="$LOCAL_AGENT_MODE" perl -MPOSIX=setsid -e 'setsid() or die "setsid failed: $!"; exec @ARGV or die "exec failed: $!"' -- \
     kit prompt --root "$ROOT" "$prompt" >"$attempt_log" 2>&1 &
   ACTIVE_PID=$!
 

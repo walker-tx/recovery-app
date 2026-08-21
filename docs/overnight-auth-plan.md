@@ -165,16 +165,16 @@ The runner preserves stdout/stderr and attempt metadata under an ignored `.agent
 
 These are operator steps and must not be guessed by an unattended agent:
 
-- [ ] Confirm the Git working tree is clean.
-- [ ] Create or select the branch intended for overnight commits.
-- [ ] Run `mise exec -- pnpm --filter @recovery/backend exec convex deployment select local` interactively.
-- [ ] Confirm the resulting backend environment/configuration identifies a local deployment.
-- [ ] Configure `AUTH_EMAIL_DELIVERY=console` on that local deployment using the Convex CLI.
-- [ ] Run one bounded local backend sync/codegen successfully.
-- [ ] Set the mobile app's uncommitted local environment to the local Convex URL reported by the CLI.
-- [ ] Verify the intended simulator can reach the local Convex backend.
-- [ ] Keep the host awake, connected to power, and on a stable network for the run (for example, wrap the supervisor with macOS `caffeinate`).
-- [ ] Keep real secrets out of the repository; no Resend key is needed.
+- [x] Confirm the Git working tree is clean.
+- [x] Create or select the branch intended for overnight commits.
+- [x] Initialize the pinned CLI's anonymous-local deployment with `CONVEX_AGENT_MODE=anonymous mise exec -- pnpm --dir packages/backend exec convex dev --once`.
+- [x] Confirm the resulting backend environment/configuration identifies an `anonymous:...` local deployment.
+- [x] Configure `AUTH_EMAIL_DELIVERY=console` on that local deployment using the Convex CLI while the local backend is running.
+- [x] Run one bounded local backend sync/codegen successfully.
+- [x] Set the mobile app's uncommitted local environment to the local Convex URL reported by the CLI.
+- [x] Verify the intended simulator can reach the local Convex backend.
+- [x] Keep the host awake, connected to power, and on a stable network for the run (for example, wrap the supervisor with macOS `caffeinate`).
+- [x] Keep real secrets out of the repository; no Resend key is needed.
 
 Do not start unattended work until this preflight is complete.
 

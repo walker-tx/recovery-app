@@ -22,7 +22,7 @@ handoff = root / "docs/overnight-auth-handoff.md"
 handoff.write_text(handoff.read_text().replace("**Next action:** blocked", "**Next action:** implement"))
 PY
 
-printf '%s\n' 'CONVEX_DEPLOYMENT=local:test' > "$FIXTURE/packages/backend/.env.local"
+printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:anonymous-agent' > "$FIXTURE/packages/backend/.env.local"
 
 cat > "$FIXTURE/fake-bin/kit" <<'EOF'
 #!/usr/bin/env bash
@@ -32,6 +32,8 @@ while [ $# -gt 0 ]; do
   if [ "$1" = "--root" ]; then root=$2; shift 2; else shift; fi
 done
 cd "$root"
+[ "${CONVEX_DEPLOYMENT:-}" = "anonymous:anonymous-agent" ]
+[ "${CONVEX_AGENT_MODE:-}" = "anonymous" ]
 python3 - <<'PY'
 from pathlib import Path
 p = Path("docs/overnight-auth-handoff.md")
@@ -55,6 +57,16 @@ if CONVEX_DEPLOYMENT=dev:cloud PATH="$FIXTURE/fake-bin:$PATH" scripts/agent-over
   echo "conflicting inherited deployment was not rejected" >&2
   exit 1
 fi
+if CONVEX_AGENT_MODE=cloud PATH="$FIXTURE/fake-bin:$PATH" scripts/agent-overnight.sh --dry-run >/dev/null 2>&1; then
+  echo "conflicting inherited agent mode was not rejected" >&2
+  exit 1
+fi
+printf '%s\n' 'CONVEX_DEPLOYMENT=dev:cloud' > packages/backend/.env.local
+if PATH="$FIXTURE/fake-bin:$PATH" scripts/agent-overnight.sh --dry-run >/dev/null 2>&1; then
+  echo "cloud deployment selection was not rejected" >&2
+  exit 1
+fi
+printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:anonymous-agent' > packages/backend/.env.local
 
 git checkout --detach >/dev/null 2>&1
 if PATH="$FIXTURE/fake-bin:$PATH" scripts/agent-overnight.sh --dry-run >/dev/null 2>&1; then
