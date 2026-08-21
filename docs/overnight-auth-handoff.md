@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** The invalid sign-in field focus implementation in `03aab16` is green and approved by fresh review.
+- **Next action:** review
+- **Last known-good commit:** The profile stale-save-error implementation in this handoff is green and awaits fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran the focused sign-in policy test (4/4), the mobile package TypeScript check, and `git diff --check`; all passed.
-- **Tests added in current section:** Sign-in policy coverage proves invalid-field focus priority: email before password, password when it is the only invalid field, and no focus target for valid input.
-- **Review status:** Fresh review of `03aab16` approved the invalid sign-in field focus change with no actionable findings.
+- **Last successful checks:** The focused profile screen contract passed 2/2, the full mobile test command passed 16/16, and the mobile package TypeScript check passed.
+- **Tests added in current section:** The profile screen contract proves that editing either profile field clears a stale sanitized save error.
+- **Review status:** The profile stale-save-error implementation awaits fresh review.
 - **Blocking condition:** None.
-- **Next bounded action:** Implement exactly one remaining section 7 hardening or bounded verification item test-first where behavior can be automated; do not begin section 8 until section 7 acceptance is complete.
+- **Next bounded action:** Freshly review the profile stale-save-error implementation commit; do not edit production code during review or begin another section 7 item.
+
+## Section 7 stale profile-save-error clearing implementation
+
+After a failed profile save, editing either the display name or optional first name now clears the stale form-level save error while preserving the other field and independently clearing the edited field's validation error. The behavior stays in the existing feature-local screen state and does not change backend profile validation, persistence, or authorization.
+
+The focused source contract first failed 1/2 with the intended mismatch because the display-name handler retained the prior form error; no red state was committed. After implementation, `mise exec -- node --test apps/mobile/src/features/onboarding/profile-screen-contract.test.ts` passed 2/2. `mise exec -- sh -lc 'node --test apps/mobile/src/components/ui/*.test.ts apps/mobile/src/features/auth/*.test.ts apps/mobile/src/features/onboarding/*.test.ts'` passed 16/16 with only the existing module-type warnings, and `mise exec -- pnpm --filter @recovery/mobile run check` passed. No dependency, Expo configuration, backend, generated Convex file, or deployment state changed. Mounted native behavior remains a device-verification gap.
 
 ## Section 7 invalid sign-in field focus review
 

@@ -87,6 +87,7 @@ export function ProfileScreen() {
             onChangeText={(value) => {
               setDisplayName(value);
               setFieldErrors((current) => ({ ...current, displayName: undefined }));
+              setFormError(null);
             }}
             onSubmitEditing={() => firstNameRef.current?.focus()}
             placeholder="How should we welcome you?"
@@ -106,6 +107,7 @@ export function ProfileScreen() {
             onChangeText={(value) => {
               setFirstName(value);
               setFieldErrors((current) => ({ ...current, firstName: undefined }));
+              setFormError(null);
             }}
             onSubmitEditing={handleSubmit}
             ref={firstNameRef}

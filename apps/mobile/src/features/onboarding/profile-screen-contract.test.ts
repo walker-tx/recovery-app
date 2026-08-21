@@ -20,3 +20,17 @@ test("the display-name return key advances to the first-name field", () => {
   assert.match(displayNameField, /returnKeyType="next"/);
   assert.match(displayNameField, /submitBehavior="submit"/);
 });
+
+test("editing either profile field clears a stale save error", () => {
+  const displayNameHandler = source.match(
+    /onChangeText=\{\(value\) => \{[\s\S]*?setDisplayName\(value\);[\s\S]*?\}\}/,
+  )?.[0];
+  const firstNameHandler = source.match(
+    /onChangeText=\{\(value\) => \{[\s\S]*?setFirstName\(value\);[\s\S]*?\}\}/,
+  )?.[0];
+
+  assert.ok(displayNameHandler, "expected the display-name change handler");
+  assert.ok(firstNameHandler, "expected the first-name change handler");
+  assert.match(displayNameHandler, /setFormError\(null\)/);
+  assert.match(firstNameHandler, /setFormError\(null\)/);
+});

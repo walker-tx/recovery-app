@@ -241,6 +241,7 @@ Acceptance: reset remains unavailable with a reviewed package blocker; no reset 
   - [x] Associate field errors and descriptions with their native text inputs through accessibility hints, preserving caller-provided hints.
   - [x] Advance the display-name return key to the first-name field without dismissing the keyboard.
   - [x] Clear a stale sanitized sign-in error when the user edits either credential.
+  - [x] Clear a stale sanitized profile-save error when the user edits either profile field.
   - [x] Render an accessible named progress state while auth or authenticated profile restoration is pending.
   - [x] Prevent duplicate sign-out requests with the same synchronous guard used by sign-in.
 - [ ] Test compact layouts, keyboard visibility, enlarged text, and logical screen-reader order on the available simulator.
