@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** The stale profile-save-error production implementation in `175fd65` remains green; this second correction commit bounds each regression assertion to its corresponding `onChangeText` callback.
-- **Correction cycles for current section:** 2
-- **Last successful checks:** The corrected focused profile screen contract passed 2/2, the mobile package TypeScript check passed, and `git diff --check` passed; the focused test emitted only the existing module-type warning.
-- **Tests added in current section:** The source contract now extracts each field's `onChangeText` callback before requiring its own state setter and `setFormError(null)`, so a later prop in the same `TextField` cannot satisfy the assertion.
-- **Review status:** Correction cycle 2 is green and awaits fresh review. Production code was unchanged.
-- **Blocking condition:** None currently; because the correction count is 2, any blocking finding that remains in the next fresh review must set Next action to blocked rather than request a third correction.
-- **Next bounded action:** Freshly review this correction commit for correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality; do not edit production code and do not request a third correction cycle.
+- **Next action:** implement
+- **Last known-good commit:** Fresh review approved correction commit `676e12d`; its source contract now bounds each stale-profile-error assertion to the corresponding `onChangeText` callback.
+- **Correction cycles for current section:** 0
+- **Last successful checks:** Fresh review reran the focused profile screen contract (2/2), the mobile package TypeScript check, and `git diff --check HEAD^ HEAD`; all passed with only the existing module-type warning.
+- **Tests added in current section:** The source contract selects each profile field and extracts its own `onChangeText` callback before requiring the corresponding setter and `setFormError(null)`.
+- **Review status:** Approved with no actionable findings across architecture, simplicity, security/privacy, accessibility, adversarial/test quality, and product fit. The independent skeptic downgraded a lexical-decoy candidate to a non-actionable limitation of intentionally static source coverage.
+- **Blocking condition:** None. Mounted native behavior and the remaining section 7 simulator, sign-out-history, and sensitive-data checks remain explicit verification gaps.
+- **Next bounded action:** Implement only the next bounded section 7 verification for the unchecked sensitive-auth-data/public-result requirement; start with the smallest meaningful failing contract or record a verification exception if automation would be speculative.
+
+## Section 7 stale profile-save-error regression correction cycle 2 final review
+
+Fresh read-only review of `676e12d` found no actionable findings. The corrected test first selects each self-contained `TextField`, then extracts only that field's inline `onChangeText` callback before requiring its corresponding state setter followed by `setFormError(null)`. This directly closes the reviewed later-prop borrowing defect, and the documented mutation probe demonstrates that removing the first-name clear while adding a later `onFocus` clear now fails only the intended assertion. Production profile behavior remains unchanged and correct.
+
+Architecture, simplicity, security/privacy, accessibility, adversarial/test-quality, and product-fit lenses reported no other findings. One adversarial candidate observed that lexical source matching could still be satisfied by deliberately inert nested or comment text inside the handler; the independent skeptic downgraded it because rejecting arbitrary semantic decoys exceeds this correction's sourced objective and the explicitly bounded static-test strategy. This remains a general static-contract limitation, not a blocker or a claim of mounted runtime coverage. No backend, Convex authorization, token storage, dependency, Expo configuration, generated code, or deployment boundary changed.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/features/onboarding/profile-screen-contract.test.ts` (2/2 passed with only the existing module-type warning), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check HEAD^ HEAD` (passed). Mounted alert removal, focus retention, keyboard behavior, compact layouts, enlarged text, VoiceOver/TalkBack behavior, sign-out navigation history, and the sensitive-auth-data/public-result check remain open section 7 verification gaps.
 
 ## Section 7 stale profile-save-error regression correction cycle 2
 
