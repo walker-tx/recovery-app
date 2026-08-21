@@ -7,10 +7,14 @@ const source = await readFile(
   "utf8",
 );
 
+function getTextField(label: string) {
+  return Array.from(source.matchAll(/<TextField\b[\s\S]*?\/>/g), ([field]) =>
+    field,
+  ).find((field) => field.includes(`label="${label}"`));
+}
+
 test("the display-name return key advances to the first-name field", () => {
-  const displayNameField = source.match(
-    /<TextField[\s\S]*?label="Display name"[\s\S]*?\/>/,
-  )?.[0];
+  const displayNameField = getTextField("Display name");
 
   assert.ok(displayNameField, "expected the display-name TextField");
   assert.match(
@@ -22,15 +26,11 @@ test("the display-name return key advances to the first-name field", () => {
 });
 
 test("editing either profile field clears a stale save error", () => {
-  const displayNameHandler = source.match(
-    /onChangeText=\{\(value\) => \{[\s\S]*?setDisplayName\(value\);[\s\S]*?\}\}/,
-  )?.[0];
-  const firstNameHandler = source.match(
-    /onChangeText=\{\(value\) => \{[\s\S]*?setFirstName\(value\);[\s\S]*?\}\}/,
-  )?.[0];
+  const displayNameField = getTextField("Display name");
+  const firstNameField = getTextField("First name (optional)");
 
-  assert.ok(displayNameHandler, "expected the display-name change handler");
-  assert.ok(firstNameHandler, "expected the first-name change handler");
-  assert.match(displayNameHandler, /setFormError\(null\)/);
-  assert.match(firstNameHandler, /setFormError\(null\)/);
+  assert.ok(displayNameField, "expected the display-name TextField");
+  assert.ok(firstNameField, "expected the first-name TextField");
+  assert.match(displayNameField, /setDisplayName\(value\);[\s\S]*?setFormError\(null\)/);
+  assert.match(firstNameField, /setFirstName\(value\);[\s\S]*?setFormError\(null\)/);
 });

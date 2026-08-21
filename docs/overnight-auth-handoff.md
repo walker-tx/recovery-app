@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** correct
-- **Last known-good commit:** The invalid sign-in field focus implementation in `03aab16` remains the latest green implementation approved by fresh review.
+- **Next action:** review
+- **Last known-good commit:** The stale profile-save-error production implementation in `175fd65` remains green; this correction commit independently bounds its two source-contract assertions.
 - **Correction cycles for current section:** 1
-- **Last successful checks:** Fresh review reran the focused profile screen contract (2/2), the mobile package TypeScript check, and `git diff --check 232872a..175fd65`; all passed with only the existing module-type warning.
-- **Tests added in current section:** The profile screen source contract intends to prove both field handlers clear a stale save error, but fresh review verified that its first-name match can cross the display-name field boundary and pass from the wrong handler.
-- **Review status:** Fresh review of `175fd65` found one blocking P3 test-quality defect; production behavior appears correct, but the regression does not independently protect the first-name path.
-- **Blocking condition:** The first-name contract assertion can pass after removing `setFormError(null)` from the first-name handler because its regex begins at the display-name handler and spans across JSX.
-- **Next bounded action:** Correct only the profile stale-save-error regression: first demonstrate that removing the first-name clear is detected, then bound the contract to each corresponding field/handler, rerun focused and mobile package checks, and set Next action to review without changing the correction count.
+- **Last successful checks:** The corrected focused profile screen contract passed 2/2, the mobile package TypeScript check passed, and `git diff --check` passed; the focused test emitted only the existing module-type warning.
+- **Tests added in current section:** The profile screen source contract now extracts each self-contained `TextField` block by label before asserting that its own state setter is followed by `setFormError(null)`. A temporary mutation probe removing only the first-name clear failed the intended assertion 1/2.
+- **Review status:** Correction is green and awaits fresh review. Production code was unchanged.
+- **Blocking condition:** None currently; fresh review must verify that the corrected contract independently protects both field handlers.
+- **Next bounded action:** Freshly review this correction commit for correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality; do not edit production code.
+
+## Section 7 stale profile-save-error regression correction cycle 1
+
+The source contract now splits `profile-screen.tsx` into self-contained `TextField` blocks and selects each field by its exact label before inspecting its change behavior. Each assertion requires the corresponding field setter followed by `setFormError(null)`, so the first-name assertion can no longer borrow the display-name handler's clear across JSX. Production behavior did not change.
+
+For red evidence, a temporary copy of the profile screen removed only the first-name handler's `setFormError(null)`. Running the corrected focused contract against that copy failed 1/2 on the intended first-name assertion while the display-name assertion remained green; the temporary copy was removed and no red state was committed. Against repository production code, `mise exec -- node --test apps/mobile/src/features/onboarding/profile-screen-contract.test.ts` passed 2/2 with only the existing module-type warning. `mise exec -- pnpm --filter @recovery/mobile run check` passed, and `git diff --check` passed. No production code, dependency, Expo configuration, backend, generated Convex file, or deployment state changed.
 
 ## Section 7 stale profile-save-error clearing review
 
