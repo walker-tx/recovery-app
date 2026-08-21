@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** The invalid sign-in field focus implementation in the current commit is green and awaits fresh review.
+- **Next action:** implement
+- **Last known-good commit:** The invalid sign-in field focus implementation in `03aab16` is green and approved by fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** The focused sign-in policy test passed 4/4, the full mobile policy/state suite passed 15/15, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Last successful checks:** Fresh review reran the focused sign-in policy test (4/4), the mobile package TypeScript check, and `git diff --check`; all passed.
 - **Tests added in current section:** Sign-in policy coverage proves invalid-field focus priority: email before password, password when it is the only invalid field, and no focus target for valid input.
-- **Review status:** The invalid sign-in field focus implementation awaits fresh review.
+- **Review status:** Fresh review of `03aab16` approved the invalid sign-in field focus change with no actionable findings.
 - **Blocking condition:** None.
-- **Next bounded action:** Freshly review the current implementation commit across correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality. Do not edit production code during review.
+- **Next bounded action:** Implement exactly one remaining section 7 hardening or bounded verification item test-first where behavior can be automated; do not begin section 8 until section 7 acceptance is complete.
+
+## Section 7 invalid sign-in field focus review
+
+Fresh review of `03aab16` found no actionable findings across correctness, architecture, simplicity, auth security/privacy, accessibility, adversarial behavior, product fidelity, and test quality. Invalid submission computes errors once, records the non-color-only field messages, deterministically selects email before password, focuses the matching native input ref, and returns before any authentication request. Valid submission still normalizes email, preserves returning-user password policy, uses the synchronous duplicate-submit guard, retains credentials after failure, and renders only the existing sanitized provider error. State and refs remain feature-local, shared UI remains independent, and no backend, authorization, token-storage, dependency, configuration, generated-code, or deployment boundary changed. Six read-only review lenses and an independent skeptic confirmed approval.
+
+The focused policy test proves priority selection but does not mount the screen or prove native ref focus. iOS and Android keyboard/focus behavior, compact layouts, enlarged text, VoiceOver/TalkBack announcement order, and logical reading order remain device-verification gaps. The broader section 7 checks for protected-route history after sign-out and absence of sensitive auth data in ordinary UI or public results also remain incomplete.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/features/auth/auth-policy.test.ts` (4/4 passed with only the existing module-type warning), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check 6f81f40 03aab16` (passed). No production code or deployment state changed during review.
 
 ## Section 7 invalid sign-in field focus implementation
 
