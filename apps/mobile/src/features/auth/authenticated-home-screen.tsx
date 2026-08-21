@@ -1,27 +1,29 @@
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
+import { createSubmissionGuard } from "./auth-submission";
 
 export function AuthenticatedHomeScreen() {
   const { signOut } = useAuthActions();
+  const guard = useRef(createSubmissionGuard()).current;
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSignOut() {
-    if (isPending) return;
-
-    setIsPending(true);
-    setError(null);
-    try {
-      await signOut();
-    } catch (_error) {
-      setError("We couldn't sign you out. Please try again.");
-      setIsPending(false);
-    }
+    await guard.run(undefined, async () => {
+      setIsPending(true);
+      setError(null);
+      try {
+        await signOut();
+      } catch (_error) {
+        setError("We couldn't sign you out. Please try again.");
+        setIsPending(false);
+      }
+    });
   }
 
   return (

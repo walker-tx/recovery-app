@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** `ec33183` accessible restoration loading is green and approved by fresh review.
+- **Next action:** review
+- **Last known-good commit:** The duplicate sign-out prevention implementation in the current commit is green and awaits fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran the focused auth route contract, the mobile package TypeScript check, and `git diff --check`; all passed.
-- **Tests added in current section:** The auth route contract verifies that pending auth/profile restoration renders a named progress state instead of returning a blank tree.
-- **Review status:** Fresh review of `ec33183` found no actionable findings.
+- **Last successful checks:** The focused sign-out wiring and submission-guard tests passed 3/3, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Tests added in current section:** The authenticated-home contract verifies that sign-out is wired through the synchronous submission guard; the existing guard behavior tests prove immediate duplicate requests collapse to one call and failure unlocks retry.
+- **Review status:** The duplicate sign-out prevention implementation awaits fresh review.
 - **Blocking condition:** None.
-- **Next bounded action:** Implement exactly one remaining section 7 hardening item test-first, or document one bounded manual verification result if device access is available. Do not begin final section 8 verification in the same transition.
+- **Next bounded action:** Freshly review the current implementation commit across correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality. Do not edit production code during review.
+
+## Section 7 duplicate sign-out prevention implementation
+
+Sign-out now runs through the auth feature's synchronous submission guard rather than relying only on React's pending-state rerender. Two presses in the same render window therefore cannot start two token-removal operations. The existing sign-in guard was generalized only at its value type boundary so both auth operations share the already-tested concurrency behavior; pending UI and sanitized sign-out failure behavior remain unchanged.
+
+The focused authenticated-home contract first failed 1/1 with the intended missing-guard assertion because the screen called `signOut` directly; no red state was committed. After implementation, `mise exec -- node --test apps/mobile/src/features/auth/authenticated-home-screen-contract.test.ts apps/mobile/src/features/auth/auth-submission.test.ts` passed 3/3 with only the existing module-type warnings, and `mise exec -- pnpm --filter @recovery/mobile run check` passed. `git diff --check` passed before commit. No dependency, Expo configuration, backend, generated Convex file, or deployment state changed. Mounted rapid-tap behavior and sign-out navigation history remain device-verification gaps.
 
 ## Section 7 accessible restoration-loading review
 

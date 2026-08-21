@@ -1,15 +1,10 @@
-type SignInValues = Readonly<{
-  email: string;
-  password: string;
-}>;
-
 export function createSubmissionGuard() {
   let running = false;
 
   return {
-    async run(
-      values: SignInValues,
-      work: (submittedValues: SignInValues) => Promise<void>,
+    async run<Values>(
+      values: Values,
+      work: (submittedValues: Values) => Promise<void>,
     ) {
       if (running) return false;
 
