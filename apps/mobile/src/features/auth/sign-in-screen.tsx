@@ -1,5 +1,5 @@
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useRef, useState } from "react";
+import { useReducer, useRef, useState } from "react";
 import { View, type TextInput } from "react-native";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   toSafeSignInError,
 } from "./auth-policy";
 import { createSubmissionGuard } from "./auth-submission";
+import { initialSignInState, reduceSignInState } from "./sign-in-state";
 
 type SignInScreenProps = {
   onBack: () => void;
@@ -24,16 +25,17 @@ export function SignInScreen({ onBack }: SignInScreenProps) {
   const { signIn } = useAuthActions();
   const guard = useRef(createSubmissionGuard()).current;
   const passwordInput = useRef<TextInput>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [{ email, password, formError }, dispatch] = useReducer(
+    reduceSignInState,
+    initialSignInState,
+  );
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [formError, setFormError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
 
   async function handleSubmit() {
     const errors = getSignInValidation(email, password);
     setFieldErrors(errors);
-    setFormError(null);
+    dispatch({ type: "submissionStarted" });
     if (Object.keys(errors).length > 0) return;
 
     await guard.run({ email, password }, async (submittedValues) => {
@@ -46,7 +48,10 @@ export function SignInScreen({ onBack }: SignInScreenProps) {
         });
         if (!result.signingIn) throw new Error("Sign-in did not create a session");
       } catch (error) {
-        setFormError(toSafeSignInError(error));
+        dispatch({
+          type: "authenticationFailed",
+          message: toSafeSignInError(error),
+        });
       } finally {
         setIsPending(false);
       }
@@ -79,7 +84,7 @@ export function SignInScreen({ onBack }: SignInScreenProps) {
             keyboardType="email-address"
             label="Email"
             onChangeText={(value) => {
-              setEmail(value);
+              dispatch({ type: "emailChanged", value });
               setFieldErrors((current) => ({ ...current, email: undefined }));
             }}
             onSubmitEditing={() => passwordInput.current?.focus()}
@@ -95,7 +100,7 @@ export function SignInScreen({ onBack }: SignInScreenProps) {
             error={fieldErrors.password}
             label="Password"
             onChangeText={(value) => {
-              setPassword(value);
+              dispatch({ type: "passwordChanged", value });
               setFieldErrors((current) => ({ ...current, password: undefined }));
             }}
             onSubmitEditing={handleSubmit}

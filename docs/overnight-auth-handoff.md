@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 3. Build the password welcome and returning-user sign-in screens
-- **Next action:** correct
-- **Last known-good commit:** `b37f7d6` is green but section 3 remains unapproved; `0dff1a7` is the last approved feature state.
+- **Next action:** review
+- **Last known-good commit:** This correction commit (`HEAD` after commit) is green but section 3 remains unapproved; `0dff1a7` is the last approved feature state.
 - **Correction cycles for current section:** 2
-- **Last successful checks:** Fresh review reran `mise exec -- pnpm --filter @recovery/mobile exec node --experimental-strip-types --test src/features/auth/auth-policy.test.ts src/features/auth/auth-submission.test.ts` (5/5 passed), `mise exec -- pnpm --filter @recovery/backend exec node --experimental-strip-types --test convex/auth-policy.test.ts` (2/2 passed), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), `mise exec -- pnpm --filter @recovery/backend run check` (passed), and `git diff --check b37f7d6^ b37f7d6` (passed). Node emitted only the existing package-module-type warnings during focused tests.
-- **Tests added in current section:** The correction's password-policy regressions are valid, but the submission test still observes only a standalone values object passed through the guard; it does not observe the screen-owned email/password state after the rendered failure path.
-- **Review status:** Fresh review approved the returning-user password-policy fix, architecture, simplicity, security/privacy, Convex authorization, accessibility implementation, and product fidelity, but found one remaining P2 test-quality blocker. Correction cycle 2 is required.
-- **Blocking condition:** The claimed value-retention regression would remain green if `SignInScreen` cleared its controlled email/password state after an authentication failure, so it does not prove the section 3 acceptance requirement. The package's direct sign-in errors/timing remain an inherited nonblocking limitation because the mobile flow sanitizes displayed failures and signup/reset remain deferred.
-- **Next bounded action:** Add the smallest regression that observes state owned by the sign-in failure path and fails if either entered field is cleared; demonstrate red, apply only the minimal testability/fix change needed, rerun focused mobile and package checks, preserve correction count `2`, and set Next action to review. Do not begin profile onboarding.
+- **Last successful checks:** `mise exec -- pnpm --filter @recovery/mobile exec node --experimental-strip-types --test src/features/auth/auth-policy.test.ts src/features/auth/auth-submission.test.ts src/features/auth/sign-in-state.test.ts` passed 6/6; `mise exec -- pnpm --filter @recovery/mobile run check` passed; and `git diff --check` passed. Node emitted only the existing package-module-type warnings during focused tests.
+- **Tests added in current section:** `sign-in-state.test.ts` now drives the exact authentication-failure transition used by the screen and asserts that its authoritative email/password state remains unchanged while the sanitized form error is recorded.
+- **Review status:** Correction cycle 2 addresses the remaining test-quality blocker from the review of `b37f7d6` and now awaits the final allowed fresh review for this section.
+- **Blocking condition:** None known pending fresh review. If a blocking finding remains after this second correction, set Next action to blocked rather than requesting another correction. The package's direct sign-in errors/timing remain an inherited nonblocking limitation because the mobile flow sanitizes displayed failures and signup/reset remain deferred.
+- **Next bounded action:** Freshly review this section 3 correction for correctness, architecture, simplicity, auth security/privacy, Convex authorization, accessibility, product fidelity, and test quality. Do not edit production code or begin profile onboarding during that review.
+
+## Section 3 correction cycle 2
+
+The new regression first failed with the intended `ERR_MODULE_NOT_FOUND` because the screen-owned sign-in state transition did not yet exist as a testable boundary; no red state was committed. The screen now owns email, password, and form error in one reducer, and its authentication-failure action changes only the sanitized error. This makes credential retention an explicit tested transition rather than an assertion over an unrelated submission object.
+
+After implementation, the combined focused mobile auth command passed 6/6, the mobile TypeScript check passed, and `git diff --check` passed. No dependency, Expo configuration, backend, generated Convex file, or deployment state changed.
 
 ## Section 3 correction cycle 1 fresh review of `b37f7d6`
 
