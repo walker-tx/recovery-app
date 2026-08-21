@@ -3,14 +3,24 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** The sensitive-auth-data verification is green on top of reviewed commit `0e4e172`; see the current implementation commit.
+- **Next action:** implement
+- **Last known-good commit:** Fresh review approved sensitive-auth-data verification commit `d099de2`.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** The focused profile suite passed 3/3, the backend package TypeScript check passed, the bounded production-source privacy inspection passed, and `git diff --check` passed.
-- **Tests added in current section:** Profile public-result coverage now explicitly rejects owner identity, user email, document ID, and creation-time metadata.
-- **Review status:** Awaiting fresh review of the sensitive-auth-data verification transition.
+- **Last successful checks:** Fresh review reran the focused profile suite (3/3), the backend package TypeScript check, the bounded application-owned production-source privacy inspection, and `git diff --check 0e4e172 d099de2`; all passed.
+- **Tests added in current section:** Profile public-result coverage explicitly rejects owner identity, user email, document ID, and creation-time metadata.
+- **Review status:** Approved with no actionable findings across architecture, simplicity, security/privacy, Convex authorization, accessibility applicability, adversarial/test quality, and product fit. An independent skeptic confirmed approval.
 - **Blocking condition:** None. Section 7 simulator accessibility/layout checks and protected-route history after sign-out remain explicit verification gaps.
-- **Next bounded action:** Freshly review only the sensitive-auth-data verification commit for correctness, architecture, simplicity, auth security/privacy, Convex authorization, accessibility applicability, product fidelity, and test quality.
+- **Next bounded action:** Implement only the next remaining Section 7 verification: confirm sign-out removes protected app routes from navigation history with the smallest meaningful behavior test or a bounded manual verification exception if automation would require speculative infrastructure.
+
+## Section 7 sensitive-auth-data verification review
+
+Fresh review of `d099de2` found no actionable findings. The public profile assertion matches the exact display-only shape and explicitly rejects owner identity, user email, Convex document ID, and creation-time metadata. Both application-defined profile endpoints retain explicit argument and return validators, server-derived authentication, owner-indexed bounded access, and the shared narrow `publicProfile` mapper. The deterministic Convex authorization scan found zero identity-from-argument, missing-ownership, PII-by-client-ID, or unchecked parent-container write shapes.
+
+The bounded source inspection found no console logging, verification-code identifiers, or access/refresh-token identifiers in application-owned production source. Sign-in still maps provider failures to a fixed sanitized message, while profile-save and sign-out handlers ignore caught provider values. Architecture, simplicity, security/privacy, Convex authorization, adversarial/test quality, and product-fit lenses reported no findings; accessibility was not applicable to this test-and-documentation-only transition. The independent skeptic confirmed approval.
+
+Static inspection does not prove provider internals, deployment/runtime logging, network behavior, generated code, or future code. Compact layouts, keyboard visibility, enlarged text, logical screen-reader order, VoiceOver/TalkBack behavior, and protected-route history after sign-out remain explicit verification gaps. The explicit named negative assertions exercise `getMine`; `complete` remains constrained by its exact-result test, the same mapper, and the same return validator.
+
+Fresh review reran `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` (3/3 passed), `mise exec -- pnpm --filter @recovery/backend run check` (passed), the bounded application-owned production-source privacy inspection (passed), and `git diff --check 0e4e172 d099de2` (passed). No production code, dependency, Expo configuration, generated Convex file, or deployment state changed during review.
 
 ## Section 7 sensitive-auth-data verification implementation
 
