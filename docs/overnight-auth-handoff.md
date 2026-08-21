@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** `cad4d24` approved the section 7 field-error association implementation. The current display-name return-key implementation is green and awaits fresh review.
+- **Next action:** implement
+- **Last known-good commit:** `cce230b` is the approved section 7 display-name return-key implementation. Section 7 hardening continues.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** The focused return-key contract test passed 1/1, the full mobile policy/state command passed 12/12 with only existing module-type warnings, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Last successful checks:** Fresh review reran the focused return-key contract test (1/1 passed), the full mobile policy/state command (12/12 passed), the mobile package TypeScript check (passed), and `git diff --check` (passed); tests emitted only the existing module-type warnings.
 - **Tests added in current section:** `profile-screen-contract.test.ts` verifies that the display-name field keeps its next return key, submits without dismissing the keyboard, and focuses the first-name field.
-- **Review status:** The section 7 display-name return-key implementation awaits fresh review.
+- **Review status:** Fresh review approved the section 7 display-name return-key implementation with no actionable findings.
 - **Blocking condition:** None.
-- **Next bounded action:** Fresh-review the display-name return-key implementation commit. Do not edit production code during review.
+- **Next bounded action:** Implement or verify one remaining section 7 hardening behavior, starting with the smallest meaningful behavior test or bounded static/device check. Do not combine multiple checklist behaviors in one invocation.
+
+## Section 7 display-name return-key review
+
+Fresh review of `cce230b` found no actionable findings across correctness, architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fidelity, and test quality. The display-name field pairs `returnKeyType="next"` with an `onSubmitEditing` focus handoff and `submitBehavior="submit"`; the shared `TextField` forwards the ref and native input props unchanged. Installed React Native 0.86.2 defines `submit` as emitting the submit event without blurring on both supported native implementations. Focus state remains local to the onboarding feature, and no backend, authorization, persistence, token, logging, generated-code, dependency, configuration, or deployment boundary changed. An independent skeptic confirmed approval.
+
+The static contract test proves the required source wiring but not native runtime behavior. iOS and Android keyboard continuity, visual flicker, hardware-keyboard and alternate-IME behavior, VoiceOver/TalkBack announcements, compact-layout keyboard reachability, enlarged text, and logical screen-reader order remain explicit device-verification gaps. Sign-out navigation history and sensitive-data/UI checks also remain incomplete section 7 work.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/features/onboarding/profile-screen-contract.test.ts` (1/1 passed), the full mobile policy/state command (12/12 passed), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check` (passed); tests emitted only the existing module-type warnings. No production code or deployment state changed during review.
 
 ## Section 7 display-name return-key implementation
 
