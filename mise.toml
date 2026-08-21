@@ -1,0 +1,22 @@
+#:schema https://mise.en.dev/schema/mise.json
+
+min_version = "2026.7.6"
+
+[settings]
+pin = true
+
+[tools]
+node = "24.16.0"
+"github:pnpm/pnpm" = "11.19.0"
+
+[tasks.install]
+description = "Install workspace dependencies from the lockfile"
+run = "pnpm install --frozen-lockfile"
+
+[tasks.check]
+description = "Run workspace static checks"
+run = "pnpm run check"
+
+[tasks.doctor]
+description = "Check Expo dependency and project health"
+run = "pnpm run doctor"

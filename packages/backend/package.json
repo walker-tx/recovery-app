@@ -1,0 +1,19 @@
+{
+  "name": "@recovery/backend",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "convex dev",
+    "codegen": "convex codegen",
+    "auth:setup": "auth --skip-git-check",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@convex-dev/auth": "0.0.95",
+    "convex": "1.44.0"
+  },
+  "devDependencies": {
+    "@types/node": "~24.10.15",
+    "typescript": "~6.0.3"
+  }
+}

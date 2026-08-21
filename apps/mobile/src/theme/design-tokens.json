@@ -1,0 +1,25 @@
+{
+  "colors": {
+    "canvas": "#F2F2F3",
+    "surface": "#E9E9EA",
+    "surfaceStrong": "#D4D4D7",
+    "ink": "#1D1F20",
+    "inkMuted": "#68696A",
+    "blueprint": "#5980A6",
+    "blueprintTint": "#D6EBFF",
+    "blueprintPressed": "#416180",
+    "line": "rgba(29, 31, 32, 0.16)",
+    "lineStrong": "rgba(29, 31, 32, 0.45)",
+    "inverse": "#F2F2F3",
+    "danger": "#A33636",
+    "dangerSurface": "#F8EDED",
+    "overlay": "rgba(43, 43, 45, 0.5)"
+  },
+  "spacing": { "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "xxl": 32, "xxxl": 48 },
+  "touchTarget": 48,
+  "shadows": {
+    "sm": "0 1px 2px rgba(43, 43, 45, 0.14)",
+    "md": "0 3px 10px rgba(43, 43, 45, 0.16)",
+    "lg": "0 12px 32px rgba(43, 43, 45, 0.22)"
+  }
+}
