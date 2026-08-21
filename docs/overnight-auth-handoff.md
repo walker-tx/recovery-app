@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** correct
-- **Last known-good commit:** `b694efe` (green checks, but fresh review found the sign-out-to-route-transition contract incomplete).
+- **Next action:** review
+- **Last known-good commit:** Sign-out action contract correction (this commit; predecessor `45f6143`).
 - **Correction cycles for current section:** 1
-- **Last successful checks:** Fresh review reran the focused sign-out history and authenticated-home contracts together (2/2 passed with only existing module-type warnings), the mobile package TypeScript check passed, and `git diff --check` passed.
-- **Tests added in current section:** The current focused contract verifies complementary root route guards and the pinned stack router's route-name filtering, but it does not connect the Sign out button's handler to `signOut()` and the resulting authenticated-to-unauthenticated route transition.
-- **Review status:** One blocking P2 test-quality/product finding requires correction. Architecture, simplicity, security/privacy, accessibility, and the remaining adversarial/product review reported no additional findings; an independent skeptic confirmed the blocker.
-- **Blocking condition:** The checklist claim is not yet supported end to end: replacing `await signOut()` with a no-op leaves both current focused contracts green while the user remains authenticated and `(app)` remains available.
-- **Next bounded action:** Add the smallest source contract connecting `onPress={handleSignOut}` through the guarded callback to `await signOut()`, demonstrate that regression red with a temporary no-op mutation, then rerun the focused history/home contracts and mobile package check. Do not change production behavior unless the corrected regression exposes a separate defect.
+- **Last successful checks:** The focused sign-out history and authenticated-home contracts passed 2/2 with only existing module-type warnings, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Tests added in current section:** The authenticated-home source contract now connects the Sign out button to `handleSignOut`, the synchronous submission guard, and the awaited Convex Auth `signOut()` action; the complementary route-history contract verifies that the resulting signed-out route set removes `(app)`.
+- **Review status:** Pending fresh review of the sign-out action contract correction.
+- **Blocking condition:** None. Section 7 simulator checks for compact layouts, keyboard visibility, enlarged text, and logical screen-reader order remain explicit verification gaps.
+- **Next bounded action:** Freshly review only the sign-out action contract correction for correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality; do not edit production code.
+
+## Section 7 sign-out action contract correction cycle 1
+
+The authenticated-home source contract now requires the Sign out button to invoke `handleSignOut`, and requires that handler's guarded callback to await the Convex Auth `signOut()` action. Together with the existing root-guard and pinned-router route-name assertions, the focused contracts connect the user action to authentication removal and the resulting removal of the protected `(app)` route. Production behavior was already correct and did not change.
+
+For red evidence, a temporary mutation replaced `await signOut()` with a resolved no-op. The corrected authenticated-home contract failed 1/1 on the intended guarded-action assertion; the mutation was restored and no red state was committed. Against repository production code, `mise exec -- node --test apps/mobile/src/features/auth/auth-route-history.test.ts apps/mobile/src/features/auth/authenticated-home-screen-contract.test.ts` passed 2/2 with only the existing module-type warnings. `mise exec -- pnpm --filter @recovery/mobile run check` passed, and `git diff --check` passed. No production code, dependency, Expo configuration, backend, generated Convex file, or deployment state changed.
 
 ## Section 7 sign-out protected-route history verification review
 
