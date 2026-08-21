@@ -13,13 +13,26 @@ cp "$ROOT/.gitignore" "$FIXTURE/"
 
 python3 - "$FIXTURE" <<'PY'
 from pathlib import Path
+import re
 import sys
 
 root = Path(sys.argv[1])
 plan = root / "docs/overnight-auth-plan.md"
 plan.write_text(plan.read_text().replace("- [ ]", "- [x]"))
 handoff = root / "docs/overnight-auth-handoff.md"
-handoff.write_text(handoff.read_text().replace("**Next action:** blocked", "**Next action:** implement"))
+handoff_text = re.sub(
+    r"^- \*\*Next action:\*\* .+$",
+    "- **Next action:** implement",
+    handoff.read_text(),
+    flags=re.MULTILINE,
+)
+handoff_text = re.sub(
+    r"^- \*\*Correction cycles for current section:\*\* .+$",
+    "- **Correction cycles for current section:** 0",
+    handoff_text,
+    flags=re.MULTILINE,
+)
+handoff.write_text(handoff_text)
 PY
 
 printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:anonymous-agent' > "$FIXTURE/packages/backend/.env.local"

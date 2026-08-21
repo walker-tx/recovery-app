@@ -281,6 +281,7 @@ REVIEW:
 - Review the last feature/correction commit for correctness, architecture, simplicity, auth security/privacy, Convex authorization, accessibility, product fidelity, and test quality.
 - For backend auth code, use Convex-specific review/authz skills.
 - If blocking findings exist, record precise actionable findings in the handoff, increment/preserve the correction count as directed by the plan, set Next action to correct, and commit only verified review documentation.
+- Keep `Correction cycles for current section` as a bare non-negative integer with no explanatory prose.
 - If no blocking findings exist, record approval, reset the correction count for the next section, check/advance only the completed checklist state, set Next action to implement or complete, and commit only the verified review handoff.
 
 CORRECT:
