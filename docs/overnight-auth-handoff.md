@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** `a05357b` is the approved section 7 invalid-profile-field focus implementation. Section 6 remains completed through the reviewed reset privacy deferral; the current field-error association implementation awaits fresh review.
+- **Next action:** implement
+- **Last known-good commit:** `27caa0b` is the approved section 7 field-error association implementation. Section 6 remains completed through the reviewed reset privacy deferral, and section 7 hardening continues.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** The focused field-accessibility test passed 2/2, all mobile policy/state tests passed 11/11 with only existing module-type warnings, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Last successful checks:** Fresh review reran the focused field-accessibility test (2/2 passed with only the existing module-type warning), the mobile package TypeScript check (passed), and `git diff --check` (passed).
 - **Tests added in current section:** `field-accessibility.test.ts` verifies that errors and descriptions are exposed from the input accessibility hint, error text replaces a valid-state description, and caller-provided hints are preserved.
-- **Review status:** The section 7 field-error association implementation is green and awaits fresh review.
+- **Review status:** Fresh review approved the section 7 field-error association implementation with no actionable findings.
 - **Blocking condition:** None.
-- **Next bounded action:** Freshly review the current section 7 field-error association commit. Do not begin another hardening behavior in that invocation.
+- **Next bounded action:** Implement one next section 7 hardening behavior, starting with the smallest meaningful behavior test. Do not combine multiple hardening behaviors in one invocation.
+
+## Section 7 field-error association review
+
+Fresh review of `27caa0b` found no actionable findings across correctness, architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fidelity, and test quality. `TextField` preserves a caller-provided hint, adds the current error or valid-state description, gives errors precedence over descriptions, and passes the result directly to the native `TextInput` without allowing `...props` to overwrite it. Shared UI remains independent of Router, Convex, and feature state, and no backend, authorization, persistence, token, logging, generated-code, or deployment boundary changed. An independent skeptic confirmed approval.
+
+Static review does not prove VoiceOver or TalkBack behavior. Dynamic hint updates while an input remains focused, hint-disabled settings, announcement order or duplication between the hint and separate alert, compact layouts, keyboard visibility, enlarged text, logical screen-reader order, sign-out history, and sensitive-data display checks remain section 7 verification gaps. The pure helper test covers the composition policy but not rendered native props; direct production wiring was inspected, and adding broad interaction infrastructure remains unjustified for this bounded change.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/components/ui/field-accessibility.test.ts` (2/2 passed with only the existing module-type warning), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check` (passed). No production code or deployment state changed during review.
 
 ## Section 7 field-error association implementation
 
