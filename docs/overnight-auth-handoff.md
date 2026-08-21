@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** `448329b` is the approved section 5 profile onboarding, protected-home, and sign-out implementation. Section 6 remains completed through the reviewed reset privacy deferral; the current section 7 implementation awaits fresh review.
+- **Next action:** implement
+- **Last known-good commit:** `8fade53` is the approved section 7 invalid-profile-field focus implementation. Section 6 remains completed through the reviewed reset privacy deferral, and section 7 continues with its remaining bounded hardening work.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** The focused onboarding policy test passed 3/3, all mobile policy/state tests passed 9/9 with only existing module-type warnings, the mobile package TypeScript check passed, and `git diff --check` passed.
-- **Tests added in current section:** `onboarding-policy.test.ts` now verifies deterministic first-invalid-field priority for display-name, first-name-only, and valid profile states.
-- **Review status:** The first section 7 hardening implementation is green and awaits fresh review.
+- **Last successful checks:** Fresh review reran the focused onboarding policy test (3/3 passed with only the existing module-type warning), the mobile package TypeScript check (passed), and `git diff --check` (passed).
+- **Tests added in current section:** `onboarding-policy.test.ts` verifies deterministic first-invalid-field priority for display-name, first-name-only, and valid profile states.
+- **Review status:** Fresh review approved `8fade53` with no actionable findings.
 - **Blocking condition:** None.
-- **Next bounded action:** Freshly review the current section 7 profile invalid-field focus commit. Do not begin another hardening behavior in that invocation.
+- **Next bounded action:** Implement exactly one remaining section 7 hardening behavior test-first, starting with programmatic association between profile field errors and their inputs. Do not combine it with device-only checks or another hardening behavior.
+
+## Section 7 invalid profile field focus review
+
+Fresh review of `8fade53` found no actionable findings across correctness, architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fidelity, and test quality. The profile screen keeps transient validation and focus state locally, deterministically selects display name before first name, forwards React 19 refs through `TextField` to the native inputs, returns before mutation on invalid input, and preserves the valid submission path. No backend, authorization, persistence, token, logging, generated-code, or deployment boundary changed. An independent skeptic confirmed approval.
+
+The focused policy test proves field priority but does not prove native ref/focus behavior on devices. Runtime verification still needs to cover iOS and Android focus, VoiceOver/TalkBack announcement order, keyboard visibility on compact layouts, enlarged text, logical reading order, and exact touch targets. Programmatic field-error association and display-name return-key focus remain known static section 7 follow-ups; sign-out history and sensitive-data checks also remain incomplete.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/features/onboarding/onboarding-policy.test.ts` (3/3 passed with only the existing module-type warning), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check` (passed). No production code or deployment state changed during review.
 
 ## Section 7 invalid profile field focus implementation
 
