@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 5. Add server-owned profile onboarding
-- **Next action:** correct
-- **Last known-good commit:** `fa9c7ba` is the green section 5 backend feature commit; fresh review found one blocking test-coverage gap that requires correction.
+- **Next action:** review
+- **Last known-good commit:** `fa9c7ba` remains the green production feature commit; the current correction commit adds green cross-user mutation regression coverage without changing production code.
 - **Correction cycles for current section:** 1
-- **Last successful checks:** Fresh review reran `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` (3/3 passed), `mise exec -- pnpm --filter @recovery/backend run check` (passed), and `git diff --check` (passed). The feature commit also recorded a successful bounded local sync against `anonymous:anonymous-agent`.
-- **Tests added in current section:** `profiles.test.ts` covers unauthenticated read/write rejection, absent-profile behavior, first-owner create/update persistence, second-owner read isolation, single-profile ownership, blank-name validation, and narrow public return shape. Its initial run failed 3/3 for the intended missing `profiles` module. Fresh review verified that it does not yet exercise the second owner's write path.
-- **Review status:** The production ownership/index implementation is sound, but the section 5 acceptance claim that cross-user mutation isolation is tested is not yet demonstrated. The mobile profile screen, onboarding routing, and authenticated home remain unchecked and must not begin before the correction is reviewed and approved.
-- **Blocking condition:** `profiles.test.ts` never calls `api.profiles.complete` as the second authenticated user, so a regression that lets a second user overwrite the first user's profile would escape the suite.
-- **Next bounded action:** Add a regression to the existing two-user backend test that writes a distinct second profile, proves each identity still reads its own values, and proves two owner-linked rows persist. Demonstrate the intended red result before any fix, keep production changes limited to what the regression requires, rerun the focused backend test and package check, preserve correction count 1, and set Next action to review.
+- **Last successful checks:** Correction reran `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` (3/3 passed), `mise exec -- pnpm --filter @recovery/backend run check` (passed), and `git diff --check` (passed). The feature commit also recorded a successful bounded local sync against `anonymous:anonymous-agent`.
+- **Tests added in current section:** `profiles.test.ts` now covers unauthenticated read/write rejection, absent-profile behavior, distinct writes by two authenticated owners, per-owner read isolation, first-owner update persistence, two owner-linked stored rows, blank-name validation, and narrow public return shape. During correction, owner-specific expectations first failed 1/3 because the second owner had not written a profile; after adding that mutation, the suite passed 3/3.
+- **Review status:** Correction cycle 1 is green and awaits fresh review. Production code is unchanged. The mobile profile screen, onboarding routing, and authenticated home remain unchecked and must not begin before this correction is approved.
+- **Blocking condition:** None pending fresh review.
+- **Next bounded action:** Fresh-review the correction commit for test quality and Convex ownership coverage. Do not edit production code. If no blocking finding remains, approve the backend portion, preserve the unchecked mobile subsection, reset the correction count to 0, and set Next action to implement the artifact-aligned profile screen and onboarding routing.
+
+## Section 5 backend correction cycle 1
+
+The ownership regression was introduced test-first. Before the second authenticated mutation was added, the focused profile suite failed 1/3 with the intended mismatch: the second owner read `null` instead of its expected distinct profile. No red state was committed. The completed test now has both authenticated identities call `api.profiles.complete`, verifies each identity reads its own values, and verifies two persisted rows reference the two distinct owner IDs. Existing production authorization already satisfied the regression, so no production code changed.
+
+After correction, `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` passed 3/3, `mise exec -- pnpm --filter @recovery/backend run check` passed, and `git diff --check` passed. No deployment-affecting command ran.
 
 ## Section 5 backend fresh review of `fa9c7ba`
 

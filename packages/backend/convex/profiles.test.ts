@@ -44,7 +44,21 @@ describe("profiles", () => {
       firstName: "Taylor",
       onboardingComplete: true,
     });
-    await expect(secondUser.query(api.profiles.getMine, {})).resolves.toBeNull();
+    await expect(
+      secondUser.mutation(api.profiles.complete, {
+        displayName: "Morgan Lee",
+        firstName: "Morgan",
+      }),
+    ).resolves.toEqual({
+      displayName: "Morgan Lee",
+      firstName: "Morgan",
+      onboardingComplete: true,
+    });
+    await expect(secondUser.query(api.profiles.getMine, {})).resolves.toEqual({
+      displayName: "Morgan Lee",
+      firstName: "Morgan",
+      onboardingComplete: true,
+    });
 
     await expect(
       firstUser.mutation(api.profiles.complete, {
@@ -61,8 +75,10 @@ describe("profiles", () => {
     });
 
     const storedProfiles = await t.run(async (ctx) => await ctx.db.query("profiles").collect());
-    expect(storedProfiles).toHaveLength(1);
-    expect(storedProfiles[0]?.ownerId).toBe(firstUserId);
+    expect(storedProfiles).toHaveLength(2);
+    expect(storedProfiles.map(({ ownerId }) => ownerId)).toEqual(
+      expect.arrayContaining([firstUserId, secondUserId]),
+    );
   });
 
   test("rejects a blank display name without persisting a profile", async () => {
