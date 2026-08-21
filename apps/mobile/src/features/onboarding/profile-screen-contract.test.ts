@@ -13,6 +13,12 @@ function getTextField(label: string) {
   ).find((field) => field.includes(`label="${label}"`));
 }
 
+function getOnChangeText(field: string) {
+  return field.match(
+    /onChangeText=\{\(value\) => \{([\s\S]*?)\n\s*\}\}/,
+  )?.[1];
+}
+
 test("the display-name return key advances to the first-name field", () => {
   const displayNameField = getTextField("Display name");
 
@@ -31,6 +37,18 @@ test("editing either profile field clears a stale save error", () => {
 
   assert.ok(displayNameField, "expected the display-name TextField");
   assert.ok(firstNameField, "expected the first-name TextField");
-  assert.match(displayNameField, /setDisplayName\(value\);[\s\S]*?setFormError\(null\)/);
-  assert.match(firstNameField, /setFirstName\(value\);[\s\S]*?setFormError\(null\)/);
+
+  const displayNameHandler = getOnChangeText(displayNameField);
+  const firstNameHandler = getOnChangeText(firstNameField);
+
+  assert.ok(displayNameHandler, "expected the display-name change handler");
+  assert.ok(firstNameHandler, "expected the first-name change handler");
+  assert.match(
+    displayNameHandler,
+    /setDisplayName\(value\);[\s\S]*?setFormError\(null\)/,
+  );
+  assert.match(
+    firstNameHandler,
+    /setFirstName\(value\);[\s\S]*?setFormError\(null\)/,
+  );
 });
