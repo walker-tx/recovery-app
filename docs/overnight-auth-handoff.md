@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** Fresh review approved sensitive-auth-data verification commit `d099de2`.
+- **Next action:** review
+- **Last known-good commit:** Sign-out protected-route history verification (this commit; predecessor `4b52be5`).
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran the focused profile suite (3/3), the backend package TypeScript check, the bounded application-owned production-source privacy inspection, and `git diff --check 0e4e172 d099de2`; all passed.
-- **Tests added in current section:** Profile public-result coverage explicitly rejects owner identity, user email, document ID, and creation-time metadata.
-- **Review status:** Approved with no actionable findings across architecture, simplicity, security/privacy, Convex authorization, accessibility applicability, adversarial/test quality, and product fit. An independent skeptic confirmed approval.
-- **Blocking condition:** None. Section 7 simulator accessibility/layout checks and protected-route history after sign-out remain explicit verification gaps.
-- **Next bounded action:** Implement only the next remaining Section 7 verification: confirm sign-out removes protected app routes from navigation history with the smallest meaningful behavior test or a bounded manual verification exception if automation would require speculative infrastructure.
+- **Last successful checks:** The focused sign-out history test passed 1/1, the existing auth route contract passed, the full mobile auth test set passed 10/10, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Tests added in current section:** A focused contract verifies the root layout places signed-out and authenticated-app groups behind complementary `Stack.Protected` guards, then exercises the pinned stack router's route-name transition and rejects retention of `(app)` after only `(auth)` remains available.
+- **Review status:** Pending fresh review of the sign-out protected-route history verification.
+- **Blocking condition:** None. Section 7 simulator checks for compact layouts, keyboard visibility, enlarged text, and logical screen-reader order remain explicit verification gaps.
+- **Next bounded action:** Freshly review only the sign-out protected-route history verification commit for correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality; do not edit production code.
+
+## Section 7 sign-out protected-route history verification implementation
+
+The focused contract now verifies both sides of the app's auth boundary: the signed-out route group is available only when `isAuthenticated` is false, while the app group is available only when authentication and completed onboarding select the app destination. It then exercises the pinned Expo Router stack implementation's route-name transition from only `(app)` to only `(auth)` and asserts that the resulting stack contains no protected app route. This confirms the app relies on `Stack.Protected` route removal rather than an imperative redirect that could leave authenticated history behind.
+
+A temporary mutation replaced the app group's `Stack.Protected` wrapper with an unguarded group. After correcting an initial test import-path harness error, the focused contract failed on the intended missing app-protection assertion; the mutation was restored and no red state was committed. Against repository source, `mise exec -- node --test apps/mobile/src/features/auth/auth-route-history.test.ts` passed 1/1 with only the existing module-type warning. `bash scripts/test-auth-route-contract.sh` passed, the full mobile auth command passed 10/10 with only existing module-type warnings, `mise exec -- pnpm --filter @recovery/mobile run check` passed, and `git diff --check` passed. No production code, dependency, Expo configuration, backend, generated Convex file, or deployment state changed. Device back-gesture behavior remains outside this deterministic contract and can be sampled with the remaining simulator verification.
 
 ## Section 7 sensitive-auth-data verification review
 
