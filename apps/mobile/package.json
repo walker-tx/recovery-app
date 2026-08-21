@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@convex-dev/auth": "0.0.95",
+    "@recovery/backend": "workspace:*",
     "convex": "1.44.0",
     "expo": "~57.0.15",
     "expo-constants": "~57.0.13",

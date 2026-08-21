@@ -3,6 +3,9 @@ import { ConvexError, v } from "convex/values";
 
 import { mutation, query, type QueryCtx } from "./_generated/server";
 
+const DISPLAY_NAME_MAX_LENGTH = 80;
+const FIRST_NAME_MAX_LENGTH = 50;
+
 const profileValue = v.object({
   displayName: v.string(),
   firstName: v.optional(v.string()),
@@ -54,7 +57,11 @@ export const complete = mutation({
     const displayName = args.displayName.trim();
     const firstName = args.firstName?.trim() || undefined;
 
-    if (displayName === "") {
+    if (
+      displayName === "" ||
+      displayName.length > DISPLAY_NAME_MAX_LENGTH ||
+      (firstName !== undefined && firstName.length > FIRST_NAME_MAX_LENGTH)
+    ) {
       throw new ConvexError({ code: "INVALID_PROFILE" });
     }
 

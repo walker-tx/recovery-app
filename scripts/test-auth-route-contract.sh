@@ -23,9 +23,10 @@ require_file() {
 }
 
 require_text "$root_layout" 'useConvexAuth' 'root routing does not read Convex Auth restoration state'
-require_text "$root_layout" 'if (isLoading) return null' 'route guards render before auth restoration finishes'
+require_text "$root_layout" 'if (isLoading || (isAuthenticated && destination === null)) return null' 'route guards render before auth or profile restoration finishes'
 require_text "$root_layout" '<Stack.Protected guard={!isAuthenticated}>' 'auth routes are not protected from authenticated users'
-require_text "$root_layout" '<Stack.Protected guard={isAuthenticated}>' 'authenticated routes are not protected from unauthenticated users'
+require_text "$root_layout" '<Stack.Protected guard={isAuthenticated && destination === "onboarding"}>' 'onboarding routes are not protected by authenticated profile state'
+require_text "$root_layout" '<Stack.Protected guard={isAuthenticated && destination === "app"}>' 'app routes are not protected by authenticated profile state'
 require_text "$root_layout" '<Stack.Screen name="(auth)"' 'auth route group is not registered'
 require_text "$root_layout" '<Stack.Screen name="(onboarding)"' 'onboarding route group is not registered'
 require_text "$root_layout" '<Stack.Screen name="(app)"' 'app route group is not registered'

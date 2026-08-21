@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 5. Add server-owned profile onboarding
-- **Next action:** implement
-- **Last known-good commit:** `73e3e65` is the approved green backend correction commit; it closes the profile mutation-isolation test gap without changing production code.
+- **Next action:** review
+- **Last known-good commit:** `763bf28` is the approved backend base; the current green implementation commit adds the remaining section 5 mobile onboarding and authenticated-home behavior and awaits fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` (3/3 passed), `mise exec -- pnpm --filter @recovery/backend run check` (passed), and `git diff --check` (passed). The feature commit also recorded a successful bounded local sync against `anonymous:anonymous-agent`.
-- **Tests added in current section:** `profiles.test.ts` covers unauthenticated read/write rejection, absent-profile behavior, distinct writes by two authenticated owners, per-owner read isolation, first-owner update persistence, two owner-linked stored rows, blank-name validation, and narrow public return shape. During correction, owner-specific expectations first failed 1/3 because the second owner had not written a profile; after adding that mutation, the suite passed 3/3.
-- **Review status:** Fresh review approved correction cycle 1 with no actionable findings. The backend portion of section 5 is complete; the artifact-aligned mobile profile screen, onboarding routing, and authenticated home remain unchecked.
+- **Last successful checks:** Focused onboarding policy tests passed 2/2, the profile backend suite passed 3/3, all mobile policy/state tests passed 8/8, the auth route contract passed, mobile and backend package TypeScript checks passed, `mise run check` passed 2/2 workspace tasks, Expo Doctor passed 17/17 checks with only a bundled-native-module fetch warning, and `git diff --check` passed.
+- **Tests added in current section:** `onboarding-policy.test.ts` covers the profile-loading routing boundary, incomplete/completed destinations, profile input normalization, required display-name validation, and 80/50-character name limits. `profiles.test.ts` now also proves those limits are enforced server-side without persistence. Existing profile ownership tests remain green.
+- **Review status:** The remaining section 5 implementation is green and awaits fresh review. Authenticated routing now waits separately for auth restoration and profile loading, incomplete users receive profile onboarding, completion exposes the protected home, and the home offers sanitized sign-out behavior.
 - **Blocking condition:** None.
-- **Next bounded action:** Implement the artifact-aligned profile screen and route authenticated users according to profile loading/completion state, beginning with the smallest meaningful mobile behavior test and preserving the existing route/restoration boundaries. Do not begin section 6 or hardening in the same invocation.
+- **Next bounded action:** Fresh-review the current implementation commit for correctness, architecture, simplicity, auth security/privacy, routing behavior, accessibility, product fidelity, and test quality. Use Convex-specific review/authz lenses because profile backend validation changed. Do not edit production code.
+
+## Section 5 mobile profile and authenticated-home implementation
+
+The root route boundary now skips the owner profile query while unauthenticated, waits for the authenticated query's initial loading state, and separately protects onboarding and app groups according to Convex-owned completion state. The profile route composes a capability screen with accessible fields, local validation, normalized optional first-name handling, synchronous duplicate-submit prevention, pending controls, and a sanitized save error. The backend enforces the same 80-character display-name and 50-character first-name limits. Successful completion updates the reactive query and exposes the minimal protected home, whose sign-out action reports only a sanitized failure.
+
+The mobile policy test first failed with the intended `ERR_MODULE_NOT_FOUND` for the absent onboarding policy; no red state was committed. The backend regression then failed 1/3 because an 81-character display name was accepted and persisted. After implementation, `mise exec -- node --test apps/mobile/src/features/onboarding/onboarding-policy.test.ts` passed 2/2 and `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` passed 3/3.
+
+`bash scripts/test-auth-route-contract.sh` initially failed because its static assertions still described the pre-profile guard shape; after updating that existing contract to require distinct onboarding/app guards and the combined restoration wait, it passed. `mise exec -- pnpm --filter @recovery/mobile run check` and `mise exec -- pnpm --filter @recovery/backend run check` passed. The full mobile Node test set passed 8/8 with only the existing module-type warnings, `mise run check` passed both workspace tasks, Expo Doctor passed 17/17 checks with a non-failing bundled-native-module fetch warning, and `git diff --check` passed. No deployment-affecting command ran. Device interaction remains for section 7 hardening.
 
 ## Section 5 backend correction cycle 1 final review
 

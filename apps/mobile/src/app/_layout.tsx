@@ -5,14 +5,16 @@ import {
   type TokenStorage,
   useConvexAuth,
 } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
+import { ConvexReactClient, useQuery } from "convex/react";
 import * as SecureStore from "expo-secure-store";
 import { Stack } from "expo-router/stack";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 
+import { api } from "@recovery/backend/convex/_generated/api";
 import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
+import { getAuthenticatedDestination } from "@/features/onboarding/onboarding-policy";
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
@@ -36,16 +38,20 @@ export default function RootLayout() {
 
 function AuthenticatedRoutes() {
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const profile = useQuery(api.profiles.getMine, isAuthenticated ? {} : "skip");
+  const destination = getAuthenticatedDestination(profile);
 
-  if (isLoading) return null;
+  if (isLoading || (isAuthenticated && destination === null)) return null;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={!isAuthenticated}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
-      <Stack.Protected guard={isAuthenticated}>
+      <Stack.Protected guard={isAuthenticated && destination === "onboarding"}>
         <Stack.Screen name="(onboarding)" />
+      </Stack.Protected>
+      <Stack.Protected guard={isAuthenticated && destination === "app"}>
         <Stack.Screen name="(app)" />
       </Stack.Protected>
     </Stack>

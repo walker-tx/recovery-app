@@ -220,8 +220,8 @@ Acceptance: the deferral is explicit and reviewed; no signup or verification con
 - [x] Add the owner-first index required by the query contract.
 - [x] Add narrow authenticated `getMine` and completion/update behavior with validators and server-derived identity.
 - [x] Add backend tests for unauthenticated rejection, owner success, cross-user isolation where applicable, validation, persistence, and public return shape.
-- [ ] Add the artifact-aligned profile screen and route authenticated incomplete users through it.
-- [ ] Route completed users into the minimal authenticated home.
+- [x] Add the artifact-aligned profile screen and route authenticated incomplete users through it.
+- [x] Route completed users into the minimal authenticated home.
 
 Acceptance: profile state is Convex-owned, onboarding survives restart, no caller can read or mutate another profile, auth restoration and profile loading are distinct states, and backend/mobile checks pass.
 

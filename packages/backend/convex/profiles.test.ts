@@ -81,13 +81,22 @@ describe("profiles", () => {
     );
   });
 
-  test("rejects a blank display name without persisting a profile", async () => {
+  test("rejects invalid profile names without persisting a profile", async () => {
     const t = convexTest(schema, modules);
     const userId = await createUser(t, "person@example.com");
     const user = asUser(t, userId);
 
     await expect(
       user.mutation(api.profiles.complete, { displayName: "   " }),
+    ).rejects.toMatchObject({ data: { code: "INVALID_PROFILE" } });
+    await expect(
+      user.mutation(api.profiles.complete, { displayName: "x".repeat(81) }),
+    ).rejects.toMatchObject({ data: { code: "INVALID_PROFILE" } });
+    await expect(
+      user.mutation(api.profiles.complete, {
+        displayName: "Taylor",
+        firstName: "x".repeat(51),
+      }),
     ).rejects.toMatchObject({ data: { code: "INVALID_PROFILE" } });
     await expect(user.query(api.profiles.getMine, {})).resolves.toBeNull();
   });
