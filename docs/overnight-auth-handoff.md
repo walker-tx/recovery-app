@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** The stale profile-save-error production implementation in `175fd65` remains green; this correction commit independently bounds its two source-contract assertions.
-- **Correction cycles for current section:** 1
-- **Last successful checks:** The corrected focused profile screen contract passed 2/2, the mobile package TypeScript check passed, and `git diff --check` passed; the focused test emitted only the existing module-type warning.
-- **Tests added in current section:** The profile screen source contract now extracts each self-contained `TextField` block by label before asserting that its own state setter is followed by `setFormError(null)`. A temporary mutation probe removing only the first-name clear failed the intended assertion 1/2.
-- **Review status:** Correction is green and awaits fresh review. Production code was unchanged.
-- **Blocking condition:** None currently; fresh review must verify that the corrected contract independently protects both field handlers.
-- **Next bounded action:** Freshly review this correction commit for correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality; do not edit production code.
+- **Next action:** correct
+- **Last known-good commit:** The stale profile-save-error production implementation in `175fd65` remains green; correction commit `fbe615a` improved sibling-field isolation but is not yet approved.
+- **Correction cycles for current section:** 2
+- **Last successful checks:** Fresh review reran the focused profile screen contract (2/2), the mobile package TypeScript check, and `git diff --check a893983..fbe615a`; all passed with only the existing module-type warning.
+- **Tests added in current section:** The source contract now isolates each `TextField`, but its setter-to-clear regex is not bounded to that field's `onChangeText` callback and can borrow a later clear from another prop in the same field.
+- **Review status:** Fresh review of `fbe615a` found one blocking P3 test-quality defect. Production behavior remains correct and unchanged.
+- **Blocking condition:** A field assertion can remain green after its edit handler stops clearing the stale error if a later prop in the same `TextField` calls `setFormError(null)`.
+- **Next bounded action:** Correct only this regression contract: first demonstrate the same-field borrowing case red, then constrain each assertion to its corresponding `onChangeText` callback, rerun focused and mobile package checks, preserve correction count 2, and set Next action to review.
+
+## Section 7 stale profile-save-error regression correction cycle 1 review
+
+Fresh review of `fbe615a` confirmed that selecting self-contained `TextField` blocks prevents the original sibling-field borrowing defect, and the documented one-handler removal probe is valid for the current source. One blocking P3 test-quality finding remains: the assertions at `profile-screen-contract.test.ts:34-35` match from the field setter through the rest of the entire `TextField`, not through only its `onChangeText` callback. A read-only mutation probe removed the first-name handler's clear and added a later `onFocus={() => setFormError(null)}` prop in the same field; the unchanged first-name assertion passed even though editing no longer cleared the stale error. The smallest correction is to extract or otherwise bound each `onChangeText` callback before asserting its setter and clear. Production code should remain unchanged unless the corrected regression exposes a separate defect.
+
+Architecture, simplicity, security/privacy, accessibility, and product lenses reported no additional findings. The independent skeptic confirmed this P3 as blocking for the current test-correction objective. No backend, Convex authorization, token storage, dependency, Expo configuration, generated-code, or deployment boundary changed. Static source coverage still does not prove mounted alert removal, focus retention, keyboard behavior, compact layouts, enlarged text, or VoiceOver/TalkBack behavior; section 7's sign-out-history and sensitive-data checks also remain open.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/features/onboarding/profile-screen-contract.test.ts` (2/2 passed with only the existing module-type warning), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check a893983..fbe615a` (passed). No production code or deployment state changed during review.
 
 ## Section 7 stale profile-save-error regression correction cycle 1
 
