@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** The accessible restoration-loading implementation in the current commit is green and awaits fresh review.
+- **Next action:** implement
+- **Last known-good commit:** `ec33183` accessible restoration loading is green and approved by fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** The focused auth route contract passed, the mobile package TypeScript check passed, and `git diff --check` passed.
-- **Tests added in current section:** The auth route contract now verifies that pending auth/profile restoration renders a named progress state instead of returning a blank tree.
-- **Review status:** The accessible restoration-loading implementation awaits fresh review.
+- **Last successful checks:** Fresh review reran the focused auth route contract, the mobile package TypeScript check, and `git diff --check`; all passed.
+- **Tests added in current section:** The auth route contract verifies that pending auth/profile restoration renders a named progress state instead of returning a blank tree.
+- **Review status:** Fresh review of `ec33183` found no actionable findings.
 - **Blocking condition:** None.
-- **Next bounded action:** Freshly review the current implementation commit across correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality. Do not edit production code during review.
+- **Next bounded action:** Implement exactly one remaining section 7 hardening item test-first, or document one bounded manual verification result if device access is available. Do not begin final section 8 verification in the same transition.
+
+## Section 7 accessible restoration-loading review
+
+Fresh review of `ec33183` found no actionable findings across correctness, architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fidelity, and test quality. The combined restoration branch still withholds every route guard until Convex Auth restoration and authenticated profile loading finish, while the new screen exposes visible scalable loading text and a named progress role without revealing account or profile data. No backend, authorization, token, logging, dependency, configuration, generated-code, or deployment boundary changed. An independent skeptic confirmed approval.
+
+The static contract proves source wiring, not mounted native behavior. Cold restoration, delayed profile loading, lifecycle transitions, route-history stability, and VoiceOver/TalkBack naming and announcement behavior remain device-verification gaps, alongside compact layouts, enlarged text, logical screen-reader order, sign-out history, and sensitive-data/UI checks.
+
+Fresh review reran `bash scripts/test-auth-route-contract.sh` (passed), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check` (passed). No production code or deployment state changed during review.
 
 ## Section 7 accessible restoration-loading implementation
 
