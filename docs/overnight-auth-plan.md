@@ -186,11 +186,11 @@ Acceptance: the plan contains no guessed version-sensitive API, baseline checks 
 
 ### 2. Establish routing and restoration boundaries
 
-- [ ] Add auth, onboarding, and app route groups with focused layouts.
-- [ ] Wait for Convex Auth restoration before evaluating guards.
-- [ ] Preserve the missing-Convex-URL state without calling auth hooks outside the provider.
-- [ ] Keep exactly one route matching `/`.
-- [ ] Remove the obsolete segmented auth route after replacement routes exist.
+- [x] Add auth, onboarding, and app route groups with focused layouts.
+- [x] Wait for Convex Auth restoration before evaluating guards.
+- [x] Preserve the missing-Convex-URL state without calling auth hooks outside the provider.
+- [x] Keep exactly one route matching `/`.
+- [x] Remove the obsolete segmented auth route after replacement routes exist.
 
 Acceptance: cold restoration renders neither auth nor authenticated content prematurely; unauthenticated users cannot render app routes; authenticated users cannot remain on auth routes; TypeScript passes.
 

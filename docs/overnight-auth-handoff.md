@@ -3,14 +3,14 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 2. Establish routing and restoration boundaries
-- **Next action:** implement
-- **Last known-good commit:** `20f06a7` (`Block auth contract after final review`), followed by an operator-approved safe-deferral plan revision
+- **Next action:** review
+- **Last known-good commit:** The section 2 implementation commit containing this handoff (`Add protected auth routes`).
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Expanded supervisor transition self-test, mobile TypeScript check, backend TypeScript check, shell syntax, and `git diff --check` pass for the operator-approved plan revision.
-- **Tests added in current section:** The supervisor self-test now covers approved/deferred review advancement, both correction cycles, and the terminal blocked transition. No application test exists yet for section 2; its first implementation invocation must start with `scripts/test-auth-route-contract.sh` and demonstrate the intended red result.
-- **Review status:** Section 1 limitations are accepted as feature-level deferrals, not run-wide blockers. The fixed non-enumeration policy remains unchanged.
-- **Blocking condition:** None for remaining safe work. Signup/verification and reset stay unavailable; do not add their routes, controls, providers, or code generation.
-- **Next bounded action:** Implement section 2 routing and restoration boundaries only, starting with the declared route-contract red test, then set `Next action` to `review`.
+- **Last successful checks:** `bash scripts/test-auth-route-contract.sh` passed; `mise exec -- pnpm --filter @recovery/mobile run check` passed.
+- **Tests added in current section:** Added `scripts/test-auth-route-contract.sh`. Red before production edits: it reported missing restoration handling, protected route groups, replacement routes, and obsolete segmented routing. Green after implementation: `Auth route contract passed.`
+- **Review status:** Section 2 implementation awaits a fresh review. The static contract verifies guards are withheld during restoration, missing configuration avoids auth hooks, all three groups are protected, exactly one index route owns `/`, and the obsolete segmented auth route is gone. Runtime simulator restoration remains unverified and must be considered during review/final device verification.
+- **Blocking condition:** None. Signup/verification and reset remain unavailable; no routes, controls, providers, or code generation for those deferred flows were added.
+- **Next bounded action:** Freshly review only the section 2 implementation commit for routing correctness, restoration behavior, architecture, simplicity, security/privacy, accessibility, product fidelity, and test quality; do not begin section 3.
 
 ## Operator-approved safe deferral
 
