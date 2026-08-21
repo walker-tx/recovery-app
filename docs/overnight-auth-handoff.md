@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** The duplicate sign-out prevention implementation in the current commit is green and awaits fresh review.
+- **Next action:** implement
+- **Last known-good commit:** `8412a24` duplicate sign-out prevention is green and approved by fresh review.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** The focused sign-out wiring and submission-guard tests passed 3/3, the mobile package TypeScript check passed, and `git diff --check` passed.
+- **Last successful checks:** Fresh review reran the focused sign-out wiring and submission-guard tests (3/3), the mobile package TypeScript check, and `git diff --check`; all passed.
 - **Tests added in current section:** The authenticated-home contract verifies that sign-out is wired through the synchronous submission guard; the existing guard behavior tests prove immediate duplicate requests collapse to one call and failure unlocks retry.
-- **Review status:** The duplicate sign-out prevention implementation awaits fresh review.
+- **Review status:** Fresh review of `8412a24` found no actionable findings.
 - **Blocking condition:** None.
-- **Next bounded action:** Freshly review the current implementation commit across correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality. Do not edit production code during review.
+- **Next bounded action:** Implement exactly one remaining section 7 hardening item test-first, or document one bounded manual verification result if device access is available. Do not begin final section 8 verification in the same transition.
+
+## Section 7 duplicate sign-out prevention review
+
+Fresh review of `8412a24` found no actionable findings across correctness, architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fidelity, and test quality. The per-mount guard sets its lock before the first await, suppresses an immediate second request, and releases in `finally`; the screen preserves Convex Auth session ownership, local pending/error state, the fixed sanitized failure message, retry after failure, and the shared button's disabled/busy accessibility state. Generalizing the guard changes only its value type and leaves the existing sign-in runtime behavior intact. No backend, authorization, token-storage, dependency, configuration, generated-code, or deployment boundary changed. An independent skeptic confirmed approval.
+
+The source contract proves wiring rather than mounted native behavior. Rapid taps through React Native, provider failure/retry integration, post-sign-out protected-route history, lifecycle transitions, and VoiceOver/TalkBack announcements remain device-verification gaps, alongside the open compact-layout, enlarged-text, logical reading-order, and sensitive-data/UI checks.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/features/auth/authenticated-home-screen-contract.test.ts apps/mobile/src/features/auth/auth-submission.test.ts` (3/3 passed with only the existing module-type warnings), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check` (passed). No production code or deployment state changed during review.
 
 ## Section 7 duplicate sign-out prevention implementation
 
