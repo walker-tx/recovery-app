@@ -2,15 +2,23 @@
 
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
-- **Current section:** 5. Add server-owned profile onboarding
-- **Next action:** review
-- **Last known-good commit:** `763bf28` is the approved backend base; the current green implementation commit adds the remaining section 5 mobile onboarding and authenticated-home behavior and awaits fresh review.
+- **Current section:** 7. Harden behavior and accessibility
+- **Next action:** implement
+- **Last known-good commit:** `448329b` is the approved section 5 profile onboarding, protected-home, and sign-out implementation. Section 6 remains completed through the reviewed reset privacy deferral.
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Focused onboarding policy tests passed 2/2, the profile backend suite passed 3/3, all mobile policy/state tests passed 8/8, the auth route contract passed, mobile and backend package TypeScript checks passed, `mise run check` passed 2/2 workspace tasks, Expo Doctor passed 17/17 checks with only a bundled-native-module fetch warning, and `git diff --check` passed.
-- **Tests added in current section:** `onboarding-policy.test.ts` covers the profile-loading routing boundary, incomplete/completed destinations, profile input normalization, required display-name validation, and 80/50-character name limits. `profiles.test.ts` now also proves those limits are enforced server-side without persistence. Existing profile ownership tests remain green.
-- **Review status:** The remaining section 5 implementation is green and awaits fresh review. Authenticated routing now waits separately for auth restoration and profile loading, incomplete users receive profile onboarding, completion exposes the protected home, and the home offers sanitized sign-out behavior.
+- **Last successful checks:** Fresh review passed all 8 mobile policy/state tests and all 3 profile backend tests, the auth route contract, mobile and backend package TypeScript checks, and `git diff --check`. The implementation commit also passed `mise run check` and Expo Doctor 17/17 with only a bundled-native-module fetch warning.
+- **Tests added in current section:** None yet. Section 5 coverage remains `onboarding-policy.test.ts` for routing/normalization/limits and `profiles.test.ts` for validation, ownership, persistence, and public shape.
+- **Review status:** Section 5 is approved with no blocking findings. Architecture, simplicity, security/privacy, Convex authorization, accessibility, adversarial behavior, product fit, and test quality were reviewed; the deterministic authz scan found zero hits in all four target shapes.
 - **Blocking condition:** None.
-- **Next bounded action:** Fresh-review the current implementation commit for correctness, architecture, simplicity, auth security/privacy, routing behavior, accessibility, product fidelity, and test quality. Use Convex-specific review/authz lenses because profile backend validation changed. Do not edit production code.
+- **Next bounded action:** Implement exactly one smallest justified section 7 hardening behavior test-first. Prioritize the profile keyboard/focus path or another bounded automated item; keep device-only verification explicit rather than adding broad test infrastructure.
+
+## Section 5 mobile profile and authenticated-home final review
+
+Fresh read-only review of `448329b` found no blocking defect. Route files remain composition-only, Convex owns profile completion, local React state owns transient form behavior, and the root guard distinguishes auth restoration from authenticated profile loading. The profile backend retains explicit validators, server-derived identity, owner-indexed bounded access, narrow public results, and per-owner mutation isolation. The mandatory auth-foundation check passed, and the deterministic authorization scan found zero client-supplied identity, missing ownership, PII-by-client-ID, or unchecked parent-container write shapes.
+
+The independent skeptic confirmed three nonblocking follow-ups. The profile copy says details can be changed later although no edit entry point exists; remove or fulfill that promise in later product work. Field-error association and first-invalid-field focus remain the previously accepted section 7 accessibility scope, and the profile screen's `returnKeyType="next"` still needs matching focus behavior. Returning `null` during profile loading extends the previously accepted blank-loading P3 gap and also remains section 7 hardening. Simulator/device checks for keyboard obstruction, compact layout, enlarged text, VoiceOver/TalkBack order and announcements, exact touch targets, and sign-out history remain unverified.
+
+Fresh review reran `mise exec -- sh -lc 'node --test apps/mobile/src/features/auth/*.test.ts apps/mobile/src/features/onboarding/*.test.ts'` (8/8 passed with only existing module-type warnings), `mise exec -- pnpm --filter @recovery/backend exec vitest run convex/profiles.test.ts` (3/3 passed), both mobile and backend package checks (passed), `bash scripts/test-auth-route-contract.sh` (passed), and `git diff --check` (passed). No production code or deployment state changed. Section 5 is approved, section 6 remains complete through its reviewed privacy deferral, and the next transition is section 7 implementation.
 
 ## Section 5 mobile profile and authenticated-home implementation
 
