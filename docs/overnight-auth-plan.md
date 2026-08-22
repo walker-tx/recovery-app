@@ -253,14 +253,16 @@ Acceptance: automated checks pass, manual-only gaps are explicit, and no known h
 
 ### 8. Final local verification and handoff
 
-- [ ] Run `mise exec -- pnpm --filter @recovery/mobile run check`.
-- [ ] Run `mise exec -- pnpm --filter @recovery/backend run check`.
-- [ ] Run relevant tests.
-- [ ] Run a bounded local Convex sync/codegen against the already confirmed local target.
-- [ ] Run `mise run check` for the cross-package change.
-- [ ] Run Expo Doctor only if dependencies or Expo configuration changed.
-- [ ] Run bounded iOS and Android export smoke checks.
-- [ ] Confirm `git status` is clean and summarize completed, deferred, blocked, and manually unverified behavior.
+- [x] Run `mise exec -- pnpm --filter @recovery/mobile run check`.
+- [x] Run `mise exec -- pnpm --filter @recovery/backend run check`.
+- [x] Run relevant tests.
+- [x] Run a bounded local Convex sync/codegen against the already confirmed local target.
+- [x] Run `mise run check` for the cross-package change.
+- [x] Run Expo Doctor only if dependencies or Expo configuration changed (not required; neither changed during final verification).
+- [x] Run bounded iOS and Android export smoke checks.
+- [x] Confirm `git status` is clean and summarize completed, deferred, blocked, and manually unverified behavior.
+
+Final verification completed against the local-anonymous Convex deployment. Returning-user sign-in, protected routing, profile onboarding, authenticated home, sign-out, focused auth/profile behavior tests, package checks, workspace checks, local function sync/codegen, and both native export bundles passed. Signup, verification, and reset remain intentionally unavailable under the reviewed pinned-package privacy/concurrency deferrals. Device-only compact-layout, keyboard, Dynamic Type, reading-order, VoiceOver, and TalkBack checks remain manually unverified because the host has no configured simulator or physical device; no blocking condition prevents this milestone handoff.
 
 Acceptance: every completed task has a validated commit, no production/cloud action occurred, and the handoff identifies the exact next manual step.
 

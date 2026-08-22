@@ -3,14 +3,24 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 8. Final local verification and handoff
-- **Next action:** implement
-- **Last known-good commit:** Section 7 simulator verification approved (this review commit; reviewed commit `9d78310`).
+- **Next action:** review
+- **Last known-good commit:** Section 8 final verification implemented (this commit; pending fresh review).
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reproduced the unavailable-device condition (no installed iOS runtimes or available devices; Android `adb` absent), reran the mobile package TypeScript check successfully, and passed `git diff --check d0938e7..9d78310`.
-- **Tests added in current section:** Section 7's focused policy, reducer, source-contract, route-history, and backend privacy tests remain green from their reviewed transitions. The final simulator transition added no production test because its bounded environment capability probe established that no device target exists.
-- **Review status:** Section 7 approved with no actionable findings. Six fresh lenses found one candidate about residual native-check scope; an independent skeptic rejected it because the checked item retains its narrow sourced scope and the same handoff keeps the other native verification gaps explicit.
-- **Blocking condition:** None. Visual compact-layout, keyboard, enlarged-text, logical screen-reader-order, mounted focus and announcement behavior, exact touch targets, and native assistive-technology checks remain explicitly deferred until an operator provides a configured simulator or physical device; this does not prevent independent final verification.
-- **Next bounded action:** Implement only section 8 final local verification and handoff. Classify the target before any deployment-affecting Convex command and proceed only if it is unambiguously local.
+- **Last successful checks:** Mobile and backend package checks passed; mobile tests passed 17/17; backend policy tests passed 2/2; backend profile tests passed 3/3; local-anonymous Convex sync/codegen completed; `mise run check` passed 2/2 tasks; bounded iOS and Android exports completed; `git diff --check` passed.
+- **Tests added in current section:** None. Section 8 is a verification-only transition; all existing focused mobile and backend behavior tests passed with their correct package-specific runners.
+- **Review status:** Section 8 implementation completed and awaits fresh read-only review. No production code, dependency, Expo configuration, or deployment selection changed.
+- **Blocking condition:** None. Signup, verification, and reset remain accepted feature-level deferrals. Visual compact-layout, keyboard, enlarged-text, logical screen-reader-order, mounted focus and announcement behavior, exact touch targets, and native assistive-technology checks remain explicitly deferred until an operator provides a configured simulator or physical device.
+- **Next bounded action:** Review only the section 8 final-verification commit and its recorded evidence; do not begin later work.
+
+## Section 8 final local verification implementation
+
+The backend command target was classified before the deployment-affecting check: the backend package uses an anonymous local deployment with a loopback URL and no deployment key. The bounded `convex dev --once` run confirmed `[Local]` on the expected loopback port and completed function preparation/codegen. No cloud or production deployment was selected or changed.
+
+Final static and behavior verification passed: mobile and backend TypeScript package checks; all 17 mobile policy, reducer, accessibility, source-contract, and route-history tests; both backend auth-policy tests; all three Convex profile behavior tests; the 2/2-task workspace check; and clean iOS and Android Expo export bundles written outside the repository. Expo Doctor was not rerun because no dependency or Expo configuration changed in this transition. The working tree was clean before documentation updates, generated Convex output did not change, and `git diff --check` passed.
+
+One initial combined Vitest command was unsuitable for `auth-policy.test.ts`, which uses Node's test runner, and reported "No test suite found" even though its Node assertions printed as passing. The exact tests were immediately rerun with their intended runners: `node --test` passed the backend policy tests 2/2 and Vitest passed the profile tests 3/3. This was a command-selection error, not a product red result, and no repository change was made to mask it. Section 8 adds no behavior, so no transient red test was applicable.
+
+Completed safe milestone behavior includes returning-user password sign-in, restoration-aware protected routing, server-owned profile onboarding, authenticated home, sign-out, and the reviewed hardening contracts. Signup, verification, and reset remain intentionally unavailable under the accepted pinned-package privacy and resend-safety deferrals. Device-only compact-layout, keyboard, Dynamic Type, reading-order, VoiceOver, TalkBack, mounted focus/announcement, and exact touch-target checks remain manually unverified because no simulator or physical device is available; this is an explicit verification exception, not a hidden pass or run-wide blocker.
 
 ## Section 7 simulator verification review
 
