@@ -3,15 +3,21 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 8. Final local verification and handoff
-- **Next action:** review
-- **Last known-good commit:** Section 8 documentation-accuracy correction completed in this commit; pending fresh review.
-- **Correction cycles for current section:** 1
-- **Last successful checks:** The documentation regression check passed, requiring the plan to identify live local-backend device verification as manually unverified and this handoff to name the exact next operator step. `git diff --check` passed. The underlying section 8 transition recorded passing mobile/backend package checks, 17/17 mobile tests, 2/2 backend policy tests, 3/3 backend profile tests, local-anonymous Convex sync/codegen, `mise run check` (2/2 tasks), and bounded iOS/Android exports.
-- **Tests added in current section:** None. This correction uses a bounded documentation contract check; no live mounted mobile end-to-end test was run.
-- **Review status:** The blocking P2 documentation-accuracy finding from the review of `6d82e58` is corrected and awaits fresh review. No production code, backend code, dependency, generated code, Expo configuration, or deployment state changed.
-- **Blocking condition:** None pending fresh review. Signup, verification, and reset remain accepted feature-level deferrals, and live device verification remains an explicit manual gap rather than a claimed pass.
-- **Next bounded action:** Freshly review this documentation-only correction; do not repeat final verification or begin later work.
-- **Exact next operator step:** After approval, launch the app on a configured simulator or physical device pointed at the confirmed local Convex deployment. Exercise returning-user sign-in through profile onboarding, restart/restoration into protected home, then sign out and confirm protected app routes are removed before completing the remaining native accessibility checks.
+- **Next action:** complete
+- **Last known-good commit:** Documentation-accuracy correction `8cb8223` approved in this commit; the overnight milestone is complete.
+- **Correction cycles for current section:** 0
+- **Last successful checks:** Fresh review found no actionable findings across architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fit, and test quality. `git diff --check 121fd97..8cb8223` passed. The underlying section 8 transition recorded passing mobile/backend package checks, 17/17 mobile tests, 2/2 backend policy tests, 3/3 backend profile tests, local-anonymous Convex sync/codegen, `mise run check` (2/2 tasks), and bounded iOS/Android exports.
+- **Tests added in current section:** None. The correction used a bounded documentation contract check; no live mounted mobile end-to-end test was run.
+- **Review status:** Approved. The corrected plan and handoff limit passing claims to the checks actually run, retain the mounted live-backend and native accessibility gaps, and identify the exact next operator step. No production code, backend code, dependency, generated code, Expo configuration, or deployment state changed.
+- **Blocking condition:** None. Signup, verification, and reset remain accepted feature-level deferrals, and live device verification remains an explicit manual gap rather than a claimed pass.
+- **Next bounded action:** No later overnight transition remains. Perform the exact operator step below when a configured simulator or physical device is available.
+- **Exact next operator step:** Launch the app on a configured simulator or physical device pointed at the confirmed local Convex deployment. Exercise returning-user sign-in through profile onboarding, restart/restoration into protected home, then sign out and confirm protected app routes are removed before completing the remaining native accessibility checks.
+
+## Section 8 documentation-accuracy correction final review
+
+Fresh read-only review of `8cb8223` found no actionable findings. The correction accurately separates passing policy, reducer, source-contract, Convex harness, package/workspace, local sync/codegen, and export checks from the unverified mounted flow. It explicitly retains returning-user sign-in through profile onboarding and restoration, protected home, sign-out and protected-route removal, and native accessibility behavior as manual device gaps. The exact next operator step is recorded above.
+
+Architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fit, and test-quality lenses completed, and an independent skeptic confirmed approval. Convex authorization review was not applicable because `8cb8223` changed documentation only. `git diff --check 121fd97..8cb8223` passed. Signup, verification, and reset remain accepted feature-level deferrals; no production, backend, dependency, generated-code, Expo-configuration, or deployment state changed. The correction count resets to 0 and the overnight milestone is complete.
 
 ## Section 8 final verification wording correction cycle 1
 
