@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** Sign-out action contract correction (this commit; predecessor `45f6143`).
-- **Correction cycles for current section:** 1
-- **Last successful checks:** The focused sign-out history and authenticated-home contracts passed 2/2 with only existing module-type warnings, the mobile package TypeScript check passed, and `git diff --check` passed.
-- **Tests added in current section:** The authenticated-home source contract now connects the Sign out button to `handleSignOut`, the synchronous submission guard, and the awaited Convex Auth `signOut()` action; the complementary route-history contract verifies that the resulting signed-out route set removes `(app)`.
-- **Review status:** Pending fresh review of the sign-out action contract correction.
+- **Next action:** implement
+- **Last known-good commit:** Sign-out action contract correction approved (this review commit; reviewed commit `d45ae18`).
+- **Correction cycles for current section:** 0
+- **Last successful checks:** Fresh review reran the focused sign-out history and authenticated-home contracts (2/2 passed with only existing module-type warnings), the mobile package TypeScript check passed, and `git diff --check 45f6143..d45ae18` passed.
+- **Tests added in current section:** The authenticated-home source contract connects the Sign out button to `handleSignOut`, the synchronous submission guard, and awaited Convex Auth `signOut()`; the complementary route-history contract verifies that the signed-out route set removes `(app)`.
+- **Review status:** Approved with no actionable findings. Six fresh review lenses and an independent skeptic found the correction sound.
 - **Blocking condition:** None. Section 7 simulator checks for compact layouts, keyboard visibility, enlarged text, and logical screen-reader order remain explicit verification gaps.
-- **Next bounded action:** Freshly review only the sign-out action contract correction for correctness, architecture, simplicity, auth security/privacy, accessibility, product fidelity, and test quality; do not edit production code.
+- **Next bounded action:** Perform only the remaining bounded section 7 simulator verification for compact layouts, keyboard visibility, enlarged text, and logical screen-reader order; record exact devices/settings and observed gaps without beginning section 8.
+
+## Section 7 sign-out action contract correction cycle 1 final review
+
+Fresh read-only review of `d45ae18` found no actionable findings. The strengthened source contract now requires the sole Sign out button to invoke `handleSignOut`, requires that handler to enter the synchronous submission guard, and requires its guarded callback to await Convex Auth `signOut()`. Together with the existing root-guard and pinned Expo Router route-name contract, this closes the reviewed no-op-sign-out regression while leaving production behavior unchanged.
+
+Architecture, simplicity, security/privacy, accessibility, adversarial behavior, product fit, and test quality reported no findings. The independent skeptic confirmed approval. The regex remains a lexical contract rather than a mounted interaction test: it does not prove auth-provider propagation, native presses or back gestures, lifecycle behavior, or VoiceOver/TalkBack behavior. Contrived inert code could satisfy a lexical assertion, but no such decoy exists in the current source; this is a bounded static-test limitation, not a current blocker. No backend, Convex authorization, token storage, dependency, Expo configuration, generated code, or deployment boundary changed.
+
+Fresh review reran `mise exec -- node --test apps/mobile/src/features/auth/auth-route-history.test.ts apps/mobile/src/features/auth/authenticated-home-screen-contract.test.ts` (2/2 passed with only the existing module-type warnings), `mise exec -- pnpm --filter @recovery/mobile run check` (passed), and `git diff --check 45f6143..d45ae18` (passed). The remaining section 7 simulator checks for compact layouts, keyboard visibility, enlarged text, logical screen-reader order, and native assistive-technology behavior remain explicit verification gaps.
 
 ## Section 7 sign-out action contract correction cycle 1
 
