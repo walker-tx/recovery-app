@@ -2,15 +2,23 @@
 
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
-- **Current section:** 7. Harden behavior and accessibility
-- **Next action:** review
-- **Last known-good commit:** Section 7 simulator availability verification (this implementation commit).
+- **Current section:** 8. Final local verification and handoff
+- **Next action:** implement
+- **Last known-good commit:** Section 7 simulator verification approved (this review commit; reviewed commit `9d78310`).
 - **Correction cycles for current section:** 0
-- **Last successful checks:** The bounded simulator availability probe produced the intended red environment result (`available_ios=0`, `connected_android=0`, Android `adb` unavailable); the mobile package TypeScript check and `git diff --check` passed.
-- **Tests added in current section:** No production test was added for this verification-only transition. The environment capability probe is the smallest meaningful check because no simulator or device harness is installed.
-- **Review status:** Pending fresh review of the simulator-unavailability deferral and section 7 completion state.
-- **Blocking condition:** None. Visual compact-layout, keyboard, enlarged-text, logical screen-reader-order, and native assistive-technology checks are explicitly deferred until an operator provides a configured simulator or physical device; this does not prevent independent final verification.
-- **Next bounded action:** Freshly review only this documentation transition and its verified environment evidence; do not begin section 8 in the same invocation.
+- **Last successful checks:** Fresh review reproduced the unavailable-device condition (no installed iOS runtimes or available devices; Android `adb` absent), reran the mobile package TypeScript check successfully, and passed `git diff --check d0938e7..9d78310`.
+- **Tests added in current section:** Section 7's focused policy, reducer, source-contract, route-history, and backend privacy tests remain green from their reviewed transitions. The final simulator transition added no production test because its bounded environment capability probe established that no device target exists.
+- **Review status:** Section 7 approved with no actionable findings. Six fresh lenses found one candidate about residual native-check scope; an independent skeptic rejected it because the checked item retains its narrow sourced scope and the same handoff keeps the other native verification gaps explicit.
+- **Blocking condition:** None. Visual compact-layout, keyboard, enlarged-text, logical screen-reader-order, mounted focus and announcement behavior, exact touch targets, and native assistive-technology checks remain explicitly deferred until an operator provides a configured simulator or physical device; this does not prevent independent final verification.
+- **Next bounded action:** Implement only section 8 final local verification and handoff. Classify the target before any deployment-affecting Convex command and proceed only if it is unambiguously local.
+
+## Section 7 simulator verification review
+
+Fresh read-only review of `9d78310` found no actionable findings. The host capability result was reproduced: `xcrun simctl` reported no installed runtimes or available devices, while Android `adb` and SDK environment configuration were absent. The transition accurately records a verification exception rather than claiming compact-layout, keyboard, Dynamic Type, reading-order, VoiceOver, or TalkBack behavior passed, and it assigns those checks to a future operator session with a configured simulator or physical device. No production, dependency, Expo configuration, generated-code, backend, or deployment state changed.
+
+Architecture, simplicity, security/privacy, accessibility, adversarial behavior, and product-fit lenses completed. One accessibility candidate argued that the current summary should enumerate every historical mounted/native gap. The independent skeptic rejected it: the checked checklist item has the narrower sourced scope stated above, the broader section 7 test item is now complete through its focused tests and explicit verification exceptions, and the same handoff continues to record mounted focus, dynamic announcements, hardware-keyboard behavior, rapid-tap/lifecycle behavior, and exact touch-target gaps. These remain residual manual verification work, not blockers for independent final checks.
+
+Fresh review reran `mise exec -- pnpm --filter @recovery/mobile run check` (passed), `git diff --check d0938e7..9d78310` (passed), and the read-only host availability probe (no iOS runtimes/devices; Android `adb` unavailable). Section 7 is approved, its correction count resets to 0, and section 8 is the next implementation transition.
 
 ## Section 7 simulator verification implementation
 
