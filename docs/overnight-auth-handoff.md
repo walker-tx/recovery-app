@@ -3,14 +3,20 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 7. Harden behavior and accessibility
-- **Next action:** implement
-- **Last known-good commit:** Sign-out action contract correction approved (this review commit; reviewed commit `d45ae18`).
+- **Next action:** review
+- **Last known-good commit:** Section 7 simulator availability verification (this implementation commit).
 - **Correction cycles for current section:** 0
-- **Last successful checks:** Fresh review reran the focused sign-out history and authenticated-home contracts (2/2 passed with only existing module-type warnings), the mobile package TypeScript check passed, and `git diff --check 45f6143..d45ae18` passed.
-- **Tests added in current section:** The authenticated-home source contract connects the Sign out button to `handleSignOut`, the synchronous submission guard, and awaited Convex Auth `signOut()`; the complementary route-history contract verifies that the signed-out route set removes `(app)`.
-- **Review status:** Approved with no actionable findings. Six fresh review lenses and an independent skeptic found the correction sound.
-- **Blocking condition:** None. Section 7 simulator checks for compact layouts, keyboard visibility, enlarged text, and logical screen-reader order remain explicit verification gaps.
-- **Next bounded action:** Perform only the remaining bounded section 7 simulator verification for compact layouts, keyboard visibility, enlarged text, and logical screen-reader order; record exact devices/settings and observed gaps without beginning section 8.
+- **Last successful checks:** The bounded simulator availability probe produced the intended red environment result (`available_ios=0`, `connected_android=0`, Android `adb` unavailable); the mobile package TypeScript check and `git diff --check` passed.
+- **Tests added in current section:** No production test was added for this verification-only transition. The environment capability probe is the smallest meaningful check because no simulator or device harness is installed.
+- **Review status:** Pending fresh review of the simulator-unavailability deferral and section 7 completion state.
+- **Blocking condition:** None. Visual compact-layout, keyboard, enlarged-text, logical screen-reader-order, and native assistive-technology checks are explicitly deferred until an operator provides a configured simulator or physical device; this does not prevent independent final verification.
+- **Next bounded action:** Freshly review only this documentation transition and its verified environment evidence; do not begin section 8 in the same invocation.
+
+## Section 7 simulator verification implementation
+
+The remaining device-only checks could not run in the overnight host environment. A bounded capability probe required at least one available iOS simulator or connected Android emulator and failed for the intended environmental reason: `xcrun simctl list devices available` exposed zero devices, while Android `adb` was not installed and no Android emulator was connected. No app, backend, dependency, Expo configuration, generated code, or deployment state changed.
+
+Because there is no rendered mobile interaction harness and no installed device target, adding an automated UI dependency or creating native simulator infrastructure would exceed this bounded verification task. The checklist records an explicit verification exception rather than claiming that compact layout, keyboard visibility, Dynamic Type, logical screen-reader order, VoiceOver, or TalkBack passed. These checks remain assigned to the next operator session with a configured simulator or physical device and do not block section 8's independent static, package, export, and local-backend verification. The mobile package TypeScript check and `git diff --check` passed.
 
 ## Section 7 sign-out action contract correction cycle 1 final review
 

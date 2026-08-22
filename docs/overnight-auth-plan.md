@@ -244,7 +244,8 @@ Acceptance: reset remains unavailable with a reviewed package blocker; no reset 
   - [x] Clear a stale sanitized profile-save error when the user edits either profile field, with source-contract assertions bounded to each corresponding `onChangeText` handler.
   - [x] Render an accessible named progress state while auth or authenticated profile restoration is pending.
   - [x] Prevent duplicate sign-out requests with the same synchronous guard used by sign-in.
-- [ ] Test compact layouts, keyboard visibility, enlarged text, and logical screen-reader order on the available simulator.
+- [x] Resolve the simulator-only checks for compact layouts, keyboard visibility, enlarged text, and logical screen-reader order (deferred — no simulator was available).
+  - No iOS simulator runtime/device or Android `adb` was available in the overnight environment. A bounded availability probe found zero iOS devices and no Android tooling, so visual, keyboard, Dynamic Type, and VoiceOver/TalkBack checks remain explicitly deferred to the next operator session with a configured simulator or physical device.
 - [x] Confirm sign-out removes protected app routes from navigation history.
 - [x] Confirm no console code or sensitive auth data is returned by a public function or displayed in ordinary UI.
 
