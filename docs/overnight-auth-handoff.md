@@ -3,14 +3,21 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 8. Final local verification and handoff
-- **Next action:** correct
-- **Last known-good commit:** Section 8 final-verification commit `6d82e58` reviewed; its checks are green, but its durable completion wording requires correction.
+- **Next action:** review
+- **Last known-good commit:** Section 8 documentation-accuracy correction completed in this commit; pending fresh review.
 - **Correction cycles for current section:** 1
-- **Last successful checks:** Section 8 evidence and test inventory were inspected; `git diff --check 1bcaeef..6d82e58` passed. The implementation transition recorded passing mobile/backend package checks, 17/17 mobile tests, 2/2 backend policy tests, 3/3 backend profile tests, local-anonymous Convex sync/codegen, `mise run check` (2/2 tasks), and bounded iOS/Android exports.
-- **Tests added in current section:** None. Section 8 is a verification-only transition; no live mounted mobile end-to-end test was run.
-- **Review status:** One blocking P2 documentation-accuracy finding was verified in `6d82e58`. Architecture, simplicity, security/privacy, accessibility, adversarial/test-quality, and product-fidelity lenses found no production defect; Convex authorization was not applicable because no backend code changed.
-- **Blocking condition:** The plan overstates focused/static/backend-harness/export checks as proving the core mobile flow against local Convex, and the handoff does not name the exact next manual step required by section 8 acceptance. This blocks approval of the final handoff, not safe application behavior.
-- **Next bounded action:** Correct documentation only: narrow the final-verification claim to the checks actually run, explicitly retain live local-backend sign-in through onboarding/restoration, protected home, and sign-out as manually unverified, and name that device smoke flow as the exact next operator step. Do not change production code.
+- **Last successful checks:** The documentation regression check passed, requiring the plan to identify live local-backend device verification as manually unverified and this handoff to name the exact next operator step. `git diff --check` passed. The underlying section 8 transition recorded passing mobile/backend package checks, 17/17 mobile tests, 2/2 backend policy tests, 3/3 backend profile tests, local-anonymous Convex sync/codegen, `mise run check` (2/2 tasks), and bounded iOS/Android exports.
+- **Tests added in current section:** None. This correction uses a bounded documentation contract check; no live mounted mobile end-to-end test was run.
+- **Review status:** The blocking P2 documentation-accuracy finding from the review of `6d82e58` is corrected and awaits fresh review. No production code, backend code, dependency, generated code, Expo configuration, or deployment state changed.
+- **Blocking condition:** None pending fresh review. Signup, verification, and reset remain accepted feature-level deferrals, and live device verification remains an explicit manual gap rather than a claimed pass.
+- **Next bounded action:** Freshly review this documentation-only correction; do not repeat final verification or begin later work.
+- **Exact next operator step:** After approval, launch the app on a configured simulator or physical device pointed at the confirmed local Convex deployment. Exercise returning-user sign-in through profile onboarding, restart/restoration into protected home, then sign out and confirm protected app routes are removed before completing the remaining native accessibility checks.
+
+## Section 8 final verification wording correction cycle 1
+
+The final plan now limits its passing claim to the checks actually run: focused policy, reducer, source-contract, and Convex harness tests; package and workspace checks; local function sync/codegen; and native export bundling. It explicitly records that no mounted client exercised returning-user sign-in, onboarding and restoration, protected home, or sign-out against the live local backend. The exact next operator step is recorded above. No application, backend, dependency, generated-code, Expo-configuration, or deployment state changed.
+
+For red evidence, a bounded documentation contract initially failed because the plan did not contain the required live-device verification caveat and this handoff did not label an exact next operator step. After correction, the same contract passed, and `git diff --check` passed. No red state was committed.
 
 ## Section 8 final local verification review
 
@@ -28,7 +35,7 @@ Final static and behavior verification passed: mobile and backend TypeScript pac
 
 One initial combined Vitest command was unsuitable for `auth-policy.test.ts`, which uses Node's test runner, and reported "No test suite found" even though its Node assertions printed as passing. The exact tests were immediately rerun with their intended runners: `node --test` passed the backend policy tests 2/2 and Vitest passed the profile tests 3/3. This was a command-selection error, not a product red result, and no repository change was made to mask it. Section 8 adds no behavior, so no transient red test was applicable.
 
-Completed safe milestone behavior includes returning-user password sign-in, restoration-aware protected routing, server-owned profile onboarding, authenticated home, sign-out, and the reviewed hardening contracts. Signup, verification, and reset remain intentionally unavailable under the accepted pinned-package privacy and resend-safety deferrals. Device-only compact-layout, keyboard, Dynamic Type, reading-order, VoiceOver, TalkBack, mounted focus/announcement, and exact touch-target checks remain manually unverified because no simulator or physical device is available; this is an explicit verification exception, not a hidden pass or run-wide blocker.
+Implemented safe milestone behavior includes returning-user password sign-in, restoration-aware protected routing, server-owned profile onboarding, authenticated home, sign-out, and the reviewed hardening contracts. Focused static and harness checks cover their bounded contracts, but the complete mounted flow against the live local backend remains manually unverified. Signup, verification, and reset remain intentionally unavailable under the accepted pinned-package privacy and resend-safety deferrals. Device-only compact-layout, keyboard, Dynamic Type, reading-order, VoiceOver, TalkBack, mounted focus/announcement, and exact touch-target checks also remain manually unverified because no simulator or physical device is available; these are explicit verification exceptions, not hidden passes or run-wide blockers.
 
 ## Section 7 simulator verification review
 
