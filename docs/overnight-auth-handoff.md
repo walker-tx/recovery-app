@@ -3,14 +3,22 @@
 This file is the durable handoff for `docs/overnight-auth-plan.md`. Agents must verify it against Git and repository state before acting.
 
 - **Current section:** 8. Final local verification and handoff
-- **Next action:** review
-- **Last known-good commit:** Section 8 final verification implemented (this commit; pending fresh review).
-- **Correction cycles for current section:** 0
-- **Last successful checks:** Mobile and backend package checks passed; mobile tests passed 17/17; backend policy tests passed 2/2; backend profile tests passed 3/3; local-anonymous Convex sync/codegen completed; `mise run check` passed 2/2 tasks; bounded iOS and Android exports completed; `git diff --check` passed.
-- **Tests added in current section:** None. Section 8 is a verification-only transition; all existing focused mobile and backend behavior tests passed with their correct package-specific runners.
-- **Review status:** Section 8 implementation completed and awaits fresh read-only review. No production code, dependency, Expo configuration, or deployment selection changed.
-- **Blocking condition:** None. Signup, verification, and reset remain accepted feature-level deferrals. Visual compact-layout, keyboard, enlarged-text, logical screen-reader-order, mounted focus and announcement behavior, exact touch targets, and native assistive-technology checks remain explicitly deferred until an operator provides a configured simulator or physical device.
-- **Next bounded action:** Review only the section 8 final-verification commit and its recorded evidence; do not begin later work.
+- **Next action:** correct
+- **Last known-good commit:** Section 8 final-verification commit `6d82e58` reviewed; its checks are green, but its durable completion wording requires correction.
+- **Correction cycles for current section:** 1
+- **Last successful checks:** Section 8 evidence and test inventory were inspected; `git diff --check 1bcaeef..6d82e58` passed. The implementation transition recorded passing mobile/backend package checks, 17/17 mobile tests, 2/2 backend policy tests, 3/3 backend profile tests, local-anonymous Convex sync/codegen, `mise run check` (2/2 tasks), and bounded iOS/Android exports.
+- **Tests added in current section:** None. Section 8 is a verification-only transition; no live mounted mobile end-to-end test was run.
+- **Review status:** One blocking P2 documentation-accuracy finding was verified in `6d82e58`. Architecture, simplicity, security/privacy, accessibility, adversarial/test-quality, and product-fidelity lenses found no production defect; Convex authorization was not applicable because no backend code changed.
+- **Blocking condition:** The plan overstates focused/static/backend-harness/export checks as proving the core mobile flow against local Convex, and the handoff does not name the exact next manual step required by section 8 acceptance. This blocks approval of the final handoff, not safe application behavior.
+- **Next bounded action:** Correct documentation only: narrow the final-verification claim to the checks actually run, explicitly retain live local-backend sign-in through onboarding/restoration, protected home, and sign-out as manually unverified, and name that device smoke flow as the exact next operator step. Do not change production code.
+
+## Section 8 final local verification review
+
+Fresh read-only review of `6d82e58` found one blocking P2 documentation-accuracy issue. The section 8 evidence proves TypeScript/package/workspace checks, focused policy/reducer/source-contract tests, Convex profile behavior under `convex-test`, local function sync/codegen, and native export bundling. It does not prove a mounted mobile client completed returning-user sign-in, profile onboarding/restoration, protected home, and sign-out against the live local deployment. `docs/overnight-auth-plan.md` nevertheless says those behaviors passed against local-anonymous Convex, while earlier handoff history explicitly retained successful local-backend sign-in as unverified. The same final handoff lists device-only gaps but does not identify the exact first manual action required by section 8 acceptance.
+
+The smallest correction is documentation-only: describe the successful verification categories precisely, retain the live local-backend device flow as manually unverified, and tell the operator to launch the app on a configured simulator or physical device against the confirmed local deployment and exercise returning-user sign-in through onboarding persistence/restoration, protected home, and sign-out/protected-route removal before the remaining native accessibility checks. No production, backend, dependency, generated-code, Expo-configuration, or deployment change is indicated.
+
+Architecture, simplicity, auth security/privacy, accessibility, adversarial/test quality, and product-fidelity lenses completed. Convex authorization review was not applicable because `6d82e58` changed documentation only. An independent skeptic confirmed the overstatement and missing exact manual step; summary-only runner output was rejected as a separate finding because the durable handoff records the relevant command classes and outcomes. `git diff --check 1bcaeef..6d82e58` passed.
 
 ## Section 8 final local verification implementation
 
