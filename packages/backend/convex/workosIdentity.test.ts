@@ -1,10 +1,16 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { UserIdentity } from "convex/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { requireWorkOSIdentity } from "./workosIdentity";
+import {
+  findGetUserIdentityUsages,
+  sourceUsesGetUserIdentity,
+} from "./workosIdentitySourceContract.testHelper";
 
 const clientId = "client_01ABC123";
 const issuer = `https://api.workos.com/user_management/${clientId}`;
@@ -76,19 +82,63 @@ describe("requireWorkOSIdentity", () => {
   );
 });
 
-it("centralizes direct protected identity reads in workosIdentity.ts", () => {
+it("centralizes protected identity reads in workosIdentity.ts", () => {
   const directory = fileURLToPath(new URL(".", import.meta.url));
-  const directCall = ["ctx", "auth", "getUserIdentity"].join(".") + "(";
-  const offenders = readdirSync(directory)
-    .filter(
-      (name) =>
-        name.endsWith(".ts") &&
-        !name.endsWith(".test.ts") &&
-        name !== "workosIdentity.ts",
-    )
-    .filter((name) =>
-      readFileSync(new URL(name, import.meta.url), "utf8").includes(directCall),
-    );
+  expect(
+    findGetUserIdentityUsages({
+      rootDirectory: directory,
+      allowedFile: join(directory, "workosIdentity.ts"),
+    }),
+  ).toEqual([]);
+});
 
-  expect(offenders).toEqual([]);
+describe("WorkOS identity source-contract detection", () => {
+  it.each([
+    ["different context variable", "session.auth.getUserIdentity()"],
+    ["call whitespace", "ctx.auth.getUserIdentity    ()"],
+    ["optional chaining", "ctx?.auth?.getUserIdentity?.()"],
+    ["computed access", 'auth["getUserIdentity"]()'],
+    ["destructuring", "const { getUserIdentity: readIdentity } = auth"],
+  ])("detects %s", (_case, source) => {
+    expect(sourceUsesGetUserIdentity(source)).toBe(true);
+  });
+
+  it("ignores comments and string contents", () => {
+    expect(
+      sourceUsesGetUserIdentity(
+        '// getUserIdentity\nconst label = "getUserIdentity";',
+      ),
+    ).toBe(false);
+  });
+
+  it("recursively catches nested production files while excluding tests and generated code", () => {
+    const rootDirectory = mkdtempSync(join(tmpdir(), "workos-identity-guard-"));
+    const nestedDirectory = join(rootDirectory, "nested");
+    const generatedDirectory = join(rootDirectory, "_generated");
+    const allowedFile = join(rootDirectory, "workosIdentity.ts");
+
+    try {
+      mkdirSync(nestedDirectory);
+      mkdirSync(generatedDirectory);
+      writeFileSync(allowedFile, "ctx.auth.getUserIdentity()");
+      writeFileSync(
+        join(nestedDirectory, "protected.ts"),
+        "const { getUserIdentity } = auth",
+      );
+      writeFileSync(
+        join(nestedDirectory, "protected.test.ts"),
+        "otherAuth.getUserIdentity()",
+      );
+      writeFileSync(
+        join(generatedDirectory, "server.ts"),
+        "otherAuth.getUserIdentity()",
+      );
+
+      expect(
+        findGetUserIdentityUsages({ rootDirectory, allowedFile }),
+      ).toEqual([join("nested", "protected.ts")]);
+    } finally {
+      rmSync(rootDirectory, { recursive: true, force: true });
+    }
+  });
 });
