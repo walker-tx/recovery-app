@@ -525,6 +525,11 @@ describe("WorkOS auth orchestration", () => {
         throw new Error("fingerprint failed");
       };
     }],
+    ["admission persistence", (test: ReturnType<typeof harness>) => {
+      vi.mocked(test.dependencies.intents.admitInitiationRequest).mockRejectedValue(
+        new Error("admission persistence failed"),
+      );
+    }],
     ["encryption", (test: ReturnType<typeof harness>) => {
       test.dependencies.encryptPendingAuthenticationToken = () => {
         throw new Error("encryption failed");
@@ -566,6 +571,11 @@ describe("WorkOS auth orchestration", () => {
       test.dependencies.fingerprintEmail = () => {
         throw new Error("fingerprint failed");
       };
+    }],
+    ["admission persistence", (test: ReturnType<typeof harness>) => {
+      vi.mocked(test.dependencies.intents.admitInitiationRequest).mockRejectedValue(
+        new Error("admission persistence failed"),
+      );
     }],
     ["delivery", (test: ReturnType<typeof harness>) => {
       test.gateway.seed(
