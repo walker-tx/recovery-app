@@ -57,7 +57,11 @@ class FakeWorkOSGateway implements WorkOSGateway {
       throw new Error("invalidCredentials");
     }
     if (entry.classification.kind === "unverifiedPassword") {
-      throw new Error("verificationRequired");
+      return {
+        kind: "verificationRequired" as const,
+        emailVerificationId: `verification-${entry.classification.user.id}`,
+        pendingAuthenticationToken: `pending-${entry.classification.user.id}`,
+      };
     }
     return this.#newSession(entry.classification.user);
   }
@@ -68,17 +72,18 @@ class FakeWorkOSGateway implements WorkOSGateway {
     return verification;
   }
 
-  async completeEmailVerification(input: { userId: string; code: string }) {
+  async completeEmailVerification(input: { pendingAuthenticationToken: string; code: string }) {
+    const userId = input.pendingAuthenticationToken.replace(/^pending-/, "");
     const entry = [...this.#users.values()].find(
       ({ classification }) =>
-        classification.kind !== "new" && classification.user.id === input.userId,
+        classification.kind !== "new" && classification.user.id === userId,
     );
     if (!entry || input.code !== "123456" || entry.classification.kind === "new") {
       throw new Error("invalidVerification");
     }
     const user = { ...entry.classification.user, emailVerified: true };
     this.seed({ kind: "password", user }, entry.password);
-    return user;
+    return this.#newSession(user);
   }
 
   createVerification(userId: string) {
@@ -121,7 +126,7 @@ class FakeWorkOSGateway implements WorkOSGateway {
   async refreshSession(refreshToken: string) {
     const session = this.#sessions.get(refreshToken);
     if (!session) throw new Error("invalidSession");
-    return this.#newSession(session.user);
+    return { ...session, accessToken: `${session.accessToken}-refreshed` };
   }
 
   async revokeSession(sessionId: string) {
@@ -143,7 +148,8 @@ class FakeWorkOSGateway implements WorkOSGateway {
 
   #newSession(user: WorkOSGatewayUser): WorkOSGatewaySession {
     const sequence = this.#sessions.size + 1;
-    const session = {
+    const session: WorkOSGatewaySession = {
+      kind: "authenticated",
       user,
       sessionId: `session-${sequence}`,
       accessToken: `access-${sequence}`,
@@ -201,13 +207,19 @@ describe("WorkOSGateway contract", () => {
     const verification = gateway.createVerification(created.id);
 
     await expect(gateway.getEmailVerification(verification.id)).resolves.toEqual(verification);
-    await gateway.completeEmailVerification({ userId: created.id, code: verification.code });
-    const session = await gateway.authenticatePassword({
+    const challenge = await gateway.authenticatePassword({
       email: created.email,
       password: "initial-password",
     });
+    expect(challenge.kind).toBe("verificationRequired");
+    if (challenge.kind !== "verificationRequired") throw new Error("expected challenge");
+    const session = await gateway.completeEmailVerification({
+      pendingAuthenticationToken: challenge.pendingAuthenticationToken,
+      code: verification.code,
+    });
     const refreshed = await gateway.refreshSession(session.refreshToken);
     expect(refreshed.user).toEqual({ ...created, emailVerified: true });
+    expect(refreshed.refreshToken).toBe(session.refreshToken);
     await gateway.revokeSession(refreshed.sessionId);
     await expect(gateway.refreshSession(refreshed.refreshToken)).rejects.toThrow(
       "invalidSession",

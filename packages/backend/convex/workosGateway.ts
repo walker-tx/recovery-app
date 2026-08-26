@@ -13,11 +13,20 @@ export type WorkOSUserClassification =
   | { kind: "unknownRecovery"; user: WorkOSGatewayUser };
 
 export type WorkOSGatewaySession = {
+  kind: "authenticated";
   user: WorkOSGatewayUser;
   sessionId: string;
   accessToken: string;
   refreshToken: string;
 };
+
+export type WorkOSGatewayAuthentication =
+  | WorkOSGatewaySession
+  | {
+      kind: "verificationRequired";
+      emailVerificationId: string;
+      pendingAuthenticationToken: string;
+    };
 
 export type WorkOSEmailVerification = {
   id: string;
@@ -39,9 +48,12 @@ export interface WorkOSGateway {
   authenticatePassword(input: {
     email: string;
     password: string;
-  }): Promise<WorkOSGatewaySession>;
+  }): Promise<WorkOSGatewayAuthentication>;
   getEmailVerification(id: string): Promise<WorkOSEmailVerification>;
-  completeEmailVerification(input: { userId: string; code: string }): Promise<WorkOSGatewayUser>;
+  completeEmailVerification(input: {
+    pendingAuthenticationToken: string;
+    code: string;
+  }): Promise<WorkOSGatewaySession>;
   createPasswordReset(email: string): Promise<WorkOSPasswordReset>;
   completePasswordReset(input: { token: string; newPassword: string }): Promise<WorkOSGatewayUser>;
   refreshSession(refreshToken: string): Promise<WorkOSGatewaySession>;

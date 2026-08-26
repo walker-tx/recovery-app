@@ -51,14 +51,19 @@ export const workosGateway: WorkOSGateway = {
   },
 
   async authenticatePassword(input) {
-    return safely("authenticatePassword", async () =>
-      toGatewaySession(
+    try {
+      return toGatewaySession(
         await getWorkOS().userManagement.authenticateWithPassword({
           email: input.email,
           password: input.password,
         }),
-      ),
-    );
+      );
+    } catch (error) {
+      const challenge = verificationChallengeFromError(error);
+      if (challenge !== undefined) return challenge;
+      if (error instanceof WorkOSGatewayError) throw error;
+      throw new WorkOSGatewayError(categorizeWorkOSError("authenticatePassword", error));
+    }
   },
 
   async getEmailVerification(id) {
@@ -69,7 +74,12 @@ export const workosGateway: WorkOSGateway = {
 
   async completeEmailVerification(input) {
     return safely("completeEmailVerification", async () =>
-      toGatewayUser(await getWorkOS().userManagement.verifyEmail(input).then(({ user }) => user)),
+      toGatewaySession(
+        await getWorkOS().userManagement.authenticateWithEmailVerification({
+          pendingAuthenticationToken: input.pendingAuthenticationToken,
+          code: input.code,
+        }),
+      ),
     );
   },
 
@@ -127,6 +137,7 @@ function toGatewaySession(session: {
   refreshToken: string;
 }): WorkOSGatewaySession {
   return {
+    kind: "authenticated",
     user: toGatewayUser(session.user),
     sessionId: sessionIdFromAccessToken(session.accessToken),
     accessToken: session.accessToken,
@@ -172,6 +183,30 @@ function sessionIdFromAccessToken(accessToken: string): string {
     // The safe gateway error below intentionally omits provider token details.
   }
   throw new WorkOSGatewayError("providerUnavailable");
+}
+
+function verificationChallengeFromError(error: unknown) {
+  if (typeof error !== "object" || error === null) return undefined;
+  const providerError = error as {
+    code?: unknown;
+    pendingAuthenticationToken?: unknown;
+    rawData?: { email_verification_id?: unknown };
+  };
+  if (providerError.code !== "email_verification_required") return undefined;
+  const emailVerificationId = providerError.rawData?.email_verification_id;
+  if (
+    typeof providerError.pendingAuthenticationToken !== "string" ||
+    providerError.pendingAuthenticationToken === "" ||
+    typeof emailVerificationId !== "string" ||
+    emailVerificationId === ""
+  ) {
+    throw new WorkOSGatewayError("providerUnavailable");
+  }
+  return {
+    kind: "verificationRequired" as const,
+    emailVerificationId,
+    pendingAuthenticationToken: providerError.pendingAuthenticationToken,
+  };
 }
 
 function getWorkOS(): WorkOS {
