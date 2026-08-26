@@ -195,7 +195,7 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
         await revokeSafely(dependencies.gateway, session.sessionId);
         throw providerUnavailable();
       }
-      await dependencies.syncIdentitySnapshot(session.user);
+      await syncIdentityOrRevoke(dependencies, session);
       return publicSession(session);
     } catch (error) {
       if (!providerCompleted) {
@@ -221,7 +221,7 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       if (authentication.kind === "verificationRequired") {
         throw new WorkOSAuthError("INVALID_CREDENTIALS");
       }
-      await dependencies.syncIdentitySnapshot(authentication.user);
+      await syncIdentityOrRevoke(dependencies, authentication);
       return publicSession(authentication);
     } catch (error) {
       if (error instanceof WorkOSAuthError) throw error;
@@ -318,6 +318,18 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
     startRecovery,
     resetPassword,
   };
+}
+
+async function syncIdentityOrRevoke(
+  dependencies: WorkOSAuthOrchestrationDependencies,
+  session: WorkOSGatewaySession,
+) {
+  try {
+    await dependencies.syncIdentitySnapshot(session.user);
+  } catch {
+    await revokeSafely(dependencies.gateway, session.sessionId);
+    throw providerUnavailable();
+  }
 }
 
 function publicSession(session: WorkOSGatewaySession): PublicSession {

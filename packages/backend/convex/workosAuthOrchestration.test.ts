@@ -366,6 +366,38 @@ describe("WorkOS auth orchestration", () => {
     expect(events).toEqual(["acquire", "providerComplete", "durableConsume", "publicSuccess"]);
   });
 
+  it("revokes a completed signup session after snapshot synchronization fails", async () => {
+    const test = harness();
+    const started = await test.auth.startSignup({
+      email: "snapshot-failure@example.net",
+      password: "password",
+    });
+    const events: string[] = [];
+    const durableComplete = test.dependencies.intents.completeSignupIntent;
+    const revoke = test.gateway.revokeSession.bind(test.gateway);
+    vi.spyOn(test.dependencies.intents, "completeSignupIntent").mockImplementation(
+      async (input) => {
+        events.push("durableConsume");
+        return durableComplete(input);
+      },
+    );
+    vi.mocked(test.dependencies.syncIdentitySnapshot).mockImplementation(async () => {
+      events.push("snapshotSync");
+      throw new Error("snapshot persistence failed");
+    });
+    vi.spyOn(test.gateway, "revokeSession").mockImplementation(async (sessionId) => {
+      events.push("revokeSession");
+      return revoke(sessionId);
+    });
+
+    await expect(
+      test.auth.completeSignup({ intentId: started.intentId, code: "123456" }),
+    ).rejects.toEqual(expectAuthError("PROVIDER_UNAVAILABLE"));
+    expect(events).toEqual(["durableConsume", "snapshotSync", "revokeSession"]);
+    expect(test.gateway.sessions).toHaveLength(0);
+    expect(test.intents.get(started.intentId)?.state).toBe("consumed");
+  });
+
   it("retries durable consumption once before returning provider credentials", async () => {
     const test = harness();
     const started = await test.auth.startSignup({
@@ -473,6 +505,56 @@ describe("WorkOS auth orchestration", () => {
 
     await expect(test.auth.signIn({ email: "missing@example.net", password: "wrong" })).rejects.toEqual(expectAuthError("INVALID_CREDENTIALS"));
     await expect(test.auth.signIn({ email: "known@example.net", password: "wrong" })).rejects.toEqual(expectAuthError("INVALID_CREDENTIALS"));
+  });
+
+  it("revokes a newly issued sign-in session after snapshot synchronization fails", async () => {
+    const test = harness();
+    test.gateway.seed(
+      { kind: "password", user: userFor("sign-in-sync-failure@example.net") },
+      "correct",
+    );
+    const events: string[] = [];
+    const authenticate = test.gateway.authenticatePassword.bind(test.gateway);
+    const revoke = test.gateway.revokeSession.bind(test.gateway);
+    vi.spyOn(test.gateway, "authenticatePassword").mockImplementation(async (input) => {
+      events.push("authenticatePassword");
+      return authenticate(input);
+    });
+    vi.mocked(test.dependencies.syncIdentitySnapshot).mockImplementation(async () => {
+      events.push("snapshotSync");
+      throw new Error("snapshot persistence failed");
+    });
+    vi.spyOn(test.gateway, "revokeSession").mockImplementation(async (sessionId) => {
+      events.push("revokeSession");
+      return revoke(sessionId);
+    });
+
+    await expect(
+      test.auth.signIn({ email: "sign-in-sync-failure@example.net", password: "correct" }),
+    ).rejects.toEqual(expectAuthError("PROVIDER_UNAVAILABLE"));
+    expect(events).toEqual(["authenticatePassword", "snapshotSync", "revokeSession"]);
+    expect(test.gateway.sessions).toHaveLength(0);
+  });
+
+  it("keeps a refresh credential recoverable after snapshot synchronization fails", async () => {
+    const test = harness();
+    test.gateway.seed({ kind: "password", user: userFor("refresh-retry@example.net") }, "correct");
+    const signedIn = await test.auth.signIn({
+      email: "refresh-retry@example.net",
+      password: "correct",
+    });
+    vi.mocked(test.dependencies.syncIdentitySnapshot)
+      .mockRejectedValueOnce(new Error("snapshot persistence failed"))
+      .mockResolvedValue(undefined);
+
+    await expect(
+      test.auth.refreshSession({ refreshToken: signedIn.refreshToken }),
+    ).rejects.toEqual(expectAuthError("PROVIDER_UNAVAILABLE"));
+    expect(test.gateway.calls).not.toContain("revokeSession");
+    expect(test.gateway.sessions.has(signedIn.refreshToken)).toBe(true);
+    await expect(
+      test.auth.refreshSession({ refreshToken: signedIn.refreshToken }),
+    ).resolves.toMatchObject({ status: "success", refreshToken: signedIn.refreshToken });
   });
 
   it("syncs the trusted gateway user before returning signup, sign-in, and refresh sessions", async () => {
