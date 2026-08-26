@@ -16,13 +16,17 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as profiles from "../profiles.js";
 import type * as workos from "../workos.js";
+import type * as workosAccount from "../workosAccount.js";
 import type * as workosAuth from "../workosAuth.js";
+import type * as workosAuthConfig from "../workosAuthConfig.js";
 import type * as workosAuthInternal from "../workosAuthInternal.js";
 import type * as workosAuthOrchestration from "../workosAuthOrchestration.js";
 import type * as workosAuthPolicy from "../workosAuthPolicy.js";
 import type * as workosErrorPolicy from "../workosErrorPolicy.js";
 import type * as workosGateway from "../workosGateway.js";
+import type * as workosIdentity from "../workosIdentity.js";
 import type * as workosIntentCrypto from "../workosIntentCrypto.js";
+import type * as workosProfilePolicy from "../workosProfilePolicy.js";
 
 import type {
   ApiFromModules,
@@ -39,13 +43,17 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   profiles: typeof profiles;
   workos: typeof workos;
+  workosAccount: typeof workosAccount;
   workosAuth: typeof workosAuth;
+  workosAuthConfig: typeof workosAuthConfig;
   workosAuthInternal: typeof workosAuthInternal;
   workosAuthOrchestration: typeof workosAuthOrchestration;
   workosAuthPolicy: typeof workosAuthPolicy;
   workosErrorPolicy: typeof workosErrorPolicy;
   workosGateway: typeof workosGateway;
+  workosIdentity: typeof workosIdentity;
   workosIntentCrypto: typeof workosIntentCrypto;
+  workosProfilePolicy: typeof workosProfilePolicy;
 }>;
 
 /**

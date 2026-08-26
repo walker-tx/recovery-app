@@ -1,5 +1,10 @@
 import type { PrivateGuidanceCategory } from "./authEmailTemplates.ts";
-import type { WorkOSGateway, WorkOSGatewaySession, WorkOSUserClassification } from "./workosGateway.ts";
+import type {
+  WorkOSGateway,
+  WorkOSGatewaySession,
+  WorkOSGatewayUser,
+  WorkOSUserClassification,
+} from "./workosGateway.ts";
 import { WorkOSGatewayError } from "./workosErrorPolicy.ts";
 import type { EncryptedPendingAuthenticationToken } from "./workosIntentCrypto.ts";
 import { normalizeAuthEmail, recoveryInitiationResult, signupInitiationResult } from "./workosAuthPolicy.ts";
@@ -68,6 +73,7 @@ export type WorkOSAuthOrchestrationDependencies = {
   fingerprintEmail(normalizedEmail: string): string;
   encryptPendingAuthenticationToken(token: string): EncryptedPendingAuthenticationToken;
   decryptPendingAuthenticationToken(encrypted: EncryptedPendingAuthenticationToken): string;
+  syncIdentitySnapshot(user: WorkOSGatewayUser): Promise<void>;
 };
 
 type PublicSession = { accessToken: string; refreshToken: string };
@@ -189,6 +195,7 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
         await revokeSafely(dependencies.gateway, session.sessionId);
         throw providerUnavailable();
       }
+      await dependencies.syncIdentitySnapshot(session.user);
       return publicSession(session);
     } catch (error) {
       if (!providerCompleted) {
@@ -214,6 +221,7 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       if (authentication.kind === "verificationRequired") {
         throw new WorkOSAuthError("INVALID_CREDENTIALS");
       }
+      await dependencies.syncIdentitySnapshot(authentication.user);
       return publicSession(authentication);
     } catch (error) {
       if (error instanceof WorkOSAuthError) throw error;
@@ -227,6 +235,7 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
   const refreshSession = async (input: { refreshToken: string }) => {
     try {
       const session = await dependencies.gateway.refreshSession(input.refreshToken);
+      await dependencies.syncIdentitySnapshot(session.user);
       return { status: "success" as const, ...publicSession(session) };
     } catch (error) {
       if (error instanceof WorkOSGatewayError && error.category === "invalidSession") {

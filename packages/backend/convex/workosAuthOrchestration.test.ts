@@ -196,6 +196,7 @@ function harness() {
     }),
     decryptPendingAuthenticationToken: (encrypted) =>
       [...encrypted.ciphertext].reverse().join(""),
+    syncIdentitySnapshot: vi.fn(async () => undefined),
     intents: {
       admitInitiationRequest: vi.fn(async () => true),
       createSignupIntent: async (input) => {
@@ -474,16 +475,33 @@ describe("WorkOS auth orchestration", () => {
     await expect(test.auth.signIn({ email: "known@example.net", password: "wrong" })).rejects.toEqual(expectAuthError("INVALID_CREDENTIALS"));
   });
 
-  it("returns session credentials for sign-in and stable refresh", async () => {
+  it("syncs the trusted gateway user before returning signup, sign-in, and refresh sessions", async () => {
+    const signup = harness();
+    const started = await signup.auth.startSignup({
+      email: "signup@example.net",
+      password: "password",
+    });
+    await signup.auth.completeSignup({ intentId: started.intentId, code: "123456" });
+    expect(signup.dependencies.syncIdentitySnapshot).toHaveBeenCalledWith(
+      userFor("signup@example.net"),
+    );
+
     const test = harness();
     test.gateway.seed({ kind: "password", user: userFor("person@example.net") }, "correct");
     const signedIn = await test.auth.signIn({ email: "person@example.net", password: "correct" });
+    expect(test.dependencies.syncIdentitySnapshot).toHaveBeenLastCalledWith(
+      userFor("person@example.net"),
+    );
 
     await expect(test.auth.refreshSession({ refreshToken: signedIn.refreshToken })).resolves.toEqual({
       status: "success",
       accessToken: "access-user-person@example.net-refreshed",
       refreshToken: signedIn.refreshToken,
     });
+    expect(test.dependencies.syncIdentitySnapshot).toHaveBeenLastCalledWith(
+      userFor("person@example.net"),
+    );
+    expect(test.dependencies.syncIdentitySnapshot).toHaveBeenCalledTimes(2);
   });
 
   it("separates terminal invalid refresh from retryable provider failure", async () => {
