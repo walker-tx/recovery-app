@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@convex-dev/auth": "0.0.95",
+    "@workos-inc/node": "10.11.0",
     "convex": "1.44.0"
   },
   "devDependencies": {

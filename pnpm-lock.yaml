@@ -93,6 +93,9 @@ importers:
       '@convex-dev/auth':
         specifier: 0.0.95
         version: 0.0.95(@auth/core@0.41.3)(convex@1.44.0(react@19.2.3))(react@19.2.3)
+      '@workos-inc/node':
+        specifier: 10.11.0
+        version: 10.11.0
       convex:
         specifier: 1.44.0
         version: 1.44.0(react@19.2.3)
@@ -1447,6 +1450,10 @@ packages:
 
   '@vitest/utils@4.1.11':
     resolution: {integrity: sha512-zTCVGpyFsGWBhllOyKlTw/vnr6D9qxsfSDyfbyZmTyjHw5N/VuvzHpHoQjm2ZJzn4RJgx5w4r7V0er69CmLgPQ==}
+
+  '@workos-inc/node@10.11.0':
+    resolution: {integrity: sha512-5AKE6QDFlp2y04Is1BQRncV2dmTcrhdqVpPrTDYwV5Bpzogfs7ieye6fOJ4DvgQgv/9+G0tXzCAPSXu2ackf6g==}
+    engines: {node: '>=22.11.0'}
 
   '@xmldom/xmldom@0.8.14':
     resolution: {integrity: sha512-T4EDRUBVZYRldYApjEJiU0e1stYWaRAX7CuSnKzrpwdZKo53zGV8/pqfzV6FfwNl9YThD2OumQYvqtvjvgG7aQ==}
@@ -5251,6 +5258,8 @@ snapshots:
       '@vitest/pretty-format': 4.1.11
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.1
+
+  '@workos-inc/node@10.11.0': {}
 
   '@xmldom/xmldom@0.8.14': {}
 
