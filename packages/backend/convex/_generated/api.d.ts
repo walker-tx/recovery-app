@@ -9,9 +9,18 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as authEmailDelivery from "../authEmailDelivery.js";
+import type * as authEmailTemplates from "../authEmailTemplates.js";
 import type * as authPolicy from "../authPolicy.js";
+import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as profiles from "../profiles.js";
+import type * as workos from "../workos.js";
+import type * as workosAuthInternal from "../workosAuthInternal.js";
+import type * as workosAuthPolicy from "../workosAuthPolicy.js";
+import type * as workosErrorPolicy from "../workosErrorPolicy.js";
+import type * as workosGateway from "../workosGateway.js";
+import type * as workosIntentCrypto from "../workosIntentCrypto.js";
 
 import type {
   ApiFromModules,
@@ -21,9 +30,18 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  authEmailDelivery: typeof authEmailDelivery;
+  authEmailTemplates: typeof authEmailTemplates;
   authPolicy: typeof authPolicy;
+  crons: typeof crons;
   http: typeof http;
   profiles: typeof profiles;
+  workos: typeof workos;
+  workosAuthInternal: typeof workosAuthInternal;
+  workosAuthPolicy: typeof workosAuthPolicy;
+  workosErrorPolicy: typeof workosErrorPolicy;
+  workosGateway: typeof workosGateway;
+  workosIntentCrypto: typeof workosIntentCrypto;
 }>;
 
 /**

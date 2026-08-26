@@ -170,9 +170,10 @@ export const completeSignupIntent = internalMutation({
 });
 
 export const cleanupExpiredAuthData = internalMutation({
-  args: { now: v.number() },
+  args: { now: v.optional(v.number()) },
   returns: v.object({ deleted: v.number() }),
   handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
     const consumedIntents = await ctx.db
       .query("signupIntents")
       .withIndex("by_state_and_lease_expiry", (query) => query.eq("state", "consumed"))
@@ -185,7 +186,7 @@ export const cleanupExpiredAuthData = internalMutation({
         ? []
         : await ctx.db
             .query("signupIntents")
-            .withIndex("by_expiry", (query) => query.lte("expiresAt", args.now))
+            .withIndex("by_expiry", (query) => query.lte("expiresAt", now))
             .take(afterConsumed);
     for (const intent of expiredIntents) await ctx.db.delete(intent._id);
 
@@ -195,7 +196,7 @@ export const cleanupExpiredAuthData = internalMutation({
         ? []
         : await ctx.db
             .query("authInitiationRequests")
-            .withIndex("by_expiry", (query) => query.lte("expiresAt", args.now))
+            .withIndex("by_expiry", (query) => query.lte("expiresAt", now))
             .take(afterIntents);
     for (const request of expiredRequests) await ctx.db.delete(request._id);
 

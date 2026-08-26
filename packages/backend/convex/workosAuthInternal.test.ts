@@ -50,7 +50,7 @@ const completeSignupIntent = makeFunctionReference<
 >("workosAuthInternal:completeSignupIntent");
 const cleanupExpiredAuthData = makeFunctionReference<
   "mutation",
-  { now: number },
+  { now?: number },
   { deleted: number }
 >("workosAuthInternal:cleanupExpiredAuthData");
 
@@ -241,6 +241,6 @@ describe("WorkOS auth persistence", () => {
       return intents.length + requests.length;
     });
     expect(remainingAfterFirstBatch).toBe(20);
-    await expect(t.mutation(cleanupExpiredAuthData, { now })).resolves.toEqual({ deleted: 20 });
+    await expect(t.mutation(cleanupExpiredAuthData, {})).resolves.toEqual({ deleted: 20 });
   });
 });
