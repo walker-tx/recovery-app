@@ -1,11 +1,11 @@
+import { normalizeEmail } from "./email-policy.ts";
+
+export { normalizeEmail } from "./email-policy.ts";
+
 type SignInValidation = {
   email?: string;
   password?: string;
 };
-
-export function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
-}
 
 export function getSignInValidation(
   email: string,
