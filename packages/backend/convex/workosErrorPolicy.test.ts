@@ -47,20 +47,32 @@ describe("categorizeWorkOSError", () => {
   });
 
   it.each([
-    new TypeError("network failed with private hostname"),
-    { name: "GenericServerException", status: 503, message: "provider internals" },
-    { unexpected: "raw provider value" },
-  ])("maps unavailable or unknown provider failures to a closed safe value", (error) => {
-    const category = categorizeWorkOSError("getUserById", error);
-    expect(category).toBe("providerUnavailable");
-    expect([
-      "invalidCredentials",
-      "verificationRequired",
-      "invalidVerification",
-      "invalidReset",
-      "invalidSession",
-      "rateLimited",
-      "providerUnavailable",
-    ]).toContain(category);
-  });
+    ["authenticatePassword", new TypeError("network failed with private hostname")],
+    [
+      "authenticatePassword",
+      { name: "GenericServerException", status: 503, message: "provider internals" },
+    ],
+    ["refreshSession", new TypeError("socket disconnected")],
+    ["revokeSession", { name: "GenericServerException", status: 502 }],
+    ["completeEmailVerification", { name: "RequestTimeoutException", status: 408 }],
+    ["completePasswordReset", { code: "ECONNRESET" }],
+    ["authenticatePassword", { unexpected: "raw provider value" }],
+    ["refreshSession", { unexpected: "raw provider value" }],
+    ["getUserById", { unexpected: "raw provider value" }],
+  ] as const)(
+    "maps retryable or unknown %s failures to providerUnavailable",
+    (operation, error) => {
+      const category = categorizeWorkOSError(operation, error);
+      expect(category).toBe("providerUnavailable");
+      expect([
+        "invalidCredentials",
+        "verificationRequired",
+        "invalidVerification",
+        "invalidReset",
+        "invalidSession",
+        "rateLimited",
+        "providerUnavailable",
+      ]).toContain(category);
+    },
+  );
 });
