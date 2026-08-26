@@ -27,6 +27,7 @@ export type WorkOSSessionOwner = {
   getSnapshot(): WorkOSSessionSnapshot;
   subscribe(listener: () => void): () => void;
   restore(): Promise<void>;
+  retryRestore(): Promise<void>;
   signIn(input: { email: string; password: string }): Promise<void>;
   completeSignup(input: { intentId: string; code: string }): Promise<void>;
   refresh(): Promise<string | null>;
@@ -43,7 +44,8 @@ const initialSnapshot: WorkOSSessionSnapshot = {
 };
 
 type WorkOSSessionEvent =
-  | { type: "restored"; authenticated: boolean }
+  | { type: "restoreStarted" }
+  | { type: "restoredEmpty" }
   | { type: "restoreFailed" }
   | { type: "sessionEstablished" }
   | { type: "refreshStarted" }
@@ -65,19 +67,20 @@ export function workOSSessionReducer(
     retry: null,
   });
   switch (event.type) {
-    case "restored":
-      return settled(event.authenticated);
+    case "restoreStarted":
+      return initialSnapshot;
+    case "restoredEmpty":
+    case "sessionInvalidated":
+    case "revoked":
+      return settled(false);
     case "restoreFailed":
-      return { ...settled(false), retry: { operation: "restore" } };
+      return { ...initialSnapshot, retry: { operation: "restore" } };
     case "sessionEstablished":
       return settled(true);
     case "refreshStarted":
       return { ...settled(true), isRefreshing: true };
     case "refreshFailed":
       return { ...settled(true), retry: { operation: "refresh" } };
-    case "sessionInvalidated":
-    case "revoked":
-      return settled(false);
     case "signOutStarted":
       return { ...settled(true), isSigningOut: true };
     case "signOutFailed":
@@ -101,7 +104,6 @@ export function createWorkOSSessionOwner(dependencies: {
     snapshot = next;
     for (const listener of listeners) listener();
   };
-
   const transition = (event: WorkOSSessionEvent) => {
     publish(workOSSessionReducer(snapshot, event));
   };
@@ -112,32 +114,15 @@ export function createWorkOSSessionOwner(dependencies: {
     transition({ type: "sessionEstablished" });
   };
 
-  const restore = async () => {
-    try {
-      session = await storage.read();
-      transition({ type: "restored", authenticated: session !== null });
-    } catch (error) {
-      transition({ type: "restoreFailed" });
-      throw error;
-    }
-  };
-
-  const signIn = async (input: { email: string; password: string }) => {
-    await establish(await actions.signIn(input));
-  };
-
-  const completeSignup = async (input: { intentId: string; code: string }) => {
-    await establish(await actions.completeSignup(input));
-  };
-
-  const refresh = (): Promise<string | null> => {
+  const runRefresh = (mode: "restore" | "authenticated"): Promise<string | null> => {
     if (refreshPromise !== null) return refreshPromise;
     if (session === null) return Promise.resolve(null);
 
+    const refreshToken = session.refreshToken;
     const operation = (async () => {
-      transition({ type: "refreshStarted" });
+      transition({ type: mode === "restore" ? "restoreStarted" : "refreshStarted" });
       try {
-        const result = await actions.refreshSession({ refreshToken: session!.refreshToken });
+        const result = await actions.refreshSession({ refreshToken });
         if (result.status === "invalid") {
           await storage.clear();
           session = null;
@@ -153,7 +138,7 @@ export function createWorkOSSessionOwner(dependencies: {
         transition({ type: "sessionEstablished" });
         return credentials.accessToken;
       } catch (error) {
-        transition({ type: "refreshFailed" });
+        transition({ type: mode === "restore" ? "restoreFailed" : "refreshFailed" });
         throw error;
       } finally {
         refreshPromise = null;
@@ -162,6 +147,37 @@ export function createWorkOSSessionOwner(dependencies: {
     refreshPromise = operation;
     return operation;
   };
+
+  const restore = async () => {
+    transition({ type: "restoreStarted" });
+    try {
+      session = await storage.read();
+      if (session === null) {
+        transition({ type: "restoredEmpty" });
+        return;
+      }
+      await runRefresh("restore");
+    } catch (error) {
+      if (snapshot.retry?.operation !== "restore") transition({ type: "restoreFailed" });
+      throw error;
+    }
+  };
+
+  const retryRestore = async () => {
+    if (session === null) {
+      await restore();
+      return;
+    }
+    await runRefresh("restore");
+  };
+
+  const signIn = async (input: { email: string; password: string }) => {
+    await establish(await actions.signIn(input));
+  };
+  const completeSignup = async (input: { intentId: string; code: string }) => {
+    await establish(await actions.completeSignup(input));
+  };
+  const refresh = () => runRefresh(snapshot.isLoading ? "restore" : "authenticated");
 
   const signOut = async () => {
     if (session === null) return;
@@ -179,7 +195,7 @@ export function createWorkOSSessionOwner(dependencies: {
 
   const fetchAccessToken = ({ forceRefreshToken }: { forceRefreshToken: boolean }) => {
     if (forceRefreshToken) return refresh();
-    return Promise.resolve(session?.accessToken ?? null);
+    return Promise.resolve(snapshot.isAuthenticated ? session?.accessToken ?? null : null);
   };
 
   return {
@@ -189,6 +205,7 @@ export function createWorkOSSessionOwner(dependencies: {
       return () => listeners.delete(listener);
     },
     restore,
+    retryRestore,
     signIn,
     completeSignup,
     refresh,

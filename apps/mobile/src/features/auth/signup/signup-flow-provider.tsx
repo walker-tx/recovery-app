@@ -1,25 +1,10 @@
 import { createContext, createElement, useCallback, useContext, useMemo, useReducer, type ReactNode } from "react";
 
-export type SignupFlowState = { intentId: string | null };
-export type SignupFlowEvent =
-  | { type: "started"; intentId: string }
-  | { type: "completed" }
-  | { type: "backToWelcome" };
-
-export const initialSignupFlowState: SignupFlowState = { intentId: null };
-
-export function signupFlowReducer(
-  state: SignupFlowState,
-  event: SignupFlowEvent,
-): SignupFlowState {
-  switch (event.type) {
-    case "started":
-      return { intentId: event.intentId };
-    case "completed":
-    case "backToWelcome":
-      return initialSignupFlowState;
-  }
-}
+import {
+  createInitialSignupFlowState,
+  signupFlowReducer,
+  type SignupFlowState,
+} from "./signup-flow-state.ts";
 
 type SignupFlowContextValue = SignupFlowState & {
   beginVerification(intentId: string): void;
@@ -30,7 +15,11 @@ type SignupFlowContextValue = SignupFlowState & {
 const SignupFlowContext = createContext<SignupFlowContextValue | null>(null);
 
 export function SignupFlowProvider({ children }: { children?: ReactNode }) {
-  const [state, dispatch] = useReducer(signupFlowReducer, initialSignupFlowState);
+  const [state, dispatch] = useReducer(
+    signupFlowReducer,
+    undefined,
+    createInitialSignupFlowState,
+  );
   const beginVerification = useCallback((intentId: string) => {
     dispatch({ type: "started", intentId });
   }, []);

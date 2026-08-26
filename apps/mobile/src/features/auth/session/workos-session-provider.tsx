@@ -1,4 +1,3 @@
-import { api } from "@recovery/backend/convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
 import * as SecureStore from "expo-secure-store";
 import {
@@ -11,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { createWorkOSSessionActions } from "./workos-session-actions.ts";
 import {
   createWorkOSSessionOwner,
   type WorkOSSessionRetry,
@@ -32,6 +32,7 @@ type WorkOSSessionContextValue = {
   isRefreshing: boolean;
   isSigningOut: boolean;
   retry: WorkOSSessionRetry;
+  retryRestore(): Promise<void>;
   signIn(input: { email: string; password: string }): Promise<void>;
   completeSignup(input: { intentId: string; code: string }): Promise<void>;
   refresh(): Promise<string | null>;
@@ -53,12 +54,7 @@ export function WorkOSSessionProvider({
   const owner = useMemo(
     () => createWorkOSSessionOwner({
       storage,
-      actions: {
-        signIn: (input) => client.action(api.workosAuth.signIn, input),
-        completeSignup: (input) => client.action(api.workosAuth.completeSignup, input),
-        refreshSession: (input) => client.action(api.workosAuth.refreshSession, input),
-        signOutSession: (input) => client.action(api.workosAuth.signOutSession, input),
-      },
+      actions: createWorkOSSessionActions(client),
     }),
     [client, storage],
   );
@@ -68,6 +64,7 @@ export function WorkOSSessionProvider({
   }, [owner]);
 
   const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
+  const retryRestore = useCallback(owner.retryRestore, [owner]);
   const signIn = useCallback(owner.signIn, [owner]);
   const completeSignup = useCallback(owner.completeSignup, [owner]);
   const refresh = useCallback(owner.refresh, [owner]);
@@ -80,13 +77,14 @@ export function WorkOSSessionProvider({
   const value = useMemo(
     () => ({
       ...snapshot,
+      retryRestore,
       signIn,
       completeSignup,
       refresh,
       signOut,
       fetchAccessToken,
     }),
-    [snapshot, signIn, completeSignup, refresh, signOut, fetchAccessToken],
+    [snapshot, retryRestore, signIn, completeSignup, refresh, signOut, fetchAccessToken],
   );
 
   return <WorkOSSessionContext.Provider value={value}>{children}</WorkOSSessionContext.Provider>;
