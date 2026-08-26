@@ -1,7 +1,21 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { getFieldAccessibilityHint } from "./field-accessibility.ts";
+
+const fieldSource = await readFile(new URL("./field.tsx", import.meta.url), "utf8");
+
+test("announces shared field errors through one polite live region", () => {
+  assert.match(
+    fieldSource,
+    /error \? <Typography accessibilityLiveRegion="polite" accessibilityRole="alert"[^>]*>\{error\}<\/Typography>/,
+  );
+  assert.equal(
+    fieldSource.match(/accessibilityLiveRegion="polite"/g)?.length,
+    1,
+  );
+});
 
 test("associates field errors with the input accessibility hint", () => {
   assert.equal(

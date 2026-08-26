@@ -11,7 +11,7 @@ export function Field({ children, className, description, error, label, required
     <View className={`gap-sm ${className ?? ""}`} {...props}>
       <Typography variant="label">{label}{required ? " *" : ""}</Typography>
       {children}
-      {error ? <Typography accessibilityRole="alert" className="text-danger" selectable variant="caption">{error}</Typography> : description ? <Typography variant="caption">{description}</Typography> : null}
+      {error ? <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">{error}</Typography> : description ? <Typography variant="caption">{description}</Typography> : null}
     </View>
   );
 }
