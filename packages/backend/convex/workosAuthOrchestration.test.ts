@@ -129,7 +129,14 @@ class FakeGateway implements WorkOSGateway {
     this.maybeFail("refreshSession");
     const session = this.sessions.get(refreshToken);
     if (!session) throw new WorkOSGatewayError("invalidSession");
-    return { ...session, accessToken: `${session.accessToken}-refreshed` };
+    const refreshed = {
+      ...session,
+      accessToken: `${session.accessToken}-refreshed`,
+      refreshToken: `${refreshToken}-rotated`,
+    };
+    this.sessions.delete(refreshToken);
+    this.sessions.set(refreshed.refreshToken, refreshed);
+    return refreshed;
   }
 
   async revokeSession(sessionId: string) {
@@ -536,25 +543,39 @@ describe("WorkOS auth orchestration", () => {
     expect(test.gateway.sessions).toHaveLength(0);
   });
 
-  it("keeps a refresh credential recoverable after snapshot synchronization fails", async () => {
+  it("returns rotated refresh credentials when snapshot synchronization temporarily fails", async () => {
     const test = harness();
     test.gateway.seed({ kind: "password", user: userFor("refresh-retry@example.net") }, "correct");
     const signedIn = await test.auth.signIn({
       email: "refresh-retry@example.net",
       password: "correct",
     });
+    const oldRefreshToken = signedIn.refreshToken;
     vi.mocked(test.dependencies.syncIdentitySnapshot)
       .mockRejectedValueOnce(new Error("snapshot persistence failed"))
       .mockResolvedValue(undefined);
 
-    await expect(
-      test.auth.refreshSession({ refreshToken: signedIn.refreshToken }),
-    ).rejects.toEqual(expectAuthError("PROVIDER_UNAVAILABLE"));
+    const refreshed = await test.auth.refreshSession({ refreshToken: oldRefreshToken });
+    expect(refreshed.status).toBe("success");
+    if (refreshed.status !== "success") throw new Error("expected successful refresh");
+    expect(refreshed).toEqual({
+      status: "success",
+      accessToken: "access-user-refresh-retry@example.net-refreshed",
+      refreshToken: `${oldRefreshToken}-rotated`,
+    });
+    expect(test.dependencies.syncIdentitySnapshot).toHaveBeenCalledTimes(2);
     expect(test.gateway.calls).not.toContain("revokeSession");
-    expect(test.gateway.sessions.has(signedIn.refreshToken)).toBe(true);
+    expect(test.gateway.sessions.has(oldRefreshToken)).toBe(false);
+    expect(test.gateway.sessions.has(refreshed.refreshToken)).toBe(true);
+
     await expect(
-      test.auth.refreshSession({ refreshToken: signedIn.refreshToken }),
-    ).resolves.toMatchObject({ status: "success", refreshToken: signedIn.refreshToken });
+      test.auth.refreshSession({ refreshToken: refreshed.refreshToken }),
+    ).resolves.toEqual({
+      status: "success",
+      accessToken: "access-user-refresh-retry@example.net-refreshed-refreshed",
+      refreshToken: `${oldRefreshToken}-rotated-rotated`,
+    });
+    expect(test.dependencies.syncIdentitySnapshot).toHaveBeenCalledTimes(3);
   });
 
   it("syncs the trusted gateway user before returning signup, sign-in, and refresh sessions", async () => {
@@ -578,7 +599,7 @@ describe("WorkOS auth orchestration", () => {
     await expect(test.auth.refreshSession({ refreshToken: signedIn.refreshToken })).resolves.toEqual({
       status: "success",
       accessToken: "access-user-person@example.net-refreshed",
-      refreshToken: signedIn.refreshToken,
+      refreshToken: `${signedIn.refreshToken}-rotated`,
     });
     expect(test.dependencies.syncIdentitySnapshot).toHaveBeenLastCalledWith(
       userFor("person@example.net"),

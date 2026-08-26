@@ -235,7 +235,11 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
   const refreshSession = async (input: { refreshToken: string }) => {
     try {
       const session = await dependencies.gateway.refreshSession(input.refreshToken);
-      await dependencies.syncIdentitySnapshot(session.user);
+      try {
+        await dependencies.syncIdentitySnapshot(session.user);
+      } catch {
+        // Return rotated credentials so the owner can persist them and retry synchronization later.
+      }
       return { status: "success" as const, ...publicSession(session) };
     } catch (error) {
       if (error instanceof WorkOSGatewayError && error.category === "invalidSession") {
