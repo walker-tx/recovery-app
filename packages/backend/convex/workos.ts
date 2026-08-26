@@ -13,22 +13,18 @@ import type {
 } from "./workosGateway.ts";
 import { categorizeWorkOSError, WorkOSGatewayError } from "./workosErrorPolicy.ts";
 
-const workos = new WorkOS({
-  apiKey: requiredEnvironmentValue("WORKOS_API_KEY"),
-  clientId: requiredEnvironmentValue("WORKOS_CLIENT_ID"),
-  maxRetries: 0,
-});
+let workos: WorkOS | undefined;
 
 export const workosGateway: WorkOSGateway = {
   async lookupUserByEmail(email) {
     return safely("lookupUserByEmail", async () => {
-      const users = await workos.userManagement.listUsers({ email, limit: 2 });
+      const users = await getWorkOS().userManagement.listUsers({ email, limit: 2 });
       if (users.data.length === 0) return { kind: "new" };
 
       const user = toGatewayUser(users.data[0]);
       if (users.data.length !== 1) return { kind: "unknownRecovery", user };
 
-      const identities = await workos.userManagement.getUserIdentities(user.id);
+      const identities = await getWorkOS().userManagement.getUserIdentities(user.id);
       if (identities.length === 0) {
         return { kind: user.emailVerified ? "password" : "unverifiedPassword", user };
       }
@@ -45,7 +41,7 @@ export const workosGateway: WorkOSGateway = {
   async createPasswordUser(input) {
     return safely("createPasswordUser", async () =>
       toGatewayUser(
-        await workos.userManagement.createUser({
+        await getWorkOS().userManagement.createUser({
           email: input.email,
           password: input.password,
           emailVerified: false,
@@ -57,7 +53,7 @@ export const workosGateway: WorkOSGateway = {
   async authenticatePassword(input) {
     return safely("authenticatePassword", async () =>
       toGatewaySession(
-        await workos.userManagement.authenticateWithPassword({
+        await getWorkOS().userManagement.authenticateWithPassword({
           email: input.email,
           password: input.password,
         }),
@@ -67,26 +63,26 @@ export const workosGateway: WorkOSGateway = {
 
   async getEmailVerification(id) {
     return safely("getEmailVerification", async () =>
-      toEmailVerification(await workos.userManagement.getEmailVerification(id)),
+      toEmailVerification(await getWorkOS().userManagement.getEmailVerification(id)),
     );
   },
 
   async completeEmailVerification(input) {
     return safely("completeEmailVerification", async () =>
-      toGatewayUser(await workos.userManagement.verifyEmail(input).then(({ user }) => user)),
+      toGatewayUser(await getWorkOS().userManagement.verifyEmail(input).then(({ user }) => user)),
     );
   },
 
   async createPasswordReset(email) {
     return safely("createPasswordReset", async () =>
-      toPasswordReset(await workos.userManagement.createPasswordReset({ email })),
+      toPasswordReset(await getWorkOS().userManagement.createPasswordReset({ email })),
     );
   },
 
   async completePasswordReset(input) {
     return safely("completePasswordReset", async () =>
       toGatewayUser(
-        await workos.userManagement
+        await getWorkOS().userManagement
           .resetPassword(input)
           .then(({ user }) => user),
       ),
@@ -96,18 +92,18 @@ export const workosGateway: WorkOSGateway = {
   async refreshSession(refreshToken) {
     return safely("refreshSession", async () =>
       toGatewaySession(
-        await workos.userManagement.authenticateWithRefreshToken({ refreshToken }),
+        await getWorkOS().userManagement.authenticateWithRefreshToken({ refreshToken }),
       ),
     );
   },
 
   async revokeSession(sessionId) {
-    return safely("revokeSession", () => workos.userManagement.revokeSession({ sessionId }));
+    return safely("revokeSession", () => getWorkOS().userManagement.revokeSession({ sessionId }));
   },
 
   async getUserById(userId) {
     return safely("getUserById", async () =>
-      toGatewayUser(await workos.userManagement.getUser(userId)),
+      toGatewayUser(await getWorkOS().userManagement.getUser(userId)),
     );
   },
 };
@@ -176,6 +172,15 @@ function sessionIdFromAccessToken(accessToken: string): string {
     // The safe gateway error below intentionally omits provider token details.
   }
   throw new WorkOSGatewayError("providerUnavailable");
+}
+
+function getWorkOS(): WorkOS {
+  workos ??= new WorkOS({
+    apiKey: requiredEnvironmentValue("WORKOS_API_KEY"),
+    clientId: requiredEnvironmentValue("WORKOS_CLIENT_ID"),
+    maxRetries: 0,
+  });
+  return workos;
 }
 
 function requiredEnvironmentValue(name: "WORKOS_API_KEY" | "WORKOS_CLIENT_ID"): string {

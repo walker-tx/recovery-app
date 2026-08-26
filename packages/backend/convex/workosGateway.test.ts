@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   WorkOSGateway,
@@ -227,5 +227,21 @@ describe("WorkOSGateway contract", () => {
 
     const authConfig = await readFile(new URL("./auth.config.ts", import.meta.url), "utf8");
     expect(authConfig).not.toMatch(/workos/i);
+  });
+
+  it("loads without WorkOS configuration and fails closed only when invoked", async () => {
+    vi.stubEnv("WORKOS_API_KEY", "");
+    vi.stubEnv("WORKOS_CLIENT_ID", "");
+
+    try {
+      const { workosGateway } = await import("./workos.ts");
+
+      await expect(workosGateway.getUserById("user_test")).rejects.toMatchObject({
+        category: "providerUnavailable",
+        message: "providerUnavailable",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
