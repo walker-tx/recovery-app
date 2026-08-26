@@ -59,7 +59,7 @@ export const workosGateway: WorkOSGateway = {
         }),
       );
     } catch (error) {
-      const challenge = verificationChallengeFromError(error);
+      const challenge = parseStagingVerificationRequiredChallenge(error);
       if (challenge !== undefined) return challenge;
       if (error instanceof WorkOSGatewayError) throw error;
       throw new WorkOSGatewayError(categorizeWorkOSError("authenticatePassword", error));
@@ -185,7 +185,12 @@ function sessionIdFromAccessToken(accessToken: string): string {
   throw new WorkOSGatewayError("providerUnavailable");
 }
 
-function verificationChallengeFromError(error: unknown) {
+/**
+ * Compatibility parser for the WorkOS staging wire response. SDK 10.11.0 does not
+ * declare `rawData.email_verification_id`; a bounded local-Convex staging probe
+ * verified that field and that it retrieves the matching verification object.
+ */
+export function parseStagingVerificationRequiredChallenge(error: unknown) {
   if (typeof error !== "object" || error === null) return undefined;
   const providerError = error as {
     code?: unknown;

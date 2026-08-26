@@ -21,6 +21,7 @@ class FakeGateway implements WorkOSGateway {
   readonly users = new Map<string, { classification: WorkOSUserClassification; password?: string }>();
   readonly resets = new Map<string, { userId: string; used: boolean }>();
   readonly sessions = new Map<string, WorkOSGatewaySession>();
+  readonly completedPendingTokens = new Set<string>();
   calls: string[] = [];
   nextFailure?: { operation: keyof WorkOSGateway; category: ConstructorParameters<typeof WorkOSGatewayError>[0] };
 
@@ -81,6 +82,9 @@ class FakeGateway implements WorkOSGateway {
 
   async completeEmailVerification(input: { pendingAuthenticationToken: string; code: string }) {
     this.maybeFail("completeEmailVerification");
+    if (this.completedPendingTokens.has(input.pendingAuthenticationToken)) {
+      throw new WorkOSGatewayError("invalidVerification");
+    }
     const userId = input.pendingAuthenticationToken.replace(/^pending-/, "");
     const entry = [...this.users.values()].find(
       (candidate) => candidate.classification.kind !== "new" && candidate.classification.user.id === userId,
@@ -88,6 +92,7 @@ class FakeGateway implements WorkOSGateway {
     if (!entry || input.code !== "123456" || entry.classification.kind === "new") {
       throw new WorkOSGatewayError("invalidVerification");
     }
+    this.completedPendingTokens.add(input.pendingAuthenticationToken);
     const user = { ...entry.classification.user, emailVerified: true };
     this.seed({ kind: "password", user }, entry.password);
     return this.newSession(user);
@@ -168,13 +173,20 @@ function userFor(email: string, emailVerified = true): WorkOSGatewayUser {
 
 function harness() {
   const gateway = new FakeGateway();
-  const intents = new Map<string, WorkOSSignupIntent & { state: "pending" | "inFlight" | "consumed" }>();
+  let currentTime = now;
+  const intents = new Map<
+    string,
+    WorkOSSignupIntent & {
+      state: "pending" | "inFlight" | "consumed";
+      leaseExpiresAt?: number;
+    }
+  >();
   const delivered = { verification: [] as unknown[], reset: [] as unknown[], guidance: [] as unknown[] };
   const cleanup = vi.fn(async () => undefined);
   let nextIntent = 0;
   const dependencies: WorkOSAuthOrchestrationDependencies = {
     gateway,
-    now: () => now,
+    now: () => currentTime,
     newIntentId: () => `00000000-0000-4000-8000-${String(++nextIntent).padStart(12, "0")}`,
     fingerprintEmail: (email) => `fingerprint:${email}`,
     encryptPendingAuthenticationToken: (token) => ({
@@ -190,23 +202,43 @@ function harness() {
         if (intents.has(input.publicId)) throw new Error("duplicate intent");
         intents.set(input.publicId, { ...input, state: "pending" });
       },
-      acquireSignupIntent: async ({ publicId, leaseExpiresAt }) => {
+      acquireSignupIntent: async ({ publicId, now: requestedAt, leaseExpiresAt }) => {
         const intent = intents.get(publicId);
-        if (!intent || intent.state !== "pending" || intent.now + 10 * 60_000 <= now) {
+        const acquirable =
+          intent?.state === "pending" ||
+          (intent?.state === "inFlight" &&
+            intent.leaseExpiresAt !== undefined &&
+            intent.leaseExpiresAt <= requestedAt);
+        if (!intent || !acquirable || intent.now + 10 * 60_000 <= requestedAt) {
           throw new WorkOSAuthError("INVALID_SIGNUP");
         }
         intent.state = "inFlight";
+        intent.leaseExpiresAt = leaseExpiresAt;
         return { ...intent, leaseExpiresAt };
       },
-      releaseSignupIntentLease: async ({ publicId }) => {
+      releaseSignupIntentLease: async ({ publicId, leaseExpiresAt }) => {
         const intent = intents.get(publicId);
-        if (!intent || intent.state !== "inFlight") throw new WorkOSAuthError("INVALID_SIGNUP");
+        if (
+          !intent ||
+          intent.state !== "inFlight" ||
+          intent.leaseExpiresAt !== leaseExpiresAt
+        ) {
+          throw new WorkOSAuthError("INVALID_SIGNUP");
+        }
         intent.state = "pending";
+        intent.leaseExpiresAt = undefined;
       },
-      completeSignupIntent: async ({ publicId }) => {
+      completeSignupIntent: async ({ publicId, leaseExpiresAt }) => {
         const intent = intents.get(publicId);
-        if (!intent || intent.state !== "inFlight") throw new WorkOSAuthError("INVALID_SIGNUP");
+        if (
+          !intent ||
+          intent.state !== "inFlight" ||
+          intent.leaseExpiresAt !== leaseExpiresAt
+        ) {
+          throw new WorkOSAuthError("INVALID_SIGNUP");
+        }
         intent.state = "consumed";
+        intent.leaseExpiresAt = undefined;
       },
       cleanupExpiredAuthData: cleanup,
     },
@@ -216,7 +248,17 @@ function harness() {
       guidance: (input) => delivered.guidance.push(input),
     },
   };
-  return { auth: createWorkOSAuthOrchestration(dependencies), dependencies, gateway, intents, delivered, cleanup };
+  return {
+    auth: createWorkOSAuthOrchestration(dependencies),
+    dependencies,
+    gateway,
+    intents,
+    delivered,
+    cleanup,
+    advanceTime: (milliseconds: number) => {
+      currentTime += milliseconds;
+    },
+  };
 }
 
 function expectAuthError(code: string) {
@@ -267,6 +309,110 @@ describe("WorkOS auth orchestration", () => {
     await expect(test.auth.completeSignup({ intentId: started.intentId, code: "123456" })).rejects.toEqual(
       expectAuthError("INVALID_SIGNUP"),
     );
+  });
+
+  it("orders acquire, provider completion, durable consumption, then public success", async () => {
+    const test = harness();
+    const started = await test.auth.startSignup({
+      email: "ordered@example.net",
+      password: "password",
+    });
+    const events: string[] = [];
+    const acquire = test.dependencies.intents.acquireSignupIntent;
+    const providerComplete = test.gateway.completeEmailVerification.bind(test.gateway);
+    const durableComplete = test.dependencies.intents.completeSignupIntent;
+    vi.spyOn(test.dependencies.intents, "acquireSignupIntent").mockImplementation(async (input) => {
+      events.push("acquire");
+      return acquire(input);
+    });
+    vi.spyOn(test.gateway, "completeEmailVerification").mockImplementation(async (input) => {
+      events.push("providerComplete");
+      return providerComplete(input);
+    });
+    vi.spyOn(test.dependencies.intents, "completeSignupIntent").mockImplementation(
+      async (input) => {
+        events.push("durableConsume");
+        return durableComplete(input);
+      },
+    );
+
+    await test.auth.completeSignup({ intentId: started.intentId, code: "123456" });
+    events.push("publicSuccess");
+
+    expect(events).toEqual(["acquire", "providerComplete", "durableConsume", "publicSuccess"]);
+  });
+
+  it("retries durable consumption once before returning provider credentials", async () => {
+    const test = harness();
+    const started = await test.auth.startSignup({
+      email: "retry-persistence@example.net",
+      password: "password",
+    });
+    const durableComplete = test.dependencies.intents.completeSignupIntent;
+    let attempts = 0;
+    vi.spyOn(test.dependencies.intents, "completeSignupIntent").mockImplementation(
+      async (input) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("transient persistence failure");
+        return durableComplete(input);
+      },
+    );
+
+    await expect(
+      test.auth.completeSignup({ intentId: started.intentId, code: "123456" }),
+    ).resolves.toEqual({
+      accessToken: "access-user-retry-persistence@example.net",
+      refreshToken: "refresh-user-retry-persistence@example.net",
+    });
+    expect(attempts).toBe(2);
+    expect(test.gateway.calls).not.toContain("revokeSession");
+    expect(test.intents.get(started.intentId)?.state).toBe("consumed");
+  });
+
+  it("revokes a verified session when durable consumption exhausts retries", async () => {
+    const test = harness();
+    const started = await test.auth.startSignup({
+      email: "failed-persistence@example.net",
+      password: "password",
+    });
+    const complete = vi
+      .spyOn(test.dependencies.intents, "completeSignupIntent")
+      .mockRejectedValue(new Error("persistent storage failure"));
+
+    await expect(
+      test.auth.completeSignup({ intentId: started.intentId, code: "123456" }),
+    ).rejects.toEqual(expectAuthError("PROVIDER_UNAVAILABLE"));
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(test.gateway.calls.slice(-2)).toEqual(["completeEmailVerification", "revokeSession"]);
+    expect(test.gateway.sessions).toHaveLength(0);
+    expect(test.intents.get(started.intentId)?.state).toBe("inFlight");
+
+    await expect(
+      test.auth.completeSignup({ intentId: started.intentId, code: "123456" }),
+    ).rejects.toEqual(expectAuthError("INVALID_SIGNUP"));
+    test.advanceTime(30_001);
+    await expect(
+      test.auth.completeSignup({ intentId: started.intentId, code: "123456" }),
+    ).rejects.toEqual(expectAuthError("INVALID_SIGNUP"));
+    expect(test.intents.get(started.intentId)?.state).toBe("pending");
+  });
+
+  it("keeps persistence failure safe when compensating revocation also fails", async () => {
+    const test = harness();
+    const started = await test.auth.startSignup({
+      email: "failed-revocation@example.net",
+      password: "password",
+    });
+    vi.spyOn(test.dependencies.intents, "completeSignupIntent").mockRejectedValue(
+      new Error("persistent storage failure"),
+    );
+    test.gateway.fail("revokeSession", "providerUnavailable");
+
+    await expect(
+      test.auth.completeSignup({ intentId: started.intentId, code: "123456" }),
+    ).rejects.toEqual(expectAuthError("PROVIDER_UNAVAILABLE"));
+    expect(test.gateway.calls[test.gateway.calls.length - 1]).toBe("revokeSession");
+    expect(test.intents.get(started.intentId)?.state).toBe("inFlight");
   });
 
   it("uses one safe signup error for expired, invalid, inapplicable, and duplicate intents", async () => {
@@ -371,6 +517,81 @@ describe("WorkOS auth orchestration", () => {
     await expect(failure.auth.signOutSession({ refreshToken: "invalid" })).rejects.toEqual(
       expectAuthError("INVALID_SESSION"),
     );
+  });
+
+  it.each([
+    ["fingerprinting", (test: ReturnType<typeof harness>) => {
+      test.dependencies.fingerprintEmail = () => {
+        throw new Error("fingerprint failed");
+      };
+    }],
+    ["encryption", (test: ReturnType<typeof harness>) => {
+      test.dependencies.encryptPendingAuthenticationToken = () => {
+        throw new Error("encryption failed");
+      };
+    }],
+    ["delivery", (test: ReturnType<typeof harness>) => {
+      test.dependencies.delivery.verification = () => {
+        throw new Error("delivery failed");
+      };
+    }],
+    ["intent persistence", (test: ReturnType<typeof harness>) => {
+      test.dependencies.intents.createSignupIntent = async () => {
+        throw new Error("persistence failed");
+      };
+    }],
+    ["cleanup", (test: ReturnType<typeof harness>) => {
+      test.cleanup.mockRejectedValue(new Error("cleanup failed"));
+    }],
+    ["unexpected provider operation", (test: ReturnType<typeof harness>) => {
+      vi.spyOn(test.gateway, "lookupUserByEmail").mockRejectedValue(
+        new Error("unexpected failure"),
+      );
+    }],
+  ] as const)("keeps signup neutral after %s failure", async (_name, configure) => {
+    const test = harness();
+    configure(test);
+
+    await expect(
+      test.auth.startSignup({ email: "neutral@example.net", password: "password" }),
+    ).resolves.toEqual({
+      accepted: true,
+      intentId: "00000000-0000-4000-8000-000000000001",
+    });
+    expect(test.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["fingerprinting", (test: ReturnType<typeof harness>) => {
+      test.dependencies.fingerprintEmail = () => {
+        throw new Error("fingerprint failed");
+      };
+    }],
+    ["delivery", (test: ReturnType<typeof harness>) => {
+      test.gateway.seed(
+        { kind: "password", user: userFor("neutral-recovery@example.net") },
+        "password",
+      );
+      test.dependencies.delivery.reset = () => {
+        throw new Error("delivery failed");
+      };
+    }],
+    ["cleanup", (test: ReturnType<typeof harness>) => {
+      test.cleanup.mockRejectedValue(new Error("cleanup failed"));
+    }],
+    ["unexpected provider operation", (test: ReturnType<typeof harness>) => {
+      vi.spyOn(test.gateway, "lookupUserByEmail").mockRejectedValue(
+        new Error("unexpected failure"),
+      );
+    }],
+  ] as const)("keeps recovery neutral after %s failure", async (_name, configure) => {
+    const test = harness();
+    configure(test);
+
+    await expect(
+      test.auth.startRecovery({ email: "neutral-recovery@example.net" }),
+    ).resolves.toEqual({ accepted: true });
+    expect(test.cleanup).toHaveBeenCalledTimes(1);
   });
 
   it("keeps duplicate/rate-limited initiation neutral and attempts cleanup after failures", async () => {

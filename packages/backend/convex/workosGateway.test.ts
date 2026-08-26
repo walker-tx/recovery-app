@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { parseStagingVerificationRequiredChallenge } from "./workos.ts";
 import type {
   WorkOSGateway,
   WorkOSGatewaySession,
@@ -239,6 +240,28 @@ describe("WorkOSGateway contract", () => {
 
     const authConfig = await readFile(new URL("./auth.config.ts", import.meta.url), "utf8");
     expect(authConfig).not.toMatch(/workos/i);
+  });
+
+  it("isolates the staging-proven verification-required compatibility response", () => {
+    expect(
+      parseStagingVerificationRequiredChallenge({
+        code: "email_verification_required",
+        pendingAuthenticationToken: "pending-secret",
+        rawData: { email_verification_id: "email_verification_123" },
+      }),
+    ).toEqual({
+      kind: "verificationRequired",
+      emailVerificationId: "email_verification_123",
+      pendingAuthenticationToken: "pending-secret",
+    });
+    expect(() =>
+      parseStagingVerificationRequiredChallenge({
+        code: "email_verification_required",
+        pendingAuthenticationToken: "pending-secret",
+        rawData: {},
+      }),
+    ).toThrow("providerUnavailable");
+    expect(parseStagingVerificationRequiredChallenge({ code: "invalid_password" })).toBeUndefined();
   });
 
   it("loads without WorkOS configuration and fails closed only when invoked", async () => {

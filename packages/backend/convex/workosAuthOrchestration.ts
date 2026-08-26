@@ -5,6 +5,7 @@ import type { EncryptedPendingAuthenticationToken } from "./workosIntentCrypto.t
 import { normalizeAuthEmail, recoveryInitiationResult, signupInitiationResult } from "./workosAuthPolicy.ts";
 
 const SIGNUP_LEASE_MS = 30_000;
+const DURABLE_COMPLETION_ATTEMPTS = 2;
 
 export type WorkOSAuthErrorCode =
   | "INVALID_CREDENTIALS"
@@ -74,9 +75,9 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
   const startSignup = async (input: { email: string; password: string }) => {
     const email = normalizeAuthEmail(input.email);
     const intentId = dependencies.newIntentId();
-    const emailFingerprint = dependencies.fingerprintEmail(email);
 
     try {
+      const emailFingerprint = dependencies.fingerprintEmail(email);
       const admitted = await dependencies.intents.admitInitiationRequest({
         emailFingerprint,
         purpose: "signup",
@@ -134,10 +135,10 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       });
       return signupInitiationResult(classification, intentId);
     } catch (error) {
-      if (error instanceof WorkOSGatewayError) {
-        return signupInitiationResult(error.category, intentId);
-      }
-      throw error;
+      return signupInitiationResult(
+        error instanceof WorkOSGatewayError ? error.category : "providerUnavailable",
+        intentId,
+      );
     } finally {
       await cleanupSafely(dependencies.intents);
     }
@@ -168,11 +169,19 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
         code: input.code,
       });
       providerCompleted = true;
-      await dependencies.intents.completeSignupIntent({
-        publicId: input.intentId,
-        leaseExpiresAt,
-        now: dependencies.now(),
-      });
+      const consumed = await completeSignupIntentWithRetry(
+        dependencies.intents,
+        {
+          publicId: input.intentId,
+          leaseExpiresAt,
+          now: dependencies.now(),
+        },
+        DURABLE_COMPLETION_ATTEMPTS,
+      );
+      if (!consumed) {
+        await revokeSafely(dependencies.gateway, session.sessionId);
+        throw providerUnavailable();
+      }
       return publicSession(session);
     } catch (error) {
       if (!providerCompleted) {
@@ -235,8 +244,8 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
 
   const startRecovery = async (input: { email: string }) => {
     const email = normalizeAuthEmail(input.email);
-    const emailFingerprint = dependencies.fingerprintEmail(email);
     try {
+      const emailFingerprint = dependencies.fingerprintEmail(email);
       const admitted = await dependencies.intents.admitInitiationRequest({
         emailFingerprint,
         purpose: "recovery",
@@ -264,8 +273,9 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       }
       return recoveryInitiationResult(classification);
     } catch (error) {
-      if (error instanceof WorkOSGatewayError) return recoveryInitiationResult(error.category);
-      throw error;
+      return recoveryInitiationResult(
+        error instanceof WorkOSGatewayError ? error.category : "providerUnavailable",
+      );
     } finally {
       await cleanupSafely(dependencies.intents);
     }
@@ -313,6 +323,30 @@ function guidanceFor(classification: WorkOSUserClassification): PrivateGuidanceC
 
 function providerUnavailable() {
   return new WorkOSAuthError("PROVIDER_UNAVAILABLE");
+}
+
+async function completeSignupIntentWithRetry(
+  store: SignupIntentStore,
+  input: { publicId: string; leaseExpiresAt: number; now: number },
+  attempts: number,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await store.completeSignupIntent(input);
+      return true;
+    } catch {
+      // Retry is bounded; credentials remain private until durable consumption succeeds.
+    }
+  }
+  return false;
+}
+
+async function revokeSafely(gateway: WorkOSGateway, sessionId: string) {
+  try {
+    await gateway.revokeSession(sessionId);
+  } catch {
+    // The public result remains failure even if compensating revocation is unavailable.
+  }
 }
 
 async function releaseSafely(store: SignupIntentStore, publicId: string, leaseExpiresAt: number) {
