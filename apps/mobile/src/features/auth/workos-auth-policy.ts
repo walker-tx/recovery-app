@@ -13,7 +13,7 @@ type WorkOSRoutingSession = {
 
 type ProfileSummary = { onboardingComplete: boolean } | null | undefined;
 
-export type WorkOSRouteDestination = "loading" | "auth" | "onboarding" | "app";
+export type WorkOSRouteDestination = "loading" | "retry" | "auth" | "onboarding" | "app";
 
 export function getWorkOSSignInValidation(
   email: string,
@@ -40,6 +40,9 @@ export function getWorkOSRouteDestination(
   session: WorkOSRoutingSession,
   profile: ProfileSummary,
 ): WorkOSRouteDestination {
+  if (session.retry?.operation === "restore" || session.retry?.operation === "refresh") {
+    return "retry";
+  }
   if (session.isLoading) return "loading";
   if (!session.isAuthenticated) return "auth";
   if (profile === undefined) return "loading";

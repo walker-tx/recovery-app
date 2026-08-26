@@ -58,7 +58,7 @@ test("authenticated routing waits for profile resolution without flashing a rout
   );
 });
 
-test("terminal invalidation routes to auth while transient restore retry stays unresolved", () => {
+test("terminal invalidation routes to auth while retryable restoration stays unresolved", () => {
   assert.equal(
     getWorkOSRouteDestination({ isLoading: false, isAuthenticated: false }, undefined),
     "auth",
@@ -68,6 +68,23 @@ test("terminal invalidation routes to auth while transient restore retry stays u
       { isLoading: true, isAuthenticated: false, retry: { operation: "restore" } },
       undefined,
     ),
-    "loading",
+    "retry",
+  );
+});
+
+test("authenticated refresh failure hides protected destinations until retry succeeds", () => {
+  assert.equal(
+    getWorkOSRouteDestination(
+      { isLoading: false, isAuthenticated: true, retry: { operation: "refresh" } },
+      { onboardingComplete: false },
+    ),
+    "retry",
+  );
+  assert.equal(
+    getWorkOSRouteDestination(
+      { isLoading: false, isAuthenticated: true, retry: { operation: "refresh" } },
+      { onboardingComplete: true },
+    ),
+    "retry",
   );
 });

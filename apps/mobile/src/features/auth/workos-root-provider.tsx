@@ -39,14 +39,12 @@ export function WorkOSProtectedRoutes() {
   const profile = useQuery(api.profiles.getMine, session.isAuthenticated ? {} : "skip");
   const destination = getWorkOSRouteDestination(session, profile);
 
-  if (destination === "loading") {
-    return (
-      <WorkOSRestorationLoading
-        canRetry={session.retry?.operation === "restore"}
-        onRetry={session.retryRestore}
-      />
-    );
+  if (destination === "retry") {
+    const retry = session.retry?.operation === "restore" ? session.retryRestore : session.refresh;
+    return <WorkOSRetryState onRetry={retry} />;
   }
+
+  if (destination === "loading") return <WorkOSRestorationLoading />;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -63,30 +61,34 @@ export function WorkOSProtectedRoutes() {
   );
 }
 
-function WorkOSRestorationLoading({
-  canRetry,
-  onRetry,
-}: {
-  canRetry: boolean;
-  onRetry: () => Promise<void>;
-}) {
+function WorkOSRestorationLoading() {
+  return (
+    <Screen contentClassName="w-full max-w-[520px] self-center">
+      <View
+        accessible
+        accessibilityLabel="Loading your account"
+        accessibilityRole="progressbar"
+        className="items-center gap-md"
+      >
+        <ActivityIndicator />
+        <Typography className="text-ink-muted">Loading your account…</Typography>
+      </View>
+    </Screen>
+  );
+}
+
+function WorkOSRetryState({ onRetry }: { onRetry: () => Promise<unknown> }) {
   return (
     <Screen contentClassName="w-full max-w-[520px] self-center">
       <View className="items-center gap-md">
-        <View
-          accessible
-          accessibilityLabel={canRetry ? "Account loading paused" : "Loading your account"}
-          accessibilityRole="progressbar"
-          className="items-center gap-md"
+        <Typography
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+          className="text-ink-muted"
         >
-          <ActivityIndicator />
-          <Typography className="text-ink-muted">
-            {canRetry ? "We couldn't restore your account. Try again." : "Loading your account…"}
-          </Typography>
-        </View>
-        {canRetry ? (
-          <Button onPress={() => void onRetry().catch(() => undefined)}>Try again</Button>
-        ) : null}
+          We couldn't finish loading your account. Try again.
+        </Typography>
+        <Button onPress={() => void onRetry().catch(() => undefined)}>Try again</Button>
       </View>
     </Screen>
   );
