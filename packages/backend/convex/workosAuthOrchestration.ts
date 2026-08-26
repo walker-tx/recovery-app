@@ -5,6 +5,7 @@ import type { EncryptedPendingAuthenticationToken } from "./workosIntentCrypto.t
 import { normalizeAuthEmail, recoveryInitiationResult, signupInitiationResult } from "./workosAuthPolicy.ts";
 
 const SIGNUP_LEASE_MS = 30_000;
+const INTENT_ID_GENERATION_ATTEMPTS = 2;
 const DURABLE_COMPLETION_ATTEMPTS = 2;
 
 export type WorkOSAuthErrorCode =
@@ -74,7 +75,13 @@ type PublicSession = { accessToken: string; refreshToken: string };
 export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrationDependencies) {
   const startSignup = async (input: { email: string; password: string }) => {
     const email = normalizeAuthEmail(input.email);
-    const intentId = dependencies.newIntentId();
+    const generatedIntent = generateSignupIntentId(dependencies.newIntentId);
+    const intentId = generatedIntent.intentId;
+
+    if (!generatedIntent.canPersist) {
+      await cleanupSafely(dependencies.intents);
+      return signupInitiationResult("providerUnavailable", intentId);
+    }
 
     try {
       const emailFingerprint = dependencies.fingerprintEmail(email);
@@ -323,6 +330,17 @@ function guidanceFor(classification: WorkOSUserClassification): PrivateGuidanceC
 
 function providerUnavailable() {
   return new WorkOSAuthError("PROVIDER_UNAVAILABLE");
+}
+
+function generateSignupIntentId(generate: () => string) {
+  for (let attempt = 0; attempt < INTENT_ID_GENERATION_ATTEMPTS; attempt += 1) {
+    try {
+      return { intentId: generate(), canPersist: true as const };
+    } catch {
+      // Retry the application-owned generator before using a response-only fallback.
+    }
+  }
+  return { intentId: globalThis.crypto.randomUUID(), canPersist: false as const };
 }
 
 async function completeSignupIntentWithRetry(

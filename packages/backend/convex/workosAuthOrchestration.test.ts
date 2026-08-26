@@ -268,6 +268,29 @@ function expectAuthError(code: string) {
 describe("WorkOS auth orchestration", () => {
   beforeEach(() => vi.restoreAllMocks());
 
+  it("returns a neutral fallback without starting signup when intent ID generation fails", async () => {
+    const test = harness();
+    const generate = vi.fn(() => {
+      throw new Error("rng unavailable");
+    });
+    test.dependencies.newIntentId = generate;
+    const createIntent = vi.spyOn(test.dependencies.intents, "createSignupIntent");
+
+    await expect(
+      test.auth.startSignup({ email: "rng-failure@example.net", password: "a-password" }),
+    ).resolves.toEqual({
+      accepted: true,
+      intentId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      ),
+    });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(test.dependencies.intents.admitInitiationRequest).not.toHaveBeenCalled();
+    expect(createIntent).not.toHaveBeenCalled();
+    expect(test.gateway.calls).toEqual([]);
+    expect(test.delivered).toEqual({ verification: [], reset: [], guidance: [] });
+  });
+
   it("starts new signup and resumes unverified signup without exposing account state", async () => {
     const test = harness();
     const first = await test.auth.startSignup({ email: " Person@Example.NET ", password: "a-password" });
