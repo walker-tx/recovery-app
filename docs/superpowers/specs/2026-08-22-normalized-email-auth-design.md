@@ -1,10 +1,12 @@
-# Normalized Email Signup and Recovery Design
+# Local Email Signup and Recovery Design
 
 ## Summary
 
-Add public-response-neutral email signup and account recovery to the Recovery app while retaining Convex Auth as the identity, password, session, and token owner. Account-specific guidance is disclosed only through email. Resend is integrated and exercised from the local Convex deployment; cloud and production deployment remain out of scope.
+Add public-response-neutral password signup and account recovery to the local Recovery app. Convex Auth remains the only owner of identity, passwords, sessions, and tokens. Account-specific guidance appears only in the submitted mailbox channel. This milestone uses a local console delivery adapter. Resend and real inbox delivery move to a future milestone.
 
-The implementation begins with a hard feasibility proof against the pinned `@convex-dev/auth` `0.0.95` APIs. It must prove that verified, single-use application grants can authorize password-account creation and password replacement through supported hooks. Direct auth-table writes, a parallel password store, client account lookup, and a forked token store are prohibited. Unsupported flows remain unavailable until an upgrade or provider decision is separately approved.
+The work starts with a hard feasibility proof. The installed `@convex-dev/auth` version `0.0.95` does not expose a supported hook that can consume an application challenge in the same transaction as account creation or password replacement. First inspect a targeted Auth package upgrade. If necessary, inspect the minimum compatible Convex stack upgrade. Both signup and recovery must pass the atomicity proof before implementation starts. If no compatible version supports both flows, stop and design a WorkOS replacement.
+
+Direct auth-table writes, a parallel password store, client account lookup, a second session system, and non-atomic challenge reservation are prohibited. Local auth and profile data can be reset after an upgrade or provider change. Production migration is out of scope.
 
 ## Product and privacy behavior
 
@@ -16,46 +18,49 @@ For every syntactically valid signup or recovery email, the public initiation AP
 { accepted: true }
 ```
 
-The client never receives account existence, provider type, delivery status, Resend identifiers, or raw provider errors. Malformed email may be rejected because format validation discloses no account state. Rate limits, delivery failures, and account classification remain internal.
+The client never receives account existence, provider type, delivery status, rate-limit state, or raw backend errors. Malformed email can receive a format error because this does not disclose account state. The system does not claim cryptographic timing equality and does not add artificial delays.
 
-The system follows the same broad server path for valid addresses but does not claim cryptographic timing indistinguishability and does not add artificial sleeps.
+The app starts the 60-second resend cooldown after every accepted response. A hidden delivery failure can make the user wait for this cooldown.
+
+### Shared email normalization
+
+One pure function normalizes email for the gateway and Convex Auth. It removes leading and trailing spaces and converts letters to lowercase. It does not remove dots, plus tags, or other provider-specific parts. The normalized value is used for account lookup, challenge binding, fingerprinting, and delivery.
 
 ### Signup
 
 1. The user submits an email.
-2. The server normalizes it, rate-limits the intent, and classifies account state internally.
-3. A new address receives a six-digit signup code.
-4. An existing address receives private sign-in and account-recovery guidance.
-5. The app always displays:
+2. The server normalizes it, applies rate limits, and classifies account state internally.
+3. A new address receives a six-digit signup code through the configured delivery adapter.
+4. An existing password account receives private sign-in and recovery guidance.
+5. A future Google-only or Apple-only account receives private guidance that names its linked provider.
+6. The app always shows neutral Check your email text.
+7. The user submits the code, password, and password confirmation in one operation.
+8. The server checks public password rules before it checks the code.
+9. Convex Auth consumes the valid challenge atomically with password-account creation.
 
-> **Check your email**  
-> We sent instructions to the address you provided. Follow the email to continue.
-
-6. A valid new-account code yields a short-lived, single-use signup grant.
-7. The user chooses a password.
-8. Convex Auth creates the password account only after consuming the verified grant through a supported hook.
-
-The signup result screen offers Enter verification code, Use a different email, and Return to sign in. Absent, incorrect, expired, consumed, and inapplicable codes share the safe message: “That code is invalid or has expired. Request new instructions and try again.”
+No grant moves through the client. If account state changes before completion, the request fails with a safe error and does not reveal the new state.
 
 ### Recovery
 
 1. The user submits an email.
 2. The public response remains `{ accepted: true }`.
-3. An eligible existing password account receives a six-digit recovery code.
-4. An unknown address receives no email.
-5. The app always displays:
+3. An existing account for the configured password provider receives a six-digit recovery code.
+4. An unknown address receives no delivery.
+5. A future Google-only or Apple-only account receives private guidance that names its linked provider.
+6. The app always shows: “Check your email. If you have an account with that email, you’ll receive recovery instructions shortly.”
+7. The user submits the code, new password, and password confirmation in one operation.
+8. The server checks public password rules before it checks the code.
+9. Convex Auth consumes the valid challenge atomically with password replacement, signs in the current device, and invalidates all other sessions.
 
-> **Check your email**  
-> If you have an account with that email, you’ll receive recovery instructions shortly.
+Unknown-address non-delivery reveals state to a person who controls and observes that mailbox. This accepted tradeoff does not change the neutral public UI and API.
 
-6. A valid recovery code yields a short-lived, single-use recovery grant.
-7. Convex Auth replaces the password through a supported hook, signs in the current device, and invalidates other sessions.
+### Safe completion errors
 
-The recovery result screen offers Enter recovery code, Use a different email, and Return to sign in. Code failures use the same safe invalid-or-expired message as signup.
+Absent, incorrect, expired, consumed, exhausted, and inapplicable codes use one safe error: “That code is invalid or has expired. Request new instructions and try again.” An invalid password does not consume the code and does not count as a code attempt. Raw backend errors never appear in the app.
 
-Not sending mail for unknown recovery addresses reveals account absence to someone who controls and observes that mailbox, but public UI and API responses remain non-enumerating. This is an explicitly accepted privacy tradeoff.
+## Local delivery copy
 
-## Email copy
+The console adapter renders the same message intent that a future email adapter will use.
 
 ### New-address signup
 
@@ -64,28 +69,28 @@ Subject: `Your Recovery Tracker verification code`
 > **Verify your email**  
 > Enter this code in Recovery Tracker to continue creating your account:  
 > **123456**  
-> This code expires in 10 minutes. If you didn’t request this, ignore this email.
+> This code expires in 10 minutes. If you didn’t request this, ignore this message.
 
-### Existing-account signup
+### Existing password account
 
 Subject: `Recovery Tracker account information`
 
 > **You already have an account**  
 > Return to Recovery Tracker and sign in with your password.  
-> If you don’t remember your password, choose **Account recovery** from the sign-in screen.  
-> If you didn’t request this, you can ignore this email.
+> If you don’t remember your password, choose **Account recovery**.
 
-### Existing-account recovery
+### Password recovery
 
 Subject: `Your Recovery Tracker recovery code`
 
 > **Reset your password**  
 > Enter this code in Recovery Tracker to choose a new password:  
 > **123456**  
-> This code expires in 10 minutes. Completing recovery signs out your other sessions.  
-> If you didn’t request this, you can ignore this email.
+> This code expires in 10 minutes. Completing recovery signs out your other sessions.
 
-Templates provide plain text and minimal escaped HTML. Future provider-specific mailbox guidance is out of scope until social auth and account-linking policy are designed.
+### Future non-password account guidance
+
+When Google or Apple sign-in exists, signup and recovery requests send private guidance that names the linked provider, such as “Return to the app and select Continue with Google.” Social sign-in and account linking are not part of this milestone.
 
 ## Architecture
 
@@ -98,17 +103,19 @@ packages/backend/convex/
   authEmailIntentsInternal.ts
   authEmailDelivery.ts
   authEmailTemplates.ts
+  crons.ts
   schema.ts
 ```
 
-- `auth.ts` configures Convex Auth and the supported grant-consumption hooks.
-- `authEmailIntents.ts` exposes narrow, validator-backed neutral initiation and code-verification APIs.
-- `authEmailIntentsInternal.ts` owns account classification, challenge/grant transitions, and rate limits.
-- `authEmailDelivery.ts` owns console and Resend delivery adapters.
+- `auth.ts` configures Convex Auth and the supported atomic challenge hooks.
+- `authEmailIntents.ts` exposes narrow, validator-backed initiation and completion APIs.
+- `authEmailIntentsInternal.ts` owns private account classification, challenge transitions, and rate limits.
+- `authEmailDelivery.ts` owns the console adapter and a narrow interface for a future email adapter.
 - `authEmailTemplates.ts` owns typed message rendering.
-- `schema.ts` adds challenge, grant, and bounded rate-limit storage with required indexes.
+- `crons.ts` schedules bounded cleanup.
+- `schema.ts` adds challenge and rate-limit records with required indexes.
 
-Every public Convex function declares argument and return validators. Account classification never crosses the public boundary. Public profile/application functions continue deriving identity server-side and authorizing owned resources.
+Every public Convex function declares argument and return validators. Account classification never crosses the public boundary. Public application functions continue to derive identity on the server and authorize owned resources.
 
 ### Mobile boundaries
 
@@ -122,15 +129,12 @@ apps/mobile/src/app/(auth)/
   sign-up.tsx
   verify-email.tsx
   forgot-password.tsx
-  reset-code.tsx
   reset-password.tsx
 ```
 
-Routes remain composition-only. Feature modules own form state, validation, pending state, safe error mapping, and Convex calls. Existing shared UI remains independent of Expo Router, Convex, Resend, and feature modules. Convex Auth continues to own session state, and `ConvexAuthProvider` continues to own SecureStore token persistence.
+Routes remain composition-only. Feature modules own form state, validation, pending state, safe error mapping, and Convex calls. The signup completion screen collects code and password together. The recovery completion screen does the same. No grant is stored in memory, SecureStore, route parameters, or URLs. Shared UI stays independent of Expo Router, Convex, and feature modules. Convex Auth continues to own session state, and `ConvexAuthProvider` continues to own SecureStore token persistence.
 
-## Challenge and grant model
-
-### Challenges
+## Challenge model
 
 ```ts
 {
@@ -146,142 +150,120 @@ Routes remain composition-only. Feature modules own form state, validation, pend
 }
 ```
 
-- `emailFingerprint` is a keyed HMAC of normalized email, not an unkeyed hash.
+- The code is six cryptographically random digits and is handled as a string.
+- `emailFingerprint` is a keyed HMAC of the normalized email.
 - `codeHash` verifies submitted codes.
-- `encryptedCode` permits safe reuse during the active resend window, preventing reordered email completion from making the last delivered code stale.
-- The encryption key is separate from the Resend API key and fingerprint key.
-- No password or account/provider classification is stored.
-- Records are indexed by fingerprint and purpose, with bounded cleanup of expired/consumed data.
+- `encryptedCode` permits safe reuse of the same active code.
+- Fingerprint and encryption keys are separate.
+- A key change invalidates all active challenges. This milestone does not support key versions.
+- No password or account/provider classification is stored in the challenge.
+- One active challenge exists per normalized email and purpose.
+- Passwords remain transient auth input and do not enter challenge storage.
 
-### Grants
-
-```ts
-{
-  tokenHash: string,
-  emailFingerprint: string,
-  purpose: "signup" | "recovery",
-  expiresAt: number,
-  consumedAt?: number,
-}
-```
-
-The plaintext grant is returned once after successful mailbox-code verification. Its stored hash is bound to normalized email and purpose. It expires, is single-use, is never logged or placed in a URL, and must be consumed atomically with the supported credential operation. Passwords remain transient client input passed directly to Convex Auth and never enter challenge/grant storage.
+The server must consume the challenge in the same transaction as the supported credential operation. There is no separate grant record or plaintext grant.
 
 ## Request orchestration and concurrency
 
-A public Convex action orchestrates external delivery:
+A public Convex action orchestrates initiation:
 
 1. Normalize the email.
-2. Ask an internal mutation to classify account state, enforce rate limits, and prepare or reuse an active challenge.
-3. If delivery is appropriate, decrypt the reusable code inside the action and invoke the selected delivery adapter.
-4. Record a redacted delivery result internally.
-5. Return the neutral public response.
+2. Ask an internal mutation to classify account state, enforce limits, and prepare or reuse an active challenge.
+3. Invoke the console delivery adapter when delivery is appropriate.
+4. Record a redacted outcome internally.
+5. Return `{ accepted: true }`.
 
-Signup sends either a code or existing-account guidance for every accepted, non-rate-limited request. Recovery sends only for an eligible existing password account. The action and internal functions never return classification publicly.
+Signup emits a code or private existing-account guidance for each accepted request that passes internal limits. Recovery emits a code only for a password account. Future social accounts emit provider-specific guidance. Unknown recovery addresses emit nothing.
 
 Initial limits per normalized email fingerprint are:
 
 - 5 initiation requests per 15 minutes.
 - 60-second resend cooldown.
-- 5 code attempts per active challenge.
+- 5 incorrect code attempts per active challenge.
 - 10-minute code lifetime.
-- 10-minute grant lifetime.
-- One active challenge and one active grant per email and purpose.
+- One active challenge per email and purpose.
 
-After the attempt limit, the challenge is invalidated. Public initiation remains neutral. IP-based limiting is excluded because ordinary Convex functions may not expose a trustworthy original client IP.
+A resend reuses the same active code and does not reset failed attempts. A delivery timeout or uncertain result also reuses that code. This can cause duplicate messages, but all messages contain the same valid code. After five incorrect attempts, the challenge is invalid. A new request remains subject to the normal cooldown and rate limit. IP limiting is excluded because the server does not have a trusted original client IP.
 
-Concurrency tests force simultaneous initiation, reversed Resend completion, delivery failure and retry, racing verification attempts, grant replay, account creation between challenge and grant consumption, and recovery racing another session/reset request. Races fail safely without authorizing another email or purpose or revealing account state.
+Tests force simultaneous initiation, reversed delivery completion, uncertain delivery and retry, racing completion, challenge replay, account creation between issuance and completion, and password recovery racing another session or reset. A race must not authorize another email or purpose or reveal account state.
 
-## Delivery adapter and configuration
+## Delivery adapter and logging
 
-The backend package owns the Resend dependency. Application code sends only typed messages:
-
-```ts
-type AuthEmailMessage =
-  | { kind: "signup-code"; to: string; code: string; expiresAt: number }
-  | { kind: "existing-account"; to: string }
-  | { kind: "recovery-code"; to: string; code: string; expiresAt: number };
-```
-
-Supported modes:
+This milestone supports only:
 
 ```text
 AUTH_EMAIL_DELIVERY=console
-AUTH_EMAIL_DELIVERY=resend
 ```
 
-Resend mode requires deployment environment secrets:
+Missing or unknown delivery configuration fails closed internally while public initiation stays neutral. The console adapter prints the purpose, masked email, six-digit code or guidance intent, and expiry. Example:
 
 ```text
-RESEND_API_KEY
-AUTH_EMAIL_FROM
-AUTH_EMAIL_CODE_KEY
-AUTH_EMAIL_FINGERPRINT_KEY
+signup j***@example.com code 123456 expires in 10 minutes
 ```
 
-Missing or unknown configuration fails closed internally while public initiation remains neutral. Secrets never use `EXPO_PUBLIC_*` variables or repository environment files. This milestone exercises Resend from local Convex only; cloud/production Convex deployment and production DNS changes are excluded.
+It does not print the full email address. Other logs can include purpose, keyed fingerprint, delivery mode, outcome category, and rate-limit decision. Other logs must not include passwords, codes, full email addresses, secrets, or raw sensitive payloads. Resend, real inbox delivery, sender-domain setup, and production email configuration are a future milestone.
 
-## Logging and observability
+## Cleanup
 
-Redacted server logs may include intent purpose, keyed email fingerprint, delivery mode, Resend request ID, outcome category, and rate-limit decision. They must not include passwords, grants, API keys, full email addresses in ordinary logs, raw sensitive provider payloads, or codes outside the explicitly selected console adapter. Resend mode never logs codes.
+A scheduled Convex cron performs bounded cleanup of expired or consumed challenges and expired rate-limit records. The implementation plan will define its interval, batch size, indexes, retention boundary, and retry-safe behavior. The cron must not require a cloud or production deployment.
 
 ## Feasibility gate
 
-Before adding schema, delivery, or UI, inspect and test the exact installed Convex Auth source/types to prove:
+Before schema, delivery, or UI implementation:
 
-1. A verified signup grant can gate password-account creation through a supported provider hook.
-2. A verified recovery grant can gate password replacement while preserving current-device sign-in and other-session invalidation.
-3. Grant consumption can be single-use and tied to the credential operation.
-4. No direct auth-table write, client account lookup, parallel password database, or token-store fork is required.
+1. Inspect version-current Convex Auth release notes, source, types, and peer requirements.
+2. First evaluate a targeted `@convex-dev/auth` upgrade.
+3. If required, evaluate the minimum compatible Convex stack update.
+4. Do not upgrade Expo, React, or React Native for this work.
+5. Prove that signup consumes a challenge atomically with password-account creation.
+6. Prove that recovery consumes a challenge atomically with password replacement, current-device sign-in, and other-session invalidation.
+7. Prove single-use behavior under racing requests.
+8. Prove that the design uses no direct auth-table writes, client account lookup, parallel password database, or second token/session system.
 
-The proof remains throwaway until all claims pass. If signup is supported but recovery is not, signup may proceed while recovery stays unavailable. If neither is supported, stop and compare a targeted Convex Auth upgrade with a managed auth provider before implementing challenge infrastructure.
+Both signup and recovery must pass. Partial implementation is not permitted. Do not change dependencies until a candidate version proves the required hook and compatibility. If no compatible Convex Auth version supports both flows, stop and present a WorkOS design. Do not fall back to a non-atomic reservation model.
 
-## Error handling
-
-- Valid initiation always resolves to `{ accepted: true }`.
-- Malformed email receives a format error.
-- Code absence, mismatch, expiry, consumption, attempt exhaustion, and inapplicability map to one safe invalid-or-expired error.
-- Delivery and Resend failures are redacted internally and never rendered raw.
-- Grant failures do not reveal whether the account changed between challenge and consumption.
-- Pending guards prevent duplicate client submission but are not treated as cross-client serialization.
+The local Convex auth and profile data can be reset after an approved package or provider change. Existing local account migration is not required.
 
 ## Verification strategy
 
 ### Backend automation
 
-Tests cover neutral initiation, internal-only classification, delivery selection, no-email unknown recovery, HMAC fingerprinting, secure six-digit generation, hash verification, encrypted resend reuse, expiry, attempt limits, cooldown, rate limits, reversed delivery completion, delivery retry, challenge/grant replay, email/purpose mismatch, credential races, session invalidation, validators, narrow return shapes, and redacted logs. Delivery is injected/faked; automated tests never call Resend.
+Tests cover neutral initiation, internal-only classification, password-only recovery eligibility, future provider-guidance selection boundaries, shared normalization, HMAC fingerprinting, secure six-digit generation, hash verification, encrypted code reuse, key-change invalidation, expiry, attempts, cooldown, rate limits, scheduled cleanup, challenge replay, account-state races, session invalidation, validators, narrow return shapes, and redacted logs. Delivery uses a fake or captured console adapter.
+
+Tests also prove that invalid passwords are rejected before code verification and do not consume a challenge or increment failed attempts.
 
 ### Mobile automation
 
-Tests cover neutral result states, email normalization, code/password validation, duplicate-submit prevention, value retention, cooldown behavior, safe error mapping, route transitions, and absence of raw backend/Resend errors.
+Tests cover neutral result states, shared email policy, combined code-and-password validation, duplicate-submit prevention, value retention, cooldown after every accepted initiation, safe error mapping, route transitions, and absence of raw backend errors.
 
-### Live local verification
+### Local manual verification
 
-Against local Convex and a Resend test or verified domain, manually verify:
+With local Convex and console delivery, verify:
 
 1. New-address signup code and account creation.
 2. Existing-account signup guidance.
-3. Existing-account recovery and password replacement.
-4. Unknown-account recovery sends no email while public UI remains neutral.
-5. Expiry and resend behavior.
-6. Signup flows into profile onboarding.
+3. Existing password-account recovery and password replacement.
+4. Unknown recovery emits no delivery while the app stays neutral.
+5. Code expiry, resend reuse, and attempt exhaustion.
+6. Signup continues into profile onboarding.
 7. Recovery signs in the current device and invalidates prior sessions.
-8. Logs contain no password, grant, full email, API key, or code outside console mode.
+8. Console output masks email, and other logs contain no password, code, full email, or secret.
+9. The cleanup cron removes bounded expired records.
 
-No cloud Convex deployment, production database, EAS build, or production DNS change is included.
+No Resend call, cloud Convex deployment, production database, EAS build, or production DNS change is included.
 
 ## Delivery sequence
 
-1. Complete the pinned-API feasibility proof.
-2. Add challenge/grant schema and backend behavior tests.
-3. Add the console adapter.
-4. Add Resend and templates.
-5. Add signup UI.
-6. Add recovery UI.
-7. Add multi-user/session verification.
-8. Exercise real local-backend inbox delivery.
-9. Complete fresh security, authorization, accessibility, and product review.
+1. Complete the upgrade and atomicity feasibility proof.
+2. If the proof fails, stop and present a WorkOS design.
+3. If the proof passes, obtain approval for the exact dependency change.
+4. Add challenge and rate-limit behavior through tests.
+5. Add console delivery and templates.
+6. Add the cleanup cron.
+7. Add combined signup UI.
+8. Add combined recovery UI.
+9. Add multi-user and session verification.
+10. Complete local manual verification and fresh security, authorization, accessibility, and product review.
 
 ## Completion criteria
 
-The milestone is complete when supported signup and recovery flows retain neutral public initiation, private account-specific email behavior, secure/rate-limited challenges and grants, Resend delivery from local Convex, verified Convex Auth credential/session semantics, passing focused and package checks, and explicit live-inbox evidence. Any unsupported credential operation remains unavailable with a precise pinned-API blocker; privacy is not weakened to force completion.
+The milestone is complete only when both signup and recovery use neutral public initiation, private account-specific console intents, secure and rate-limited challenges, atomic Convex Auth credential operations, correct session invalidation, scheduled cleanup, passing focused/package checks, and local manual evidence. Resend and production delivery are explicitly deferred. If the feasibility proof fails, implementation stops with a precise compatibility report and a proposed WorkOS design.
