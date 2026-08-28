@@ -2,7 +2,6 @@ import type { PrivateGuidanceCategory } from "./authEmailTemplates.ts";
 import type {
   WorkOSGateway,
   WorkOSGatewaySession,
-  WorkOSGatewayUser,
   WorkOSUserClassification,
 } from "./workosGateway.ts";
 import { WorkOSGatewayError } from "./workosErrorPolicy.ts";
@@ -73,7 +72,6 @@ export type WorkOSAuthOrchestrationDependencies = {
   fingerprintEmail(normalizedEmail: string): string;
   encryptPendingAuthenticationToken(token: string): EncryptedPendingAuthenticationToken;
   decryptPendingAuthenticationToken(encrypted: EncryptedPendingAuthenticationToken): string;
-  syncIdentitySnapshot(user: WorkOSGatewayUser): Promise<void>;
 };
 
 type PublicSession = { accessToken: string; refreshToken: string };
@@ -195,7 +193,6 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
         await revokeSafely(dependencies.gateway, session.sessionId);
         throw providerUnavailable();
       }
-      await syncIdentityOrRevoke(dependencies, session);
       return publicSession(session);
     } catch (error) {
       if (!providerCompleted) {
@@ -221,7 +218,6 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       if (authentication.kind === "verificationRequired") {
         throw new WorkOSAuthError("INVALID_CREDENTIALS");
       }
-      await syncIdentityOrRevoke(dependencies, authentication);
       return publicSession(authentication);
     } catch (error) {
       if (error instanceof WorkOSAuthError) throw error;
@@ -235,11 +231,6 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
   const refreshSession = async (input: { refreshToken: string }) => {
     try {
       const session = await dependencies.gateway.refreshSession(input.refreshToken);
-      try {
-        await dependencies.syncIdentitySnapshot(session.user);
-      } catch {
-        // Return rotated credentials so the owner can persist them and retry synchronization later.
-      }
       return { status: "success" as const, ...publicSession(session) };
     } catch (error) {
       if (error instanceof WorkOSGatewayError && error.category === "invalidSession") {
@@ -322,18 +313,6 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
     startRecovery,
     resetPassword,
   };
-}
-
-async function syncIdentityOrRevoke(
-  dependencies: WorkOSAuthOrchestrationDependencies,
-  session: WorkOSGatewaySession,
-) {
-  try {
-    await dependencies.syncIdentitySnapshot(session.user);
-  } catch {
-    await revokeSafely(dependencies.gateway, session.sessionId);
-    throw providerUnavailable();
-  }
 }
 
 function publicSession(session: WorkOSGatewaySession): PublicSession {

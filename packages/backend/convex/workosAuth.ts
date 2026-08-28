@@ -85,13 +85,6 @@ function productionOrchestration(
     fingerprintEmail,
     encryptPendingAuthenticationToken,
     decryptPendingAuthenticationToken,
-    async syncIdentitySnapshot(user) {
-      await ctx.runMutation(internal.workosAccount.upsertWorkOSIdentitySnapshot, {
-        ownerSubject: user.id,
-        email: user.email,
-        updatedAt: Date.now(),
-      });
-    },
     delivery: {
       verification: deliverVerificationCode,
       reset: deliverResetToken,

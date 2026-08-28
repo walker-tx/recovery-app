@@ -35,11 +35,6 @@ export default defineSchema({
   })
     .index("by_fingerprint_purpose_and_creation", ["emailFingerprint", "purpose"])
     .index("by_expiry", ["expiresAt"]),
-  workosIdentitySnapshots: defineTable({
-    ownerSubject: v.string(),
-    email: v.string(),
-    updatedAt: v.number(),
-  }).index("by_subject", ["ownerSubject"]),
   profiles: defineTable({
     ownerSubject: v.string(),
     displayName: v.string(),
