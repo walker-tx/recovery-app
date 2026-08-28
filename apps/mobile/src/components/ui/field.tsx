@@ -16,25 +16,35 @@ export function Field({ children, className, description, error, label, required
   );
 }
 
-type TextFieldProps = TextInputProps & { label: string; ref?: Ref<TextInput>; description?: string; error?: string | null; required?: boolean; containerClassName?: string; containerStyle?: ViewProps["style"] };
-export function TextField({ accessibilityHint: providedAccessibilityHint, className, containerClassName, containerStyle, description, error, label, required, ...props }: TextFieldProps) {
+type TextFieldProps = TextInputProps & { label: string; ref?: Ref<TextInput>; appearance?: "outlined" | "filled"; description?: string; endAdornment?: ReactNode; error?: string | null; required?: boolean; containerClassName?: string; containerStyle?: ViewProps["style"] };
+export function TextField({ accessibilityHint: providedAccessibilityHint, appearance = "outlined", className, containerClassName, containerStyle, description, endAdornment, error, label, required, ...props }: TextFieldProps) {
   const id = useId();
   const accessibilityHint = getFieldAccessibilityHint({
     accessibilityHint: providedAccessibilityHint,
     description,
     error,
   });
+  const borderClassName = error
+    ? "border-2 border-danger"
+    : appearance === "filled" ? "border-transparent" : "border-line";
   return (
     <Field className={containerClassName} description={description} error={error} label={label} required={required} style={containerStyle}>
-      <TextInput
-        accessibilityHint={accessibilityHint}
-        accessibilityLabel={label}
-        accessibilityState={{ disabled: props.editable === false }}
-        className={`min-h-touch rounded-subtle border bg-surface px-md py-md text-body text-ink ${error ? "border-2 border-danger" : "border-line"} ${className ?? ""}`}
-        nativeID={id}
-        placeholderTextColor={colors.inkMuted}
-        {...props}
-      />
+      <View className={`min-h-touch flex-row items-stretch overflow-hidden rounded-subtle border bg-surface ${borderClassName}`}>
+        <TextInput
+          accessibilityHint={accessibilityHint}
+          accessibilityLabel={label}
+          accessibilityState={{ disabled: props.editable === false }}
+          className={`min-h-touch flex-1 bg-transparent px-md py-md text-body text-ink ${className ?? ""}`}
+          nativeID={id}
+          placeholderTextColor={colors.inkMuted}
+          {...props}
+        />
+        {endAdornment ? (
+          <View className="justify-center">
+            {endAdornment}
+          </View>
+        ) : null}
+      </View>
     </Field>
   );
 }

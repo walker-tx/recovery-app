@@ -4,7 +4,6 @@ import { View, type TextInput } from "react-native";
 
 import { api } from "@recovery/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { TextField } from "@/components/ui/field";
 import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
@@ -57,87 +56,81 @@ export function ProfileScreen() {
   return (
     <Screen
       contentClassName="w-full max-w-[520px] self-center"
+      contentContainerStyle={{ justifyContent: "flex-start" }}
       keyboardDismissMode="interactive"
     >
-      <View className="gap-md">
-        <Typography variant="overline">YOUR SPACE</Typography>
+      <View className="gap-sm">
+        <Typography variant="overline">LAST STEP</Typography>
         <Typography accessibilityRole="header" variant="display">
-          Make it yours.
+          What should we call you?
         </Typography>
         <Typography className="text-ink-muted">
-          Choose the name you want to see when you return.
+          This is the only name your groups see. Make one up if you'd rather — you can change it any time.
         </Typography>
       </View>
 
-      <Card.Root elevation="sm">
-        <Card.Header>
-          <Card.Title>Your profile</Card.Title>
-          <Card.Description>
-            Your first name is optional. You can change these details later.
-          </Card.Description>
-        </Card.Header>
-        <Card.Content>
-          <TextField
-            autoCapitalize="words"
-            autoComplete="name"
-            editable={!isPending}
-            error={fieldErrors.displayName}
-            label="Display name"
-            maxLength={DISPLAY_NAME_MAX_LENGTH}
-            onChangeText={(value) => {
-              setDisplayName(value);
-              setFieldErrors((current) => ({ ...current, displayName: undefined }));
-              setFormError(null);
-            }}
-            onSubmitEditing={() => firstNameRef.current?.focus()}
-            placeholder="How should we welcome you?"
-            ref={displayNameRef}
-            returnKeyType="next"
-            submitBehavior="submit"
-            textContentType="name"
-            value={displayName}
-          />
-          <TextField
-            autoCapitalize="words"
-            autoComplete="given-name"
-            editable={!isPending}
-            error={fieldErrors.firstName}
-            label="First name (optional)"
-            maxLength={FIRST_NAME_MAX_LENGTH}
-            onChangeText={(value) => {
-              setFirstName(value);
-              setFieldErrors((current) => ({ ...current, firstName: undefined }));
-              setFormError(null);
-            }}
-            onSubmitEditing={handleSubmit}
-            ref={firstNameRef}
-            returnKeyType="done"
-            textContentType="givenName"
-            value={firstName}
-          />
-          {formError ? (
-            <Typography
-              accessibilityLiveRegion="polite"
-              accessibilityRole="alert"
-              className="text-danger"
-              selectable
-              variant="caption"
-            >
-              {formError}
-            </Typography>
-          ) : null}
-        </Card.Content>
-        <Card.Footer>
-          <Button
-            accessibilityLabel={isPending ? "Saving profile" : "Continue"}
-            className="w-full"
-            loading={isPending}
-            onPress={handleSubmit}
+      <View className="gap-lg">
+        <TextField
+          appearance="filled"
+          autoCapitalize="words"
+          autoComplete="name"
+          editable={!isPending}
+          error={fieldErrors.displayName}
+          label="Display name"
+          maxLength={DISPLAY_NAME_MAX_LENGTH}
+          onChangeText={(value) => {
+            setDisplayName(value);
+            setFieldErrors((current) => ({ ...current, displayName: undefined }));
+            setFormError(null);
+          }}
+          onSubmitEditing={() => firstNameRef.current?.focus()}
+          placeholder="How should we welcome you?"
+          ref={displayNameRef}
+          returnKeyType="next"
+          submitBehavior="submit"
+          textContentType="name"
+          value={displayName}
+        />
+        <TextField
+          appearance="filled"
+          autoCapitalize="words"
+          autoComplete="given-name"
+          editable={!isPending}
+          description="Optional. Leave blank if you like."
+          error={fieldErrors.firstName}
+          label="First name"
+          maxLength={FIRST_NAME_MAX_LENGTH}
+          onChangeText={(value) => {
+            setFirstName(value);
+            setFieldErrors((current) => ({ ...current, firstName: undefined }));
+            setFormError(null);
+          }}
+          onSubmitEditing={handleSubmit}
+          ref={firstNameRef}
+          returnKeyType="done"
+          textContentType="givenName"
+          value={firstName}
+        />
+        {formError ? (
+          <Typography
+            accessibilityLiveRegion="polite"
+            accessibilityRole="alert"
+            className="text-danger"
+            selectable
+            variant="caption"
           >
-            {isPending ? "Saving" : "Continue"}
-          </Button>
-        </Card.Footer>
-      </Card.Root>
+            {formError}
+          </Typography>
+        ) : null}
+        <Button
+          accessibilityLabel={isPending ? "Saving profile" : "Done"}
+          className="w-full"
+          loading={isPending}
+          onPress={handleSubmit}
+        >
+          {isPending ? "Saving" : "Done"}
+        </Button>
+      </View>
     </Screen>
   );
 }

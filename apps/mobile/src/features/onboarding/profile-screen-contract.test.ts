@@ -31,9 +31,20 @@ test("the display-name return key advances to the first-name field", () => {
   assert.match(displayNameField, /submitBehavior="submit"/);
 });
 
+test("profile follows the artifact's open final-step composition", () => {
+  assert.doesNotMatch(source, /import \{ Card \}/);
+  assert.doesNotMatch(source, /<Card\./);
+  assert.match(source, />LAST STEP</);
+  assert.match(source, />\s*What should we call you\?\s*</);
+  assert.match(source, /contentContainerStyle=\{\{ justifyContent: "flex-start" \}\}/);
+  assert.equal(source.match(/appearance="filled"/g)?.length, 2);
+  assert.match(source, /accessibilityLabel=\{isPending \? "Saving profile" : "Done"\}/);
+  assert.match(source, /\{isPending \? "Saving" : "Done"\}/);
+});
+
 test("editing either profile field clears a stale save error", () => {
   const displayNameField = getTextField("Display name");
-  const firstNameField = getTextField("First name (optional)");
+  const firstNameField = getTextField("First name");
 
   assert.ok(displayNameField, "expected the display-name TextField");
   assert.ok(firstNameField, "expected the first-name TextField");

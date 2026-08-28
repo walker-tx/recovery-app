@@ -1,8 +1,7 @@
 import { useReducer, useRef, useState } from "react";
-import { View, type TextInput } from "react-native";
+import { Pressable, View, type TextInput } from "react-native";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { TextField } from "@/components/ui/field";
 import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
@@ -38,6 +37,7 @@ export function WorkOSSignInScreen({
     initialWorkOSSignInState,
   );
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isPending, setIsPending] = useState(false);
 
   async function handleSubmit() {
@@ -67,65 +67,107 @@ export function WorkOSSignInScreen({
   }
 
   return (
-    <Screen contentClassName="w-full max-w-[520px] self-center" keyboardDismissMode="interactive">
-      <View className="gap-md">
-        <Typography variant="overline">WELCOME BACK</Typography>
-        <Typography accessibilityRole="header" variant="display">Sign in</Typography>
-        <Typography className="text-ink-muted">Use the details already connected to your account.</Typography>
+    <Screen
+      contentClassName="w-full max-w-[520px] self-center"
+      contentContainerStyle={{ justifyContent: "flex-start" }}
+      keyboardDismissMode="interactive"
+    >
+      <View className="gap-lg">
+        <Pressable
+          accessibilityLabel="Back"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isPending }}
+          className="min-h-touch self-start justify-center"
+          disabled={isPending}
+          onPress={onBack}
+        >
+          <Typography variant="label">‹ Back</Typography>
+        </Pressable>
+        <View className="gap-sm">
+          <Typography variant="overline">WELCOME BACK</Typography>
+          <Typography accessibilityRole="header" variant="display">
+            Sign in
+          </Typography>
+        </View>
       </View>
-      <Card.Root elevation="sm">
-        <Card.Content>
-          <TextField
-            autoCapitalize="none"
-            autoComplete="email"
-            autoCorrect={false}
-            editable={!isPending}
-            error={fieldErrors.email}
-            keyboardType="email-address"
-            label="Email"
-            onChangeText={(value) => {
-              dispatch({ type: "emailChanged", value });
-              setFieldErrors((current) => ({ ...current, email: undefined }));
-            }}
-            onSubmitEditing={() => passwordInput.current?.focus()}
-            placeholder="you@example.com"
-            ref={emailInput}
-            returnKeyType="next"
-            textContentType="emailAddress"
-            value={email}
-          />
-          <TextField
-            autoCapitalize="none"
-            autoComplete="current-password"
-            editable={!isPending}
-            error={fieldErrors.password}
-            label="Password"
-            onChangeText={(value) => {
-              dispatch({ type: "passwordChanged", value });
-              setFieldErrors((current) => ({ ...current, password: undefined }));
-            }}
-            onSubmitEditing={handleSubmit}
-            ref={passwordInput}
-            returnKeyType="go"
-            secureTextEntry
-            textContentType="password"
-            value={password}
-          />
-          {formError ? (
-            <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
-              {formError}
-            </Typography>
-          ) : null}
-        </Card.Content>
-        <Card.Footer className="flex-col items-stretch">
-          <Button accessibilityLabel={isPending ? "Signing in" : "Sign in"} loading={isPending} onPress={handleSubmit}>
-            {isPending ? "Signing in" : "Sign in"}
-          </Button>
+
+      <View className="gap-lg">
+        <TextField
+          appearance="filled"
+          autoCapitalize="none"
+          autoComplete="email"
+          autoCorrect={false}
+          editable={!isPending}
+          error={fieldErrors.email}
+          keyboardType="email-address"
+          label="Email"
+          onChangeText={(value) => {
+            dispatch({ type: "emailChanged", value });
+            setFieldErrors((current) => ({ ...current, email: undefined }));
+          }}
+          onSubmitEditing={() => passwordInput.current?.focus()}
+          placeholder="you@example.com"
+          ref={emailInput}
+          returnKeyType="next"
+          textContentType="emailAddress"
+          value={email}
+        />
+        <TextField
+          appearance="filled"
+          autoCapitalize="none"
+          autoComplete="current-password"
+          editable={!isPending}
+          endAdornment={
+            <Pressable
+              accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isPending }}
+              className="min-h-touch min-w-touch items-center justify-center px-md"
+              disabled={isPending}
+              onPress={() => setIsPasswordVisible((current) => !current)}
+            >
+              <Typography className="text-blueprint-pressed" variant="overline">
+                {isPasswordVisible ? "HIDE" : "SHOW"}
+              </Typography>
+            </Pressable>
+          }
+          error={fieldErrors.password}
+          label="Password"
+          onChangeText={(value) => {
+            dispatch({ type: "passwordChanged", value });
+            setFieldErrors((current) => ({ ...current, password: undefined }));
+          }}
+          onSubmitEditing={handleSubmit}
+          ref={passwordInput}
+          returnKeyType="go"
+          secureTextEntry={!isPasswordVisible}
+          textContentType="password"
+          value={password}
+        />
+        {formError ? (
+          <Typography
+            accessibilityLiveRegion="polite"
+            accessibilityRole="alert"
+            className="text-danger"
+            selectable
+            variant="caption"
+          >
+            {formError}
+          </Typography>
+        ) : null}
+        <Button
+          accessibilityLabel={isPending ? "Signing in" : "Sign in"}
+          className="w-full"
+          loading={isPending}
+          onPress={handleSubmit}
+        >
+          {isPending ? "Signing in" : "Sign in"}
+        </Button>
+        <View className="gap-xs">
           <Button accessibilityRole="link" disabled={isPending} onPress={onForgotPassword} variant="ghost">Forgot password?</Button>
           <Button accessibilityRole="link" disabled={isPending} onPress={onSignUp} variant="ghost">Create account</Button>
-          <Button disabled={isPending} onPress={onBack} variant="ghost">Back</Button>
-        </Card.Footer>
-      </Card.Root>
+        </View>
+      </View>
     </Screen>
   );
 }
