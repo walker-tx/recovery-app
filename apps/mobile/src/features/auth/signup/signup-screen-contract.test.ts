@@ -25,6 +25,16 @@ test("signup matches the new-account credentials hierarchy", async () => {
   assert.doesNotMatch(source, /import \{ Card \}|<Card\./);
 });
 
+test("signup prevents immediate re-initiation without adding verification resend UI", async () => {
+  const signupSource = await readFile(signupSourceUrl, "utf8");
+  const verificationSource = await readFile(verificationSourceUrl, "utf8");
+
+  assert.match(signupSource, /const cooldownSeconds = resendSecondsRemaining\(state\.cooldownUntil, now\)/);
+  assert.match(signupSource, /if \(cooldownSeconds > 0\) return/);
+  assert.match(signupSource, /disabled=\{cooldownSeconds > 0\}/);
+  assert.doesNotMatch(verificationSource, /Didn't arrive\?|resend/i);
+});
+
 test("signup password visibility is explicit and accessible", async () => {
   const source = await readFile(signupSourceUrl, "utf8");
 

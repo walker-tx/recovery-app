@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  RESEND_COOLDOWN_MS,
   getSignupValidation,
   getVerificationCodeError,
   initialSignupState,
   initialVerificationState,
   reduceSignupState,
   reduceVerificationState,
+  resendSecondsRemaining,
 } from "./signup-state.ts";
 
 test("signup requires a valid email and ten-character password", () => {
@@ -17,6 +19,7 @@ test("signup requires a valid email and ten-character password", () => {
   });
   assert.deepEqual(getSignupValidation(" person@example.com ", "long-password"), {});
   assert.deepEqual(Object.keys(initialSignupState).sort(), [
+    "cooldownUntil",
     "email",
     "formError",
     "isPending",
@@ -42,9 +45,13 @@ test("signup and verification states expose pending transitions and clear stale 
   assert.equal(reduceVerificationState(pendingVerification, { type: "submissionSucceeded" }).isPending, false);
 });
 
-test("accepted initiation clears the pending state without modeling unavailable resend behavior", () => {
+test("accepted signup initiation protects its valid intent with a sixty-second cooldown", () => {
+  const acceptedAt = 1_000;
   const pending = reduceSignupState(initialSignupState, { type: "submissionStarted" });
-  const accepted = reduceSignupState(pending, { type: "submissionAccepted" });
+  const accepted = reduceSignupState(pending, { type: "submissionAccepted", acceptedAt });
   assert.equal(accepted.isPending, false);
-  assert.equal("cooldownUntil" in accepted, false);
+  assert.equal(accepted.cooldownUntil, acceptedAt + RESEND_COOLDOWN_MS);
+  assert.equal(resendSecondsRemaining(accepted.cooldownUntil, acceptedAt), 60);
+  assert.equal(resendSecondsRemaining(accepted.cooldownUntil, acceptedAt + 59_001), 1);
+  assert.equal(resendSecondsRemaining(accepted.cooldownUntil, acceptedAt + 60_000), 0);
 });

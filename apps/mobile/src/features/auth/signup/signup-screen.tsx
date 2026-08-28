@@ -1,5 +1,5 @@
 import { useAction } from "convex/react";
-import { useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { Pressable, View, type TextInput } from "react-native";
 
 import { api } from "@recovery/backend/convex/_generated/api";
@@ -11,7 +11,7 @@ import { toSafeAuthError } from "../auth-error-policy";
 import { createSubmissionGuard } from "../auth-submission";
 import { normalizeEmail } from "../email-policy";
 import { useSignupFlow } from "./signup-flow-provider";
-import { getFirstInvalidSignupField, getSignupValidation, initialSignupState, reduceSignupState } from "./signup-state";
+import { getFirstInvalidSignupField, getSignupValidation, initialSignupState, reduceSignupState, resendSecondsRemaining } from "./signup-state";
 
 type FieldErrors = ReturnType<typeof getSignupValidation>;
 
@@ -24,6 +24,14 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
   const [state, dispatch] = useReducer(reduceSignupState, initialSignupState);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const cooldownSeconds = resendSecondsRemaining(state.cooldownUntil, now);
+
+  useEffect(() => {
+    if (cooldownSeconds === 0) return;
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [cooldownSeconds]);
 
   async function handleSubmit() {
     const errors = getSignupValidation(state.email, state.password);
@@ -33,13 +41,16 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
       ({ email: emailInput, password: passwordInput }[firstInvalid]).current?.focus();
       return;
     }
+    if (cooldownSeconds > 0) return;
 
     await guard.run({ email: state.email, password: state.password }, async (values) => {
       dispatch({ type: "submissionStarted" });
       try {
         const submittedEmail = normalizeEmail(values.email);
         const result = await startSignup({ email: submittedEmail, password: values.password });
-        dispatch({ type: "submissionAccepted" });
+        const acceptedAt = Date.now();
+        dispatch({ type: "submissionAccepted", acceptedAt });
+        setNow(acceptedAt);
         beginVerification(result.intentId, submittedEmail);
         onVerificationStarted();
       } catch (error) {
@@ -145,12 +156,13 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
           </Typography>
         ) : null}
         <Button
-          accessibilityLabel={state.isPending ? "Starting signup" : "Continue"}
+          accessibilityLabel={state.isPending ? "Starting signup" : cooldownSeconds > 0 ? "Continue unavailable" : "Continue"}
           className="w-full"
+          disabled={cooldownSeconds > 0}
           loading={state.isPending}
           onPress={handleSubmit}
         >
-          {state.isPending ? "Starting signup" : "Continue"}
+          {state.isPending ? "Starting signup" : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds}s` : "Continue"}
         </Button>
       </View>
     </Screen>

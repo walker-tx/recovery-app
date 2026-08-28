@@ -29,18 +29,18 @@ export function resendSecondsRemaining(cooldownUntil: number | null, now: number
 }
 
 export type SignupState = {
-  email: string; password: string; formError: string | null; isPending: boolean;
+  email: string; password: string; formError: string | null; isPending: boolean; cooldownUntil: number | null;
 };
-export const initialSignupState: SignupState = { email: "", password: "", formError: null, isPending: false };
+export const initialSignupState: SignupState = { email: "", password: "", formError: null, isPending: false, cooldownUntil: null };
 export type SignupAction =
   | { type: "emailChanged"; value: string } | { type: "passwordChanged"; value: string }
-  | { type: "submissionStarted" } | { type: "submissionAccepted" } | { type: "submissionFailed"; message: string };
+  | { type: "submissionStarted" } | { type: "submissionAccepted"; acceptedAt: number } | { type: "submissionFailed"; message: string };
 export function reduceSignupState(state: SignupState, action: SignupAction): SignupState {
   switch (action.type) {
     case "emailChanged": return { ...state, email: action.value, formError: null };
     case "passwordChanged": return { ...state, password: action.value, formError: null };
     case "submissionStarted": return { ...state, isPending: true, formError: null };
-    case "submissionAccepted": return { ...state, isPending: false };
+    case "submissionAccepted": return { ...state, isPending: false, cooldownUntil: action.acceptedAt + RESEND_COOLDOWN_MS };
     case "submissionFailed": return { ...state, isPending: false, formError: action.message };
   }
 }
