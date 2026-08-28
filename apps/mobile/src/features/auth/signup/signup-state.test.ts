@@ -2,23 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  RESEND_COOLDOWN_MS,
   getSignupValidation,
   getVerificationCodeError,
   initialSignupState,
   initialVerificationState,
   reduceSignupState,
   reduceVerificationState,
-  resendSecondsRemaining,
 } from "./signup-state.ts";
 
-test("signup requires a valid email, ten-character password, and matching confirmation", () => {
-  assert.deepEqual(getSignupValidation("not-an-email", "short", "different"), {
+test("signup requires a valid email and ten-character password", () => {
+  assert.deepEqual(getSignupValidation("not-an-email", "short"), {
     email: "Enter a valid email address.",
     password: "Use at least 10 characters.",
-    confirmation: "Passwords do not match.",
   });
-  assert.deepEqual(getSignupValidation(" person@example.com ", "long-password", "long-password"), {});
+  assert.deepEqual(getSignupValidation(" person@example.com ", "long-password"), {});
+  assert.deepEqual(Object.keys(initialSignupState).sort(), [
+    "email",
+    "formError",
+    "isPending",
+    "password",
+  ]);
 });
 
 test("verification accepts exactly six digits", () => {
@@ -39,11 +42,9 @@ test("signup and verification states expose pending transitions and clear stale 
   assert.equal(reduceVerificationState(pendingVerification, { type: "submissionSucceeded" }).isPending, false);
 });
 
-test("accepted initiation starts a sixty-second resend cooldown", () => {
-  const acceptedAt = 1_000;
-  const accepted = reduceSignupState(initialSignupState, { type: "submissionAccepted", acceptedAt });
-  assert.equal(accepted.cooldownUntil, acceptedAt + RESEND_COOLDOWN_MS);
-  assert.equal(resendSecondsRemaining(accepted.cooldownUntil, acceptedAt), 60);
-  assert.equal(resendSecondsRemaining(accepted.cooldownUntil, acceptedAt + 59_001), 1);
-  assert.equal(resendSecondsRemaining(accepted.cooldownUntil, acceptedAt + 60_000), 0);
+test("accepted initiation clears the pending state without modeling unavailable resend behavior", () => {
+  const pending = reduceSignupState(initialSignupState, { type: "submissionStarted" });
+  const accepted = reduceSignupState(pending, { type: "submissionAccepted" });
+  assert.equal(accepted.isPending, false);
+  assert.equal("cooldownUntil" in accepted, false);
 });

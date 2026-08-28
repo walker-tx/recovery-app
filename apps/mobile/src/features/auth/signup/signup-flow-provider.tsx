@@ -7,7 +7,7 @@ import {
 } from "./signup-flow-state.ts";
 
 type SignupFlowContextValue = SignupFlowState & {
-  beginVerification(intentId: string): void;
+  beginVerification(intentId: string, submittedEmail: string): void;
   completeSignupFlow(): void;
   backToWelcome(): void;
 };
@@ -20,8 +20,8 @@ export function SignupFlowProvider({ children }: { children?: ReactNode }) {
     undefined,
     createInitialSignupFlowState,
   );
-  const beginVerification = useCallback((intentId: string) => {
-    dispatch({ type: "started", intentId });
+  const beginVerification = useCallback((intentId: string, submittedEmail: string) => {
+    dispatch({ type: "started", intentId, submittedEmail });
   }, []);
   const completeSignupFlow = useCallback(() => dispatch({ type: "completed" }), []);
   const backToWelcome = useCallback(() => dispatch({ type: "backToWelcome" }), []);

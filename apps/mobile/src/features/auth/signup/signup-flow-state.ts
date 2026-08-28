@@ -1,11 +1,11 @@
-export type SignupFlowState = { intentId: string | null };
+export type SignupFlowState = { intentId: string | null; submittedEmail: string | null };
 export type SignupFlowEvent =
-  | { type: "started"; intentId: string }
+  | { type: "started"; intentId: string; submittedEmail: string }
   | { type: "completed" }
   | { type: "backToWelcome" };
 
 export function createInitialSignupFlowState(): SignupFlowState {
-  return { intentId: null };
+  return { intentId: null, submittedEmail: null };
 }
 
 export function signupFlowReducer(
@@ -14,7 +14,7 @@ export function signupFlowReducer(
 ): SignupFlowState {
   switch (event.type) {
     case "started":
-      return { intentId: event.intentId };
+      return { intentId: event.intentId, submittedEmail: event.submittedEmail };
     case "completed":
     case "backToWelcome":
       return createInitialSignupFlowState();

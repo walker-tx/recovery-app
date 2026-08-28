@@ -3,21 +3,19 @@ import { getEmailError } from "../email-policy.ts";
 export const MIN_PASSWORD_LENGTH = 10;
 export const RESEND_COOLDOWN_MS = 60_000;
 
-type SignupValidation = { email?: string; password?: string; confirmation?: string };
+type SignupValidation = { email?: string; password?: string };
 
-export function getSignupValidation(email: string, password: string, confirmation: string): SignupValidation {
+export function getSignupValidation(email: string, password: string): SignupValidation {
   const errors: SignupValidation = {};
   const emailError = getEmailError(email);
   if (emailError) errors.email = emailError;
   if (password.length < MIN_PASSWORD_LENGTH) errors.password = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
-  if (confirmation !== password) errors.confirmation = "Passwords do not match.";
   return errors;
 }
 
 export function getFirstInvalidSignupField(errors: SignupValidation) {
   if (errors.email) return "email" as const;
   if (errors.password) return "password" as const;
-  if (errors.confirmation) return "confirmation" as const;
   return null;
 }
 
@@ -31,19 +29,18 @@ export function resendSecondsRemaining(cooldownUntil: number | null, now: number
 }
 
 export type SignupState = {
-  email: string; password: string; confirmation: string; formError: string | null; isPending: boolean; cooldownUntil: number | null;
+  email: string; password: string; formError: string | null; isPending: boolean;
 };
-export const initialSignupState: SignupState = { email: "", password: "", confirmation: "", formError: null, isPending: false, cooldownUntil: null };
+export const initialSignupState: SignupState = { email: "", password: "", formError: null, isPending: false };
 export type SignupAction =
-  | { type: "emailChanged"; value: string } | { type: "passwordChanged"; value: string } | { type: "confirmationChanged"; value: string }
-  | { type: "submissionStarted" } | { type: "submissionAccepted"; acceptedAt: number } | { type: "submissionFailed"; message: string };
+  | { type: "emailChanged"; value: string } | { type: "passwordChanged"; value: string }
+  | { type: "submissionStarted" } | { type: "submissionAccepted" } | { type: "submissionFailed"; message: string };
 export function reduceSignupState(state: SignupState, action: SignupAction): SignupState {
   switch (action.type) {
     case "emailChanged": return { ...state, email: action.value, formError: null };
     case "passwordChanged": return { ...state, password: action.value, formError: null };
-    case "confirmationChanged": return { ...state, confirmation: action.value, formError: null };
     case "submissionStarted": return { ...state, isPending: true, formError: null };
-    case "submissionAccepted": return { ...state, isPending: false, cooldownUntil: action.acceptedAt + RESEND_COOLDOWN_MS };
+    case "submissionAccepted": return { ...state, isPending: false };
     case "submissionFailed": return { ...state, isPending: false, formError: action.message };
   }
 }

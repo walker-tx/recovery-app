@@ -1,8 +1,7 @@
 import { useReducer, useRef, useState } from "react";
-import { View, type TextInput } from "react-native";
+import { Pressable, View, type TextInput } from "react-native";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { TextField } from "@/components/ui/field";
 import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
@@ -14,7 +13,7 @@ import { getVerificationCodeError, initialVerificationState, reduceVerificationS
 
 export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
   const { completeSignup } = useWorkOSSession();
-  const { intentId, completeSignupFlow } = useSignupFlow();
+  const { intentId, submittedEmail, completeSignupFlow } = useSignupFlow();
   const guard = useRef(createSubmissionGuard()).current;
   const codeInput = useRef<TextInput>(null);
   const [state, dispatch] = useReducer(reduceVerificationState, initialVerificationState);
@@ -39,24 +38,85 @@ export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <Screen contentClassName="w-full max-w-[520px] self-center" keyboardDismissMode="interactive">
-      <View className="gap-md">
-        <Typography variant="overline">VERIFY EMAIL</Typography>
-        <Typography accessibilityRole="header" variant="display">Enter your code</Typography>
-        <Typography className="text-ink-muted">Complete signup with the six-digit verification code.</Typography>
+    <Screen
+      contentClassName="w-full max-w-[520px] self-center"
+      contentContainerStyle={{ justifyContent: "flex-start" }}
+      keyboardDismissMode="interactive"
+    >
+      <View className="gap-lg">
+        <Pressable
+          accessibilityLabel="Back"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: state.isPending }}
+          className="min-h-touch min-w-touch self-start items-center justify-center"
+          disabled={state.isPending}
+          onPress={onBack}
+        >
+          <Typography variant="title">‹</Typography>
+        </Pressable>
+        <View className="gap-sm">
+          <Typography selectable variant="overline">
+            {submittedEmail === null ? "EMAIL" : submittedEmail.toUpperCase()}
+          </Typography>
+          <Typography accessibilityRole="header" variant="display">
+            Six digits, from your inbox
+          </Typography>
+          <Typography className="text-ink-muted">
+            Just once, to prove the address is yours.
+          </Typography>
+        </View>
       </View>
-      <Card.Root elevation="sm">
-        <Card.Content>
-          <Typography selectable variant="caption">For this local test, copy the verification code from the Convex console output.</Typography>
-          {intentId === null ? <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">This signup attempt is no longer available. Go back and start again.</Typography> : null}
-          <TextField autoComplete="one-time-code" editable={!state.isPending && intentId !== null} error={codeError} keyboardType="number-pad" label="Verification code" maxLength={6} onChangeText={(value) => { dispatch({ type: "codeChanged", value }); setCodeError(undefined); }} onSubmitEditing={handleSubmit} ref={codeInput} returnKeyType="done" textContentType="oneTimeCode" value={state.code} />
-          {state.formError ? <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">{state.formError}</Typography> : null}
-        </Card.Content>
-        <Card.Footer className="flex-col items-stretch">
-          <Button accessibilityLabel={state.isPending ? "Verifying email" : "Verify email"} disabled={intentId === null} loading={state.isPending} onPress={handleSubmit}>{state.isPending ? "Verifying" : "Verify email"}</Button>
-          <Button disabled={state.isPending} onPress={onBack} variant="ghost">Back</Button>
-        </Card.Footer>
-      </Card.Root>
+
+      <View className="gap-lg">
+        {intentId === null ? (
+          <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
+            This signup attempt is no longer available. Go back and start again.
+          </Typography>
+        ) : null}
+        <TextField
+          appearance="filled"
+          autoComplete="one-time-code"
+          editable={!state.isPending && intentId !== null}
+          error={codeError}
+          keyboardType="number-pad"
+          label="Verification code"
+          maxLength={6}
+          onChangeText={(value) => {
+            dispatch({ type: "codeChanged", value });
+            setCodeError(undefined);
+          }}
+          onSubmitEditing={handleSubmit}
+          ref={codeInput}
+          returnKeyType="done"
+          textContentType="oneTimeCode"
+          value={state.code}
+        />
+        {state.formError ? (
+          <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
+            {state.formError}
+          </Typography>
+        ) : null}
+        <Button
+          accessibilityLabel={state.isPending ? "Verifying email" : "Verify email"}
+          className="w-full"
+          disabled={intentId === null}
+          loading={state.isPending}
+          onPress={handleSubmit}
+        >
+          {state.isPending ? "Verifying" : "Verify email"}
+        </Button>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityState={{ disabled: state.isPending }}
+          className="min-h-touch justify-center"
+          disabled={state.isPending}
+          onPress={onBack}
+        >
+          <Typography className="text-ink-muted text-center">
+            Typo in the address? Change it — nothing has been saved yet.
+          </Typography>
+        </Pressable>
+      </View>
     </Screen>
   );
 }
