@@ -1,8 +1,6 @@
-export default {
-  providers: [
-    {
-      domain: process.env.CONVEX_SITE_URL,
-      applicationID: "convex",
-    },
-  ],
-};
+import { buildWorkOSAuthConfig } from "./workosAuthConfig";
+
+export default buildWorkOSAuthConfig({
+  mode: process.env.WORKOS_MODE,
+  workosClientId: process.env.WORKOS_CLIENT_ID,
+});

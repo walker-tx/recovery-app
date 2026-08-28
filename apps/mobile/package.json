@@ -11,7 +11,7 @@
     "doctor": "expo-doctor"
   },
   "dependencies": {
-    "@convex-dev/auth": "0.0.95",
+    "@recovery/backend": "workspace:*",
     "convex": "1.44.0",
     "expo": "~57.0.15",
     "expo-constants": "~57.0.13",
@@ -30,6 +30,7 @@
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
+    "@types/node": "~24.10.15",
     "@types/react": "~19.2.2",
     "babel-preset-expo": "^57.0.7",
     "expo-doctor": "1.18.1",
