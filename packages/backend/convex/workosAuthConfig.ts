@@ -2,7 +2,6 @@ import type { AuthConfig } from "convex/server";
 
 type WorkOSAuthConfigEnvironment = {
   mode?: string;
-  convexSiteUrl?: string;
   workosClientId?: string;
 };
 
@@ -10,21 +9,10 @@ const WORKOS_CLIENT_ID_PATTERN = /^client_[A-Za-z0-9]+$/;
 
 export function buildWorkOSAuthConfig({
   mode,
-  convexSiteUrl,
   workosClientId,
 }: WorkOSAuthConfigEnvironment): AuthConfig {
-  if (mode === undefined) {
-    if (!convexSiteUrl) {
-      throw new Error("CONVEX_SITE_URL is required in default auth mode");
-    }
-
-    return {
-      providers: [{ domain: convexSiteUrl, applicationID: "convex" }],
-    };
-  }
-
   if (mode !== "staging") {
-    throw new Error(`Unsupported WORKOS_MODE: ${mode}`);
+    throw new Error("WORKOS_MODE must be staging");
   }
 
   if (

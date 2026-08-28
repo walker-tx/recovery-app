@@ -234,12 +234,13 @@ describe("WorkOSGateway contract", () => {
     });
   });
 
-  it("cannot mint application JWTs or be selected by auth.config.ts", async () => {
+  it("cannot mint application JWTs or be selected by the active auth config", async () => {
     const gateway: WorkOSGateway = new FakeWorkOSGateway();
     expect("mintApplicationJwt" in gateway).toBe(false);
 
     const authConfig = await readFile(new URL("./auth.config.ts", import.meta.url), "utf8");
-    expect(authConfig).not.toMatch(/workos/i);
+    expect(authConfig).toMatch(/buildWorkOSAuthConfig/);
+    expect(authConfig).not.toMatch(/FakeWorkOSGateway|emulat/i);
   });
 
   it("isolates the staging-proven verification-required compatibility response", () => {

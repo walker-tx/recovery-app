@@ -1,20 +1,29 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+const clientId = "client_01ABC123";
+const issuer = `https://api.workos.com/user_management/${clientId}`;
+let previousClientId: string | undefined;
 
-async function createUser(t: ReturnType<typeof convexTest>, email: string) {
-  return await t.run(async (ctx) => await ctx.db.insert("users", { email }));
+function asWorkOSUser(t: ReturnType<typeof convexTest>, subject: string) {
+  return t.withIdentity({ subject, issuer, client_id: clientId });
 }
 
-function asUser(t: ReturnType<typeof convexTest>, userId: string) {
-  return t.withIdentity({ subject: `${userId}|test-session` });
-}
+beforeAll(() => {
+  previousClientId = process.env.WORKOS_CLIENT_ID;
+  process.env.WORKOS_CLIENT_ID = clientId;
+});
 
-describe("profiles", () => {
+afterAll(() => {
+  if (previousClientId === undefined) delete process.env.WORKOS_CLIENT_ID;
+  else process.env.WORKOS_CLIENT_ID = previousClientId;
+});
+
+describe("WorkOS-owned profiles", () => {
   test("rejects unauthenticated reads and writes", async () => {
     const t = convexTest(schema, modules);
 
@@ -26,12 +35,10 @@ describe("profiles", () => {
     ).rejects.toMatchObject({ data: { code: "UNAUTHENTICATED" } });
   });
 
-  test("creates, returns, and updates only the authenticated user's profile", async () => {
+  test("creates, returns, updates, and isolates profiles by validated WorkOS subject", async () => {
     const t = convexTest(schema, modules);
-    const firstUserId = await createUser(t, "first@example.com");
-    const secondUserId = await createUser(t, "second@example.com");
-    const firstUser = asUser(t, firstUserId);
-    const secondUser = asUser(t, secondUserId);
+    const firstUser = asWorkOSUser(t, "user_first");
+    const secondUser = asWorkOSUser(t, "user_second");
 
     await expect(firstUser.query(api.profiles.getMine, {})).resolves.toBeNull();
     await expect(
@@ -54,11 +61,6 @@ describe("profiles", () => {
       firstName: "Morgan",
       onboardingComplete: true,
     });
-    await expect(secondUser.query(api.profiles.getMine, {})).resolves.toEqual({
-      displayName: "Morgan Lee",
-      firstName: "Morgan",
-      onboardingComplete: true,
-    });
 
     await expect(
       firstUser.mutation(api.profiles.complete, {
@@ -69,27 +71,36 @@ describe("profiles", () => {
       displayName: "Taylor Reed",
       onboardingComplete: true,
     });
-    const publicProfile = await firstUser.query(api.profiles.getMine, {});
-    expect(publicProfile).toEqual({
-      displayName: "Taylor Reed",
+    await expect(secondUser.query(api.profiles.getMine, {})).resolves.toEqual({
+      displayName: "Morgan Lee",
+      firstName: "Morgan",
       onboardingComplete: true,
     });
-    expect(publicProfile).not.toHaveProperty("ownerId");
-    expect(publicProfile).not.toHaveProperty("email");
-    expect(publicProfile).not.toHaveProperty("_id");
-    expect(publicProfile).not.toHaveProperty("_creationTime");
 
     const storedProfiles = await t.run(async (ctx) => await ctx.db.query("profiles").collect());
     expect(storedProfiles).toHaveLength(2);
-    expect(storedProfiles.map(({ ownerId }) => ownerId)).toEqual(
-      expect.arrayContaining([firstUserId, secondUserId]),
+    expect(storedProfiles.map(({ ownerSubject }) => ownerSubject)).toEqual(
+      expect.arrayContaining(["user_first", "user_second"]),
     );
+    expect(storedProfiles.every((profile) => !("ownerId" in profile))).toBe(true);
+  });
+
+  test("rejects mismatched WorkOS client identity", async () => {
+    const t = convexTest(schema, modules);
+    const wrongClient = t.withIdentity({
+      subject: "user_wrong",
+      issuer,
+      client_id: "client_other",
+    });
+
+    await expect(wrongClient.query(api.profiles.getMine, {})).rejects.toMatchObject({
+      data: { code: "UNAUTHENTICATED" },
+    });
   });
 
   test("rejects invalid profile names without persisting a profile", async () => {
     const t = convexTest(schema, modules);
-    const userId = await createUser(t, "person@example.com");
-    const user = asUser(t, userId);
+    const user = asWorkOSUser(t, "user_person");
 
     await expect(
       user.mutation(api.profiles.complete, { displayName: "   " }),

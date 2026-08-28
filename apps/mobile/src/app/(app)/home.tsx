@@ -1,5 +1,5 @@
-import { AuthenticatedHomeScreen } from "@/features/auth/authenticated-home-screen";
+import { WorkOSValidationScreen } from "@/features/auth/workos-validation-screen";
 
 export default function HomeRoute() {
-  return <AuthenticatedHomeScreen />;
+  return <WorkOSValidationScreen />;
 }

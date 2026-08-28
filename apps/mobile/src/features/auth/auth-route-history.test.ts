@@ -4,18 +4,18 @@ import test from "node:test";
 
 import { StackRouter } from "expo-router/build/react-navigation/routers/index.js";
 
-const rootLayoutUrl = new URL("../../app/_layout.tsx", import.meta.url);
+const protectedRoutesUrl = new URL("./workos-root-provider.tsx", import.meta.url);
 
 test("sign-out removes protected app routes from stack history", async () => {
-  const rootLayout = await readFile(rootLayoutUrl, "utf8");
+  const protectedRoutes = await readFile(protectedRoutesUrl, "utf8");
 
   assert.match(
-    rootLayout,
-    /<Stack\.Protected guard=\{!isAuthenticated\}>[\s\S]*?<Stack\.Screen name=\"\(auth\)\" \/>[\s\S]*?<\/Stack\.Protected>/,
+    protectedRoutes,
+    /<Stack\.Protected guard=\{destination === \"auth\"\}>[\s\S]*?<Stack\.Screen name=\"\(auth\)\" \/>[\s\S]*?<\/Stack\.Protected>/,
   );
   assert.match(
-    rootLayout,
-    /<Stack\.Protected guard=\{isAuthenticated && destination === \"app\"\}>[\s\S]*?<Stack\.Screen name=\"\(app\)\" \/>[\s\S]*?<\/Stack\.Protected>/,
+    protectedRoutes,
+    /<Stack\.Protected guard=\{destination === \"app\"\}>[\s\S]*?<Stack\.Screen name=\"\(app\)\" \/>[\s\S]*?<\/Stack\.Protected>/,
   );
 
   const router = StackRouter({});

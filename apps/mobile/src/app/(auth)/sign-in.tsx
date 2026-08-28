@@ -1,9 +1,15 @@
 import { useRouter } from "expo-router";
 
-import { SignInScreen } from "@/features/auth/sign-in-screen";
+import { WorkOSSignInScreen } from "@/features/auth/workos-sign-in-screen";
 
 export default function SignInRoute() {
   const router = useRouter();
 
-  return <SignInScreen onBack={() => router.back()} />;
+  return (
+    <WorkOSSignInScreen
+      onBack={() => router.back()}
+      onForgotPassword={() => router.push("./forgot-password")}
+      onSignUp={() => router.push("./sign-up")}
+    />
+  );
 }

@@ -10,7 +10,16 @@ const screenNames = [
   "recovery/reset-password-screen",
 ] as const;
 
-test("inactive auth routes remain composition-only and accept no token parameters", async () => {
+test("WorkOS signup and recovery routes are active in the auth navigator", async () => {
+  const source = await readFile(new URL("../../app/(auth)/_layout.tsx", import.meta.url), "utf8");
+  assert.match(
+    source,
+    /<Stack\.Screen name="sign-up" \/>[\s\S]*?<Stack\.Screen name="verify-email" \/>[\s\S]*?<Stack\.Screen name="forgot-password" \/>[\s\S]*?<Stack\.Screen name="reset-password" \/>/,
+  );
+  assert.doesNotMatch(source, /guard=\{false\}/);
+});
+
+test("active auth routes remain composition-only and accept no token parameters", async () => {
   for (const routeName of routeNames) {
     const source = await readFile(new URL(`../../app/(auth)/${routeName}.tsx`, import.meta.url), "utf8");
     assert.doesNotMatch(source, /useLocalSearchParams|searchParams|setParams/);

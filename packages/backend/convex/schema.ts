@@ -1,4 +1,3 @@
-import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -15,7 +14,6 @@ const privateGuidanceCategory = v.union(
 );
 
 export default defineSchema({
-  ...authTables,
   signupIntents: defineTable({
     publicId: v.string(),
     emailFingerprint: v.string(),
@@ -43,9 +41,9 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_subject", ["ownerSubject"]),
   profiles: defineTable({
-    ownerId: v.id("users"),
+    ownerSubject: v.string(),
     displayName: v.string(),
     firstName: v.optional(v.string()),
     onboardingComplete: v.boolean(),
-  }).index("by_owner", ["ownerId"]),
+  }).index("by_owner_subject", ["ownerSubject"]),
 });

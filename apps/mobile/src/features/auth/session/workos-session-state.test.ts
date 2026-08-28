@@ -194,6 +194,52 @@ test("owner callback identities remain stable across state transitions", async (
   assert.deepEqual([owner.signIn, owner.completeSignup, owner.refresh, owner.signOut, owner.fetchAccessToken, owner.retryRestore], callbacks);
 });
 
+test("sign-out waits for an in-flight refresh and revokes the rotated session", async () => {
+  const refreshResult = deferred<{ status: "success"; accessToken: string; refreshToken: string }>();
+  const revokedTokens: string[] = [];
+  const owner = createWorkOSSessionOwner({
+    storage: { async read() { return null; }, async write() {}, async clear() {} },
+    actions: actions({
+      async refreshSession() { return refreshResult.promise; },
+      async signOutSession({ refreshToken }) { revokedTokens.push(refreshToken); return { revoked: true }; },
+    }),
+  });
+  await owner.restore();
+  await owner.signIn({ email: "person@example.com", password: "secret" });
+
+  const refreshing = owner.refresh();
+  const signingOut = owner.signOut();
+  await tick();
+  assert.deepEqual(revokedTokens, []);
+  refreshResult.resolve({ status: "success", ...session("rotated") });
+  await refreshing;
+  await signingOut;
+
+  assert.deepEqual(revokedTokens, ["refresh-rotated"]);
+  assert.equal(owner.getSnapshot().isAuthenticated, false);
+});
+
+test("refresh requested during sign-out cannot restore the session", async () => {
+  const revocation = deferred<{ revoked: true }>();
+  let refreshCalls = 0;
+  const owner = createWorkOSSessionOwner({
+    storage: { async read() { return null; }, async write() {}, async clear() {} },
+    actions: actions({
+      async refreshSession() { refreshCalls += 1; return { status: "success", ...session("refreshed") }; },
+      async signOutSession() { return revocation.promise; },
+    }),
+  });
+  await owner.restore();
+  await owner.signIn({ email: "person@example.com", password: "secret" });
+
+  const signingOut = owner.signOut();
+  assert.equal(await owner.refresh(), null);
+  assert.equal(refreshCalls, 0);
+  revocation.resolve({ revoked: true });
+  await signingOut;
+  assert.equal(owner.getSnapshot().isAuthenticated, false);
+});
+
 test("sign-out waits for revocation, then clear, before unauthenticated publication", async () => {
   const revocation = deferred<{ revoked: true }>();
   const clear = deferred<void>();

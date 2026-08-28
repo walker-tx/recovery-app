@@ -1,92 +1,84 @@
 import "../../global.css";
 
-import {
-  ConvexAuthProvider,
-  type TokenStorage,
-  useConvexAuth,
-} from "@convex-dev/auth/react";
-import { ConvexReactClient, useQuery } from "convex/react";
+import { ConvexReactClient } from "convex/react";
 import * as SecureStore from "expo-secure-store";
-import { Stack } from "expo-router/stack";
-import { StatusBar } from "expo-status-bar";
+import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, View } from "react-native";
 
-import { api } from "@recovery/backend/convex/_generated/api";
+import { Button } from "@/components/ui/button";
 import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
-import { getAuthenticatedDestination } from "@/features/onboarding/onboarding-policy";
+import { migrateLegacyConvexAuthStorage } from "@/features/auth/session/legacy-convex-auth-storage-migration";
+import { WorkOSRootProvider } from "@/features/auth/workos-root-provider";
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
-const secureStorage: TokenStorage = {
-  getItem: SecureStore.getItemAsync,
-  setItem: SecureStore.setItemAsync,
-  removeItem: SecureStore.deleteItemAsync,
-};
-
 export default function RootLayout() {
-  if (!convex) return <MissingConfiguration />;
+  if (convexUrl === undefined) return <WorkOSRootProvider client={null} />;
 
   return (
-    <ConvexAuthProvider client={convex} storage={secureStorage}>
-      <StatusBar style="dark" />
-      <AuthenticatedRoutes />
-    </ConvexAuthProvider>
+    <LegacyConvexAuthMigrationGate convexUrl={convexUrl}>
+      <WorkOSRootProvider client={convex} />
+    </LegacyConvexAuthMigrationGate>
   );
 }
 
-function AuthenticatedRoutes() {
-  const { isAuthenticated, isLoading } = useConvexAuth();
-  const profile = useQuery(api.profiles.getMine, isAuthenticated ? {} : "skip");
-  const destination = getAuthenticatedDestination(profile);
+function LegacyConvexAuthMigrationGate({
+  children,
+  convexUrl: migrationConvexUrl,
+}: {
+  children: ReactNode;
+  convexUrl: string;
+}) {
+  const [migrationState, setMigrationState] = useState<"pending" | "error" | "complete">("pending");
+  const [attempt, setAttempt] = useState(0);
 
-  if (isLoading || (isAuthenticated && destination === null)) return <RestorationLoading />;
+  useEffect(() => {
+    let active = true;
+    setMigrationState("pending");
+    void migrateLegacyConvexAuthStorage(SecureStore, migrationConvexUrl)
+      .then(() => {
+        if (active) setMigrationState("complete");
+      })
+      .catch(() => {
+        if (active) setMigrationState("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [attempt, migrationConvexUrl]);
 
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={!isAuthenticated}>
-        <Stack.Screen name="(auth)" />
-      </Stack.Protected>
-      <Stack.Protected guard={isAuthenticated && destination === "onboarding"}>
-        <Stack.Screen name="(onboarding)" />
-      </Stack.Protected>
-      <Stack.Protected guard={isAuthenticated && destination === "app"}>
-        <Stack.Screen name="(app)" />
-      </Stack.Protected>
-    </Stack>
-  );
-}
+  function retryMigration() {
+    setAttempt((current) => current + 1);
+  }
 
-function RestorationLoading() {
+  if (migrationState === "complete") return children;
+
+  if (migrationState === "error") {
+    return (
+      <Screen contentClassName="w-full max-w-[520px] self-center">
+        <View className="gap-md">
+          <Typography accessibilityLiveRegion="polite" accessibilityRole="alert">
+            Secure sign in could not be prepared. Try again.
+          </Typography>
+          <Button onPress={retryMigration}>Try again</Button>
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <Screen contentClassName="w-full max-w-[520px] self-center">
       <View
         accessible
-        accessibilityLabel="Loading your account"
+        accessibilityLabel="Preparing secure sign in"
         accessibilityRole="progressbar"
         className="items-center gap-md"
       >
         <ActivityIndicator />
-        <Typography className="text-ink-muted">Loading your account…</Typography>
+        <Typography className="text-ink-muted">Preparing secure sign in…</Typography>
       </View>
     </Screen>
-  );
-}
-
-function MissingConfiguration() {
-  return (
-    <>
-      <StatusBar style="dark" />
-      <Screen contentClassName="w-full max-w-[520px] self-center">
-        <View className="gap-md">
-          <Typography variant="overline">RECOVERY</Typography>
-          <Typography variant="display">Connect your backend.</Typography>
-          <Typography className="text-ink-muted">
-            Copy .env.example to .env and add the Convex deployment URL to begin.
-          </Typography>
-        </View>
-      </Screen>
-    </>
   );
 }

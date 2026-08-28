@@ -7,9 +7,10 @@ import { Typography } from "@/components/ui/text";
 
 type WelcomeScreenProps = {
   onSignIn: () => void;
+  onSignUp: () => void;
 };
 
-export function WelcomeScreen({ onSignIn }: WelcomeScreenProps) {
+export function WelcomeScreen({ onSignIn, onSignUp }: WelcomeScreenProps) {
   return (
     <Screen contentClassName="w-full max-w-[520px] self-center">
       <View className="gap-md">
@@ -29,9 +30,12 @@ export function WelcomeScreen({ onSignIn }: WelcomeScreenProps) {
             Sign in with the email and password already connected to your account.
           </Card.Description>
         </Card.Header>
-        <Card.Footer>
+        <Card.Footer className="gap-sm">
           <Button className="w-full" onPress={onSignIn}>
             Sign in
+          </Button>
+          <Button className="w-full" onPress={onSignUp} variant="secondary">
+            Create account
           </Button>
         </Card.Footer>
       </Card.Root>

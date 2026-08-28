@@ -116,7 +116,7 @@ export function createWorkOSSessionOwner(dependencies: {
 
   const runRefresh = (mode: "restore" | "authenticated"): Promise<string | null> => {
     if (refreshPromise !== null) return refreshPromise;
-    if (session === null) return Promise.resolve(null);
+    if (session === null || snapshot.isSigningOut) return Promise.resolve(null);
 
     const refreshToken = session.refreshToken;
     const operation = (async () => {
@@ -180,6 +180,13 @@ export function createWorkOSSessionOwner(dependencies: {
   const refresh = () => runRefresh(snapshot.isLoading ? "restore" : "authenticated");
 
   const signOut = async () => {
+    if (refreshPromise !== null) {
+      try {
+        await refreshPromise;
+      } catch {
+        // Revoke the last persisted token even when refresh failed.
+      }
+    }
     if (session === null) return;
     transition({ type: "signOutStarted" });
     try {

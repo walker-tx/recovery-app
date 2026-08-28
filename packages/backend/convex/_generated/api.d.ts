@@ -8,10 +8,8 @@
  * @module
  */
 
-import type * as auth from "../auth.js";
 import type * as authEmailDelivery from "../authEmailDelivery.js";
 import type * as authEmailTemplates from "../authEmailTemplates.js";
-import type * as authPolicy from "../authPolicy.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as profiles from "../profiles.js";
@@ -35,10 +33,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  auth: typeof auth;
   authEmailDelivery: typeof authEmailDelivery;
   authEmailTemplates: typeof authEmailTemplates;
-  authPolicy: typeof authPolicy;
   crons: typeof crons;
   http: typeof http;
   profiles: typeof profiles;
