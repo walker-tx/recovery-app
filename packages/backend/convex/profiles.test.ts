@@ -85,15 +85,19 @@ describe("WorkOS-owned profiles", () => {
     expect(storedProfiles.every((profile) => !("ownerId" in profile))).toBe(true);
   });
 
-  test("rejects mismatched WorkOS client identity", async () => {
+  test("rejects mismatched and missing WorkOS client identities", async () => {
     const t = convexTest(schema, modules);
     const wrongClient = t.withIdentity({
       subject: "user_wrong",
       issuer,
       client_id: "client_other",
     });
+    const missingClient = t.withIdentity({ subject: "user_missing_client", issuer });
 
     await expect(wrongClient.query(api.profiles.getMine, {})).rejects.toMatchObject({
+      data: { code: "UNAUTHENTICATED" },
+    });
+    await expect(missingClient.query(api.profiles.getMine, {})).rejects.toMatchObject({
       data: { code: "UNAUTHENTICATED" },
     });
   });
