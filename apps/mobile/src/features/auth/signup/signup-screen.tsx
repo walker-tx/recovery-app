@@ -77,10 +77,10 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
           <TextField autoCapitalize="none" autoComplete="new-password" editable={!state.isPending} error={fieldErrors.password} label="Password" onChangeText={(value) => { dispatch({ type: "passwordChanged", value }); setFieldErrors((current) => ({ ...current, password: undefined })); }} onSubmitEditing={() => confirmationInput.current?.focus()} ref={passwordInput} returnKeyType="next" secureTextEntry submitBehavior="submit" textContentType="newPassword" value={state.password} />
           <TextField autoCapitalize="none" autoComplete="new-password" editable={!state.isPending} error={fieldErrors.confirmation} label="Confirm password" onChangeText={(value) => { dispatch({ type: "confirmationChanged", value }); setFieldErrors((current) => ({ ...current, confirmation: undefined })); }} onSubmitEditing={handleSubmit} ref={confirmationInput} returnKeyType="go" secureTextEntry textContentType="newPassword" value={state.confirmation} />
           {state.formError ? <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">{state.formError}</Typography> : null}
-          {cooldownSeconds > 0 ? <Typography accessibilityLiveRegion="polite" selectable variant="caption">You can request another code in {cooldownSeconds} seconds.</Typography> : null}
+          {cooldownSeconds > 0 ? <Typography selectable variant="caption">You can request another code in {cooldownSeconds} seconds.</Typography> : null}
         </Card.Content>
         <Card.Footer className="flex-col items-stretch">
-          <Button accessibilityLabel={state.isPending ? "Starting signup" : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds} seconds` : "Continue"} disabled={cooldownSeconds > 0} loading={state.isPending} onPress={handleSubmit}>{state.isPending ? "Starting signup" : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds}s` : "Continue"}</Button>
+          <Button accessibilityLabel={state.isPending ? "Starting signup" : cooldownSeconds > 0 ? "Continue unavailable" : "Continue"} disabled={cooldownSeconds > 0} loading={state.isPending} onPress={handleSubmit}>{state.isPending ? "Starting signup" : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds}s` : "Continue"}</Button>
           <Button disabled={state.isPending} onPress={handleBack} variant="ghost">Back</Button>
         </Card.Footer>
       </Card.Root>

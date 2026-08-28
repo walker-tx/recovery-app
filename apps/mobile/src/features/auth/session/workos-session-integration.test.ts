@@ -174,6 +174,32 @@ test("failed sign-out retains the local session for a safe retry", async () => {
   assert.deepEqual(owner.getSnapshot().retry, { operation: "signOut" });
 });
 
+test("an interrupted sign-out response retains credentials until an already-revoked retry succeeds", async () => {
+  const secureStore = fakeSecureStore(null);
+  let attempts = 0;
+  const owner = createWorkOSSessionOwner({
+    storage: createWorkOSSessionStorage(secureStore.adapter),
+    actions: actions({
+      async signOutSession() {
+        attempts += 1;
+        if (attempts === 1) throw new Error("response interrupted after provider revocation");
+        return { revoked: true };
+      },
+    }),
+  });
+  await owner.restore();
+  await owner.signIn({ email: "person@example.com", password: "secret" });
+
+  await assert.rejects(owner.signOut(), /response interrupted/);
+  assert.equal(secureStore.value, encoded("signed-in"));
+  assert.equal(owner.getSnapshot().isAuthenticated, true);
+
+  await owner.signOut();
+  assert.equal(attempts, 2);
+  assert.equal(secureStore.value, null);
+  assert.equal(owner.getSnapshot().isAuthenticated, false);
+});
+
 test("corrupt SecureStore data restores unauthenticated without contacting refresh", async () => {
   const secureStore = fakeSecureStore("{not-json");
   let refreshCalls = 0;

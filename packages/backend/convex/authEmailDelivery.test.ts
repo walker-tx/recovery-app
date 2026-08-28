@@ -1,15 +1,45 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  assertLocalConsoleDeliveryRuntime,
   deliverPrivateGuidance,
   deliverResetToken,
   deliverVerificationCode,
 } from "./authEmailDelivery";
 
+function useLocalRuntime() {
+  vi.stubEnv("CONVEX_CLOUD_URL", "http://127.0.0.1:3210");
+  vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
+}
+
 describe("console auth email delivery", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    [undefined, undefined],
+    ["http://127.0.0.1:3210", undefined],
+    [undefined, "http://localhost:3211"],
+    ["https://example.convex.cloud", "https://example.convex.site"],
+    ["http://127.0.0.1:3210", "https://example.convex.site"],
+    ["not a url", "http://localhost:3211"],
+  ])("fails closed outside an actual local Convex runtime: %s / %s", (cloudUrl, siteUrl) => {
+    expect(() => assertLocalConsoleDeliveryRuntime({ cloudUrl, siteUrl })).toThrow(
+      "Console auth delivery requires local Convex runtime URLs",
+    );
+  });
+
+  it.each([
+    ["http://localhost:3210", "http://127.0.0.1:3211"],
+    ["http://127.0.0.1:3210", "http://[::1]:3211"],
+  ])("allows loopback Convex runtime URLs: %s / %s", (cloudUrl, siteUrl) => {
+    expect(() => assertLocalConsoleDeliveryRuntime({ cloudUrl, siteUrl })).not.toThrow();
+  });
 
   it("logs only the typed verification delivery fields", () => {
+    useLocalRuntime();
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     deliverVerificationCode({
@@ -29,6 +59,7 @@ describe("console auth email delivery", () => {
   });
 
   it("logs only the typed reset delivery fields", () => {
+    useLocalRuntime();
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     deliverResetToken({
@@ -48,6 +79,7 @@ describe("console auth email delivery", () => {
   });
 
   it("logs fixed private guidance without a credential", () => {
+    useLocalRuntime();
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     deliverPrivateGuidance({

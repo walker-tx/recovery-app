@@ -34,7 +34,7 @@ Dependencies point downward. Security is always enforced by the backend, regardl
 
 `apps/mobile/src/app` is the route manifest and composition layer. Route files may own route parameters, navigation options, access decisions, route-level error boundaries, and feature-screen composition. Reusable feature behavior and UI live outside `src/app`.
 
-Use Expo Router groups for navigation or access partitions, not to mirror source folders. As authenticated navigation grows, prefer `(auth)` and `(app)` groups guarded by `Stack.Protected`. Wait for Convex Auth restoration before evaluating guards. Route protection is UX, not authorization.
+Use Expo Router groups for navigation or access partitions, not to mirror source folders. As authenticated navigation grows, prefer `(auth)` and `(app)` groups guarded by `Stack.Protected`. Wait for WorkOS session restoration before evaluating guards. Route protection is UX, not authorization.
 
 Keep nested navigators only where screens genuinely share navigation behavior. Retain typed routes and avoid type casts that bypass them.
 
@@ -82,8 +82,8 @@ Every value has one authoritative owner:
 
 | State | Owner |
 | --- | --- |
-| Auth session | Convex Auth |
-| Auth tokens | SecureStore through `ConvexAuthProvider` |
+| Auth session | WorkOS through `WorkOSSessionProvider` |
+| Auth tokens | Versioned SecureStore records owned by `WorkOSSessionProvider` |
 | Persisted and shared application data | Convex |
 | Route identity and restorable navigation state | Expo Router |
 | Input, modal, and transient interaction state | Nearest React component |

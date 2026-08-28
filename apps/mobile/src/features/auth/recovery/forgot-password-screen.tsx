@@ -60,10 +60,10 @@ export function ForgotPasswordScreen({ onBack, onRecoveryStarted }: { onBack: ()
           <TextField autoCapitalize="none" autoComplete="email" autoCorrect={false} editable={!state.isPending} error={emailError} keyboardType="email-address" label="Email" onChangeText={(value) => { dispatch({ type: "emailChanged", value }); setEmailError(undefined); }} onSubmitEditing={handleSubmit} placeholder="you@example.com" ref={emailInput} returnKeyType="go" textContentType="emailAddress" value={state.email} />
           <Typography selectable variant="caption">For this local test, reset instructions appear in the Convex console only when the account can use password recovery.</Typography>
           {state.formError ? <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">{state.formError}</Typography> : null}
-          {cooldownSeconds > 0 ? <Typography accessibilityLiveRegion="polite" selectable variant="caption">You can request another reset in {cooldownSeconds} seconds.</Typography> : null}
+          {cooldownSeconds > 0 ? <Typography selectable variant="caption">You can request another reset in {cooldownSeconds} seconds.</Typography> : null}
         </Card.Content>
         <Card.Footer className="flex-col items-stretch">
-          <Button accessibilityLabel={state.isPending ? "Requesting reset" : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds} seconds` : "Request reset"} disabled={cooldownSeconds > 0} loading={state.isPending} onPress={handleSubmit}>{state.isPending ? "Requesting reset" : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds}s` : "Request reset"}</Button>
+          <Button accessibilityLabel={state.isPending ? "Requesting reset" : cooldownSeconds > 0 ? "Request reset unavailable" : "Request reset"} disabled={cooldownSeconds > 0} loading={state.isPending} onPress={handleSubmit}>{state.isPending ? "Requesting reset" : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds}s` : "Request reset"}</Button>
           <Button disabled={state.isPending} onPress={onBack} variant="ghost">Back</Button>
         </Card.Footer>
       </Card.Root>

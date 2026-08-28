@@ -247,7 +247,7 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       return { revoked: true as const };
     } catch (error) {
       if (error instanceof WorkOSGatewayError && error.category === "invalidSession") {
-        throw new WorkOSAuthError("INVALID_SESSION");
+        return { revoked: true as const };
       }
       throw providerUnavailable();
     }

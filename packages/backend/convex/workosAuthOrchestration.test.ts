@@ -532,9 +532,10 @@ describe("WorkOS auth orchestration", () => {
     const failedSession = failure.gateway.sessionFor("fail@example.net");
     failure.gateway.fail("revokeSession", "providerUnavailable");
     await expect(failure.auth.signOutSession({ refreshToken: failedSession.refreshToken })).rejects.toEqual(expectAuthError("PROVIDER_UNAVAILABLE"));
-    await expect(failure.auth.signOutSession({ refreshToken: "invalid" })).rejects.toEqual(
-      expectAuthError("INVALID_SESSION"),
-    );
+
+    const callsBeforeAlreadyInvalid = failure.gateway.calls.length;
+    await expect(failure.auth.signOutSession({ refreshToken: "invalid" })).resolves.toEqual({ revoked: true });
+    expect(failure.gateway.calls.slice(callsBeforeAlreadyInvalid)).toEqual(["refreshSession"]);
   });
 
   it.each([

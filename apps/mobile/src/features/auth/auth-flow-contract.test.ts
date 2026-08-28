@@ -39,6 +39,15 @@ test("reset tokens and signup intents never enter route or persistence APIs", as
   assert.doesNotMatch(source, /SecureStore|AsyncStorage|useLocalSearchParams|setParams/);
 });
 
+test("cooldown seconds stay visual without per-second accessibility announcements", async () => {
+  for (const screenName of ["signup/signup-screen", "recovery/forgot-password-screen"] as const) {
+    const source = await readFile(new URL(`./${screenName}.tsx`, import.meta.url), "utf8");
+    assert.match(source, /cooldownSeconds > 0 \? <Typography selectable/);
+    assert.doesNotMatch(source, /cooldownSeconds > 0 \? <Typography accessibilityLiveRegion/);
+    assert.doesNotMatch(source, /accessibilityLabel=\{[^}]*`[^`]*\$\{cooldownSeconds\}/);
+  }
+});
+
 test("every new auth submit handler uses the shared submission guard", async () => {
   for (const screenName of screenNames) {
     const source = await readFile(new URL(`./${screenName}.tsx`, import.meta.url), "utf8");
