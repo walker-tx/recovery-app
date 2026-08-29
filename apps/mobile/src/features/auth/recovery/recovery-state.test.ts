@@ -16,16 +16,21 @@ test("recovery validates and normalizes a public email without revealing account
   assert.deepEqual(getRecoveryValidation(" person@example.com "), {});
 });
 
-test("accepted recovery initiation starts a sixty-second resend cooldown", () => {
+test("accepted recovery initiation retains the normalized submitted email and starts a resend cooldown", () => {
   const acceptedAt = 5_000;
-  const accepted = reduceRecoveryState(initialRecoveryState, { type: "submissionSucceeded", acceptedAt });
+  const accepted = reduceRecoveryState(initialRecoveryState, {
+    type: "submissionSucceeded",
+    acceptedAt,
+    submittedEmail: "person@example.com",
+  });
+  assert.equal(accepted.submittedEmail, "person@example.com");
   assert.equal(recoveryResendSecondsRemaining(accepted.cooldownUntil, acceptedAt), 60);
   assert.equal(recoveryResendSecondsRemaining(accepted.cooldownUntil, acceptedAt + 60_000), 0);
 });
 
 test("manual reset requires a token, ten-character password, and confirmation", () => {
   assert.deepEqual(getResetValidation("   ", "short", "different"), {
-    token: "Enter the reset token from the console.",
+    token: "Enter the reset token from your recovery email.",
     password: "Use at least 10 characters.",
     confirmation: "Passwords do not match.",
   });
@@ -35,7 +40,14 @@ test("manual reset requires a token, ten-character password, and confirmation", 
 test("recovery and reset pending states unlock after success or safe failure", () => {
   const recoveryPending = reduceRecoveryState(initialRecoveryState, { type: "submissionStarted" });
   assert.equal(recoveryPending.isPending, true);
-  assert.equal(reduceRecoveryState(recoveryPending, { type: "submissionSucceeded", acceptedAt: 1_000 }).isPending, false);
+  assert.equal(
+    reduceRecoveryState(recoveryPending, {
+      type: "submissionSucceeded",
+      acceptedAt: 1_000,
+      submittedEmail: "person@example.com",
+    }).isPending,
+    false,
+  );
 
   const resetPending = reduceResetState(initialResetState, { type: "submissionStarted" });
   const resetFailed = reduceResetState(resetPending, { type: "submissionFailed", message: "Safe" });

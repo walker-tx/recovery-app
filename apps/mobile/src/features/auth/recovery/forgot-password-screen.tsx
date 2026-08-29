@@ -1,10 +1,9 @@
 import { useAction } from "convex/react";
 import { useEffect, useReducer, useRef, useState } from "react";
-import { View, type TextInput } from "react-native";
+import { Pressable, View, type TextInput } from "react-native";
 
 import { api } from "@recovery/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { TextField } from "@/components/ui/field";
 import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
@@ -13,7 +12,13 @@ import { createSubmissionGuard } from "../auth-submission";
 import { normalizeEmail } from "../email-policy";
 import { getRecoveryValidation, initialRecoveryState, recoveryResendSecondsRemaining, reduceRecoveryState } from "./recovery-state";
 
-export function ForgotPasswordScreen({ onBack, onRecoveryStarted }: { onBack: () => void; onRecoveryStarted: () => void }) {
+export function ForgotPasswordScreen({
+  onBack,
+  onEnterResetToken,
+}: {
+  onBack: () => void;
+  onEnterResetToken: () => void;
+}) {
   const startRecovery = useAction(api.workosAuth.startRecovery);
   const guard = useRef(createSubmissionGuard()).current;
   const emailInput = useRef<TextInput>(null);
@@ -31,17 +36,20 @@ export function ForgotPasswordScreen({ onBack, onRecoveryStarted }: { onBack: ()
   async function handleSubmit() {
     const errors = getRecoveryValidation(state.email);
     setEmailError(errors.email);
-    if (errors.email) { emailInput.current?.focus(); return; }
+    if (errors.email) {
+      emailInput.current?.focus();
+      return;
+    }
     if (cooldownSeconds > 0) return;
 
     await guard.run(state.email, async (email) => {
       dispatch({ type: "submissionStarted" });
       try {
-        await startRecovery({ email: normalizeEmail(email) });
+        const submittedEmail = normalizeEmail(email);
+        await startRecovery({ email: submittedEmail });
         const acceptedAt = Date.now();
-        dispatch({ type: "submissionSucceeded", acceptedAt });
+        dispatch({ type: "submissionSucceeded", acceptedAt, submittedEmail });
         setNow(acceptedAt);
-        onRecoveryStarted();
       } catch (error) {
         dispatch({ type: "submissionFailed", message: toSafeAuthError("recovery", error) });
       }
@@ -49,24 +57,98 @@ export function ForgotPasswordScreen({ onBack, onRecoveryStarted }: { onBack: ()
   }
 
   return (
-    <Screen contentClassName="w-full max-w-[520px] self-center" keyboardDismissMode="interactive">
-      <View className="gap-md">
-        <Typography variant="overline">ACCOUNT RECOVERY</Typography>
-        <Typography accessibilityRole="header" variant="display">Forgot password</Typography>
-        <Typography className="text-ink-muted">Enter your email to request password-reset instructions.</Typography>
-      </View>
-      <Card.Root elevation="sm">
-        <Card.Content>
-          <TextField autoCapitalize="none" autoComplete="email" autoCorrect={false} editable={!state.isPending} error={emailError} keyboardType="email-address" label="Email" onChangeText={(value) => { dispatch({ type: "emailChanged", value }); setEmailError(undefined); }} onSubmitEditing={handleSubmit} placeholder="you@example.com" ref={emailInput} returnKeyType="go" textContentType="emailAddress" value={state.email} />
-          <Typography selectable variant="caption">For this local test, reset instructions appear in the Convex console only when the account can use password recovery.</Typography>
-          {state.formError ? <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">{state.formError}</Typography> : null}
-          {cooldownSeconds > 0 ? <Typography selectable variant="caption">You can request another reset in {cooldownSeconds} seconds.</Typography> : null}
-        </Card.Content>
-        <Card.Footer className="flex-col items-stretch">
-          <Button accessibilityLabel={state.isPending ? "Requesting reset" : cooldownSeconds > 0 ? "Request reset unavailable" : "Request reset"} disabled={cooldownSeconds > 0} loading={state.isPending} onPress={handleSubmit}>{state.isPending ? "Requesting reset" : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds}s` : "Request reset"}</Button>
-          <Button disabled={state.isPending} onPress={onBack} variant="ghost">Back</Button>
-        </Card.Footer>
-      </Card.Root>
+    <Screen
+      contentClassName="w-full max-w-[520px] self-center"
+      contentContainerStyle={{ justifyContent: "flex-start" }}
+      keyboardDismissMode="interactive"
+    >
+      <Pressable
+        accessibilityLabel="Sign in"
+        accessibilityRole="button"
+        accessibilityState={{ disabled: state.isPending }}
+        className="min-h-touch self-start justify-center"
+        disabled={state.isPending}
+        onPress={onBack}
+      >
+        <Typography variant="label">‹ Sign in</Typography>
+      </Pressable>
+
+      {state.submittedEmail ? (
+        <View className="gap-lg">
+          <View className="gap-sm">
+            <Typography variant="overline">PASSWORD</Typography>
+            <Typography accessibilityRole="header" variant="display">Check your email</Typography>
+            <Typography className="text-ink-muted" selectable>
+              If there is an account for {state.submittedEmail}, a reset link is on its way and is good for one hour.
+            </Typography>
+          </View>
+          {state.formError ? (
+            <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
+              {state.formError}
+            </Typography>
+          ) : null}
+          {cooldownSeconds > 0 ? <Typography selectable variant="caption">You can request another link in {cooldownSeconds} seconds.</Typography> : null}
+          <View className="gap-xs">
+            <Button
+              accessibilityLabel={state.isPending ? "Resending the link" : cooldownSeconds > 0 ? "Resend unavailable" : "Resend the link"}
+              className="w-full"
+              disabled={cooldownSeconds > 0}
+              loading={state.isPending}
+              onPress={handleSubmit}
+            >
+              Resend the link
+            </Button>
+            <Button accessibilityRole="link" disabled={state.isPending} onPress={onEnterResetToken} variant="ghost">
+              Enter reset token
+            </Button>
+          </View>
+        </View>
+      ) : (
+        <>
+          <View className="gap-sm">
+            <Typography variant="overline">PASSWORD</Typography>
+            <Typography accessibilityRole="header" variant="display">Reset it</Typography>
+            <Typography className="text-ink-muted">
+              Tell us the address on the account and we'll send a link. Your groups and your counts aren't touched.
+            </Typography>
+          </View>
+          <View className="gap-lg">
+            <TextField
+              appearance="filled"
+              autoCapitalize="none"
+              autoComplete="email"
+              autoCorrect={false}
+              editable={!state.isPending}
+              error={emailError}
+              keyboardType="email-address"
+              label="Email"
+              onChangeText={(value) => {
+                dispatch({ type: "emailChanged", value });
+                setEmailError(undefined);
+              }}
+              onSubmitEditing={handleSubmit}
+              placeholder="you@example.com"
+              ref={emailInput}
+              returnKeyType="go"
+              textContentType="emailAddress"
+              value={state.email}
+            />
+            {state.formError ? (
+              <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
+                {state.formError}
+              </Typography>
+            ) : null}
+            <Button
+              accessibilityLabel={state.isPending ? "Sending the link" : "Send the link"}
+              className="w-full"
+              loading={state.isPending}
+              onPress={handleSubmit}
+            >
+              Send the link
+            </Button>
+          </View>
+        </>
+      )}
     </Screen>
   );
 }
