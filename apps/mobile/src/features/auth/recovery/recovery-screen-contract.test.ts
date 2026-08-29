@@ -68,13 +68,14 @@ test("sent-state transition is announced once without making cooldown ticks live
   assert.doesNotMatch(source, /cooldownSeconds > 0 \? <Typography accessibilityLiveRegion/);
 });
 
-test("recovery route controls have safe sign-in fallbacks and preserve the real reset path", async () => {
+test("recovery route controls pop when possible, fall back safely, and preserve the real reset path", async () => {
   const [requestRoute, resetRoute] = await Promise.all([
     readFile(requestRouteSourceUrl, "utf8"),
     readFile(resetRouteSourceUrl, "utf8"),
   ]);
 
-  assert.match(requestRoute, /onBack=\{\(\) => router\.replace\("\.\/sign-in"\)\}/);
+  assert.match(requestRoute, /if \(router\.canGoBack\(\)\) router\.back\(\);[\s\S]*?else router\.replace\("\.\/sign-in"\)/);
+  assert.match(requestRoute, /onBack=\{handleBack\}/);
   assert.match(requestRoute, /onEnterResetToken=\{\(\) => router\.push\("\.\/reset-password"\)\}/);
   assert.match(resetRoute, /router\.canGoBack\(\)/);
   assert.match(resetRoute, /router\.replace\("\.\/sign-in"\)/);

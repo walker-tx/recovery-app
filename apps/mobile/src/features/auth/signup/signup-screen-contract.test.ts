@@ -29,7 +29,9 @@ test("signup prevents immediate re-initiation without adding verification resend
   const signupSource = await readFile(signupSourceUrl, "utf8");
   const verificationSource = await readFile(verificationSourceUrl, "utf8");
 
-  assert.match(signupSource, /const cooldownSeconds = resendSecondsRemaining\(state\.cooldownUntil, now\)/);
+  assert.match(signupSource, /const cooldownSeconds = getSignupCooldownSecondsRemaining\(state, now\)/);
+  assert.match(signupSource, /submittedEmail, acceptedAt/);
+  assert.match(signupSource, /dispatch\(\{ type: "emailChanged", value \}\);[\s\S]*?setNow\(Date\.now\(\)\)/);
   assert.match(signupSource, /if \(cooldownSeconds > 0\) return/);
   assert.match(signupSource, /disabled=\{cooldownSeconds > 0\}/);
   assert.doesNotMatch(verificationSource, /Didn't arrive\?|resend/i);
@@ -57,7 +59,8 @@ test("verification matches the submitted-email code hierarchy", async () => {
   assert.match(source, /await guard\.run\(\{ intentId, code \}/);
   assert.doesNotMatch(source, /Verify email|<Button/);
   assert.match(source, /state\.isPending \? \([\s\S]*?accessibilityLiveRegion="polite"[\s\S]*?Verifying…/);
-  assert.match(source, /Typo in the address\? Change it — nothing has been saved yet\./);
+  assert.match(source, /Typo in the address\? Go back to use a different email\./);
+  assert.doesNotMatch(source, /nothing has been saved/i);
   assert.doesNotMatch(source, /Didn't arrive\?|resend/i);
   assert.doesNotMatch(source, /import \{ Card \}|<Card\./);
 });

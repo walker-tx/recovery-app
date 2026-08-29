@@ -1,4 +1,4 @@
-import { getEmailError } from "../email-policy.ts";
+import { getEmailError, normalizeEmail } from "../email-policy.ts";
 
 export const MIN_PASSWORD_LENGTH = 10;
 export const RESEND_COOLDOWN_MS = 60_000;
@@ -29,18 +29,23 @@ export function resendSecondsRemaining(cooldownUntil: number | null, now: number
 }
 
 export type SignupState = {
-  email: string; password: string; formError: string | null; isPending: boolean; cooldownUntil: number | null;
+  email: string; password: string; formError: string | null; isPending: boolean; cooldownEmail: string | null; cooldownUntil: number | null;
 };
-export const initialSignupState: SignupState = { email: "", password: "", formError: null, isPending: false, cooldownUntil: null };
+export const initialSignupState: SignupState = { email: "", password: "", formError: null, isPending: false, cooldownEmail: null, cooldownUntil: null };
+
+export function getSignupCooldownSecondsRemaining(state: SignupState, now: number) {
+  if (state.cooldownEmail !== normalizeEmail(state.email)) return 0;
+  return resendSecondsRemaining(state.cooldownUntil, now);
+}
 export type SignupAction =
   | { type: "emailChanged"; value: string } | { type: "passwordChanged"; value: string }
-  | { type: "submissionStarted" } | { type: "submissionAccepted"; acceptedAt: number } | { type: "submissionFailed"; message: string };
+  | { type: "submissionStarted" } | { type: "submissionAccepted"; acceptedAt: number; submittedEmail: string } | { type: "submissionFailed"; message: string };
 export function reduceSignupState(state: SignupState, action: SignupAction): SignupState {
   switch (action.type) {
     case "emailChanged": return { ...state, email: action.value, formError: null };
     case "passwordChanged": return { ...state, password: action.value, formError: null };
     case "submissionStarted": return { ...state, isPending: true, formError: null };
-    case "submissionAccepted": return { ...state, isPending: false, cooldownUntil: action.acceptedAt + RESEND_COOLDOWN_MS };
+    case "submissionAccepted": return { ...state, isPending: false, cooldownEmail: normalizeEmail(action.submittedEmail), cooldownUntil: action.acceptedAt + RESEND_COOLDOWN_MS };
     case "submissionFailed": return { ...state, isPending: false, formError: action.message };
   }
 }

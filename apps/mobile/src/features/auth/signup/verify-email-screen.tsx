@@ -108,7 +108,7 @@ export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
           onPress={onBack}
         >
           <Typography className="text-ink-muted text-center">
-            Typo in the address? Change it — nothing has been saved yet.
+            Typo in the address? Go back to use a different email.
           </Typography>
         </Pressable>
       </View>

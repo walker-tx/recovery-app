@@ -11,7 +11,7 @@ import { toSafeAuthError } from "../auth-error-policy";
 import { createSubmissionGuard } from "../auth-submission";
 import { normalizeEmail } from "../email-policy";
 import { useSignupFlow } from "./signup-flow-provider";
-import { getFirstInvalidSignupField, getSignupValidation, initialSignupState, reduceSignupState, resendSecondsRemaining } from "./signup-state";
+import { getFirstInvalidSignupField, getSignupCooldownSecondsRemaining, getSignupValidation, initialSignupState, reduceSignupState } from "./signup-state";
 
 type FieldErrors = ReturnType<typeof getSignupValidation>;
 
@@ -25,7 +25,7 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [now, setNow] = useState(Date.now());
-  const cooldownSeconds = resendSecondsRemaining(state.cooldownUntil, now);
+  const cooldownSeconds = getSignupCooldownSecondsRemaining(state, now);
 
   useEffect(() => {
     if (cooldownSeconds === 0) return;
@@ -49,7 +49,7 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
         const submittedEmail = normalizeEmail(values.email);
         const result = await startSignup({ email: submittedEmail, password: values.password });
         const acceptedAt = Date.now();
-        dispatch({ type: "submissionAccepted", acceptedAt });
+        dispatch({ type: "submissionAccepted", submittedEmail, acceptedAt });
         setNow(acceptedAt);
         beginVerification(result.intentId, submittedEmail);
         onVerificationStarted();
@@ -104,6 +104,7 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
           label="Email"
           onChangeText={(value) => {
             dispatch({ type: "emailChanged", value });
+            setNow(Date.now());
             setFieldErrors((current) => ({ ...current, email: undefined }));
           }}
           onSubmitEditing={() => passwordInput.current?.focus()}

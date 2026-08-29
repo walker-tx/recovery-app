@@ -4,5 +4,11 @@ import { ForgotPasswordScreen } from "@/features/auth/recovery/forgot-password-s
 
 export default function ForgotPasswordRoute() {
   const router = useRouter();
-  return <ForgotPasswordScreen onBack={() => router.replace("./sign-in")} onEnterResetToken={() => router.push("./reset-password")} />;
+
+  function handleBack() {
+    if (router.canGoBack()) router.back();
+    else router.replace("./sign-in");
+  }
+
+  return <ForgotPasswordScreen onBack={handleBack} onEnterResetToken={() => router.push("./reset-password")} />;
 }
