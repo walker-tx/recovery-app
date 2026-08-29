@@ -15,10 +15,11 @@ test("recovery request matches the password-reset hierarchy", async () => {
   assert.match(source, /Reset it/);
   assert.match(
     source,
-    /Tell us the address on the account and we'll send a link\. Your groups and your counts aren't touched\./,
+    /Tell us the address on the account and we'll send a reset token\. Your groups and your counts aren't touched\./,
   );
   assert.match(source, /appearance="filled"[\s\S]*?label="Email"/);
-  assert.match(source, /Send the link/);
+  assert.match(source, /Send reset token/);
+  assert.doesNotMatch(source, /send a link|Send the link/i);
   assert.doesNotMatch(source, /import \{ Card \}|<Card\./);
   assert.doesNotMatch(source, /Apple|Google|help/i);
 });
@@ -29,13 +30,14 @@ test("accepted recovery shows enumeration-safe submitted-email confirmation", as
   assert.match(source, /Check your email/);
   assert.match(source, /submittedEmail/);
   assert.match(source, /If there is an account for/);
-  assert.match(source, /a reset link is on its way and is good for one hour\./);
+  assert.match(source, /a reset token is on its way and is good for one hour\./);
   assert.match(source, /startRecovery/);
-  assert.match(source, /Resend the link/);
+  assert.match(source, /Resend reset token/);
   assert.match(source, /cooldownSeconds/);
   assert.match(source, /onEnterResetToken/);
   assert.match(source, /Enter reset token/);
   assert.doesNotMatch(source, /onRecoveryStarted/);
+  assert.doesNotMatch(source, /reset link|another link/i);
 });
 
 test("reset preserves token and confirmation checks in an open artifact-aligned form", async () => {
@@ -47,9 +49,19 @@ test("reset preserves token and confirmation checks in an open artifact-aligned 
   assert.match(source, /description="Ten characters or more"/);
   assert.match(source, /label="Reset token"/);
   assert.match(source, /label="Confirm new password"/);
-  assert.match(source, /Save and sign in/);
+  assert.match(source, /Save password/);
+  assert.doesNotMatch(source, /Save and sign in/);
   assert.doesNotMatch(source, /Sign out my other devices/);
   assert.doesNotMatch(source, /import \{ Card \}|<Card\./);
+});
+
+test("sent-state transition is announced once without making cooldown ticks live", async () => {
+  const source = await readFile(requestSourceUrl, "utf8");
+
+  assert.match(source, /AccessibilityInfo\.announceForAccessibility\("Check your email"\)/);
+  assert.match(source, /\[state\.submittedEmail\]/);
+  assert.doesNotMatch(source, /AccessibilityInfo\.announceForAccessibility\([^)]*cooldownSeconds/);
+  assert.doesNotMatch(source, /cooldownSeconds > 0 \? <Typography accessibilityLiveRegion/);
 });
 
 test("recovery route controls have safe sign-in fallbacks and preserve the real reset path", async () => {

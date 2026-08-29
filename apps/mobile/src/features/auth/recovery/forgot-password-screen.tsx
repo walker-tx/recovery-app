@@ -1,6 +1,6 @@
 import { useAction } from "convex/react";
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Pressable, View, type TextInput } from "react-native";
+import { AccessibilityInfo, Pressable, View, type TextInput } from "react-native";
 
 import { api } from "@recovery/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,11 @@ export function ForgotPasswordScreen({
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, [cooldownSeconds]);
+
+  useEffect(() => {
+    if (state.submittedEmail === null) return;
+    AccessibilityInfo.announceForAccessibility("Check your email");
+  }, [state.submittedEmail]);
 
   async function handleSubmit() {
     const errors = getRecoveryValidation(state.email);
@@ -79,7 +84,7 @@ export function ForgotPasswordScreen({
             <Typography variant="overline">PASSWORD</Typography>
             <Typography accessibilityRole="header" variant="display">Check your email</Typography>
             <Typography className="text-ink-muted" selectable>
-              If there is an account for {state.submittedEmail}, a reset link is on its way and is good for one hour.
+              If there is an account for {state.submittedEmail}, a reset token is on its way and is good for one hour.
             </Typography>
           </View>
           {state.formError ? (
@@ -87,16 +92,16 @@ export function ForgotPasswordScreen({
               {state.formError}
             </Typography>
           ) : null}
-          {cooldownSeconds > 0 ? <Typography selectable variant="caption">You can request another link in {cooldownSeconds} seconds.</Typography> : null}
+          {cooldownSeconds > 0 ? <Typography selectable variant="caption">You can request another reset token in {cooldownSeconds} seconds.</Typography> : null}
           <View className="gap-xs">
             <Button
-              accessibilityLabel={state.isPending ? "Resending the link" : cooldownSeconds > 0 ? "Resend unavailable" : "Resend the link"}
+              accessibilityLabel={state.isPending ? "Resending reset token" : cooldownSeconds > 0 ? "Resend unavailable" : "Resend reset token"}
               className="w-full"
               disabled={cooldownSeconds > 0}
               loading={state.isPending}
               onPress={handleSubmit}
             >
-              Resend the link
+              Resend reset token
             </Button>
             <Button accessibilityRole="link" disabled={state.isPending} onPress={onEnterResetToken} variant="ghost">
               Enter reset token
@@ -109,7 +114,7 @@ export function ForgotPasswordScreen({
             <Typography variant="overline">PASSWORD</Typography>
             <Typography accessibilityRole="header" variant="display">Reset it</Typography>
             <Typography className="text-ink-muted">
-              Tell us the address on the account and we'll send a link. Your groups and your counts aren't touched.
+              Tell us the address on the account and we'll send a reset token. Your groups and your counts aren't touched.
             </Typography>
           </View>
           <View className="gap-lg">
@@ -139,12 +144,12 @@ export function ForgotPasswordScreen({
               </Typography>
             ) : null}
             <Button
-              accessibilityLabel={state.isPending ? "Sending the link" : "Send the link"}
+              accessibilityLabel={state.isPending ? "Sending reset token" : "Send reset token"}
               className="w-full"
               loading={state.isPending}
               onPress={handleSubmit}
             >
-              Send the link
+              Send reset token
             </Button>
           </View>
         </>

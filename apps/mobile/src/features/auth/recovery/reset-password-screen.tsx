@@ -145,12 +145,12 @@ export function ResetPasswordScreen({ onBack, onPasswordReset }: { onBack: () =>
           </Typography>
         ) : null}
         <Button
-          accessibilityLabel={state.isPending ? "Saving password" : "Save and sign in"}
+          accessibilityLabel={state.isPending ? "Saving password" : "Save password"}
           className="w-full"
           loading={state.isPending}
           onPress={handleSubmit}
         >
-          Save and sign in
+          Save password
         </Button>
       </View>
     </Screen>
