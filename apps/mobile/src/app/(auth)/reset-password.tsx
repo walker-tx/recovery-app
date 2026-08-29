@@ -4,5 +4,11 @@ import { ResetPasswordScreen } from "@/features/auth/recovery/reset-password-scr
 
 export default function ResetPasswordRoute() {
   const router = useRouter();
-  return <ResetPasswordScreen onBack={() => router.back()} onPasswordReset={() => router.replace("./sign-in")} />;
+
+  function handleBack() {
+    if (router.canGoBack()) router.back();
+    else router.replace("./sign-in");
+  }
+
+  return <ResetPasswordScreen onBack={handleBack} onPasswordReset={() => router.replace("./sign-in")} />;
 }

@@ -29,7 +29,7 @@ test("live auth routes activate WorkOS sign-in and the authenticated home", asyn
   const authLayout = await route("(auth)/_layout.tsx");
 
   assert.match(signIn, /WorkOSSignInScreen/);
-  assert.match(signIn, /onSignUp/);
+  assert.doesNotMatch(signIn, /onSignUp/);
   assert.match(signIn, /onForgotPassword/);
   assert.match(home, /AuthenticatedHomeScreen/);
   assert.match(welcome, /onSignUp/);

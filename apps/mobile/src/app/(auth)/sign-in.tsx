@@ -9,7 +9,6 @@ export default function SignInRoute() {
     <WorkOSSignInScreen
       onBack={() => router.back()}
       onForgotPassword={() => router.push("./forgot-password")}
-      onSignUp={() => router.push("./sign-up")}
     />
   );
 }

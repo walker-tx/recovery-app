@@ -38,6 +38,7 @@ test("profile follows the artifact's open final-step composition", () => {
   assert.match(source, />\s*What should we call you\?\s*</);
   assert.match(source, /contentContainerStyle=\{\{ justifyContent: "flex-start" \}\}/);
   assert.equal(source.match(/appearance="filled"/g)?.length, 2);
+  assert.match(source, /Only shown if you turn it on later\. Nobody is told it's missing\./);
   assert.match(source, /accessibilityLabel=\{isPending \? "Saving profile" : "Done"\}/);
   assert.match(source, /\{isPending \? "Saving" : "Done"\}/);
 });

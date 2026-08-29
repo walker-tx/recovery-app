@@ -10,7 +10,7 @@ export function getRecoveryValidation(email: string): RecoveryValidation {
 type ResetValidation = { token?: string; password?: string; confirmation?: string };
 export function getResetValidation(token: string, password: string, confirmation: string): ResetValidation {
   const errors: ResetValidation = {};
-  if (token.trim().length === 0) errors.token = "Enter the reset token from the console.";
+  if (token.trim().length === 0) errors.token = "Enter the reset token from your recovery email.";
   if (password.length < MIN_PASSWORD_LENGTH) errors.password = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
   if (confirmation !== password) errors.confirmation = "Passwords do not match.";
   return errors;
@@ -25,14 +25,14 @@ export function getFirstInvalidResetField(errors: ResetValidation) {
 
 export const recoveryResendSecondsRemaining = resendSecondsRemaining;
 
-export type RecoveryState = { email: string; formError: string | null; isPending: boolean; cooldownUntil: number | null };
-export const initialRecoveryState: RecoveryState = { email: "", formError: null, isPending: false, cooldownUntil: null };
-export type RecoveryAction = { type: "emailChanged"; value: string } | { type: "submissionStarted" } | { type: "submissionSucceeded"; acceptedAt: number } | { type: "submissionFailed"; message: string };
+export type RecoveryState = { email: string; submittedEmail: string | null; formError: string | null; isPending: boolean; cooldownUntil: number | null };
+export const initialRecoveryState: RecoveryState = { email: "", submittedEmail: null, formError: null, isPending: false, cooldownUntil: null };
+export type RecoveryAction = { type: "emailChanged"; value: string } | { type: "submissionStarted" } | { type: "submissionSucceeded"; acceptedAt: number; submittedEmail: string } | { type: "submissionFailed"; message: string };
 export function reduceRecoveryState(state: RecoveryState, action: RecoveryAction): RecoveryState {
   switch (action.type) {
     case "emailChanged": return { ...state, email: action.value, formError: null };
     case "submissionStarted": return { ...state, isPending: true, formError: null };
-    case "submissionSucceeded": return { ...state, isPending: false, cooldownUntil: action.acceptedAt + RESEND_COOLDOWN_MS };
+    case "submissionSucceeded": return { ...state, submittedEmail: action.submittedEmail, isPending: false, cooldownUntil: action.acceptedAt + RESEND_COOLDOWN_MS };
     case "submissionFailed": return { ...state, isPending: false, formError: action.message };
   }
 }

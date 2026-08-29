@@ -96,7 +96,7 @@ export function ProfileScreen() {
           autoCapitalize="words"
           autoComplete="given-name"
           editable={!isPending}
-          description="Optional. Leave blank if you like."
+          description="Optional. Leave blank if you like. Only shown if you turn it on later. Nobody is told it's missing."
           error={fieldErrors.firstName}
           label="First name"
           maxLength={FIRST_NAME_MAX_LENGTH}

@@ -6,17 +6,25 @@ import { createInitialSignupFlowState, signupFlowReducer } from "./signup-flow-s
 
 test("signup intent lifecycle is in-memory and clears on completion or back-to-welcome", () => {
   const initial = createInitialSignupFlowState();
-  const started = signupFlowReducer(initial, { type: "started", intentId: "opaque-intent" });
-  assert.deepEqual(started, { intentId: "opaque-intent" });
-  assert.deepEqual(signupFlowReducer(started, { type: "completed" }), { intentId: null });
-  assert.deepEqual(signupFlowReducer(started, { type: "backToWelcome" }), { intentId: null });
+  const started = signupFlowReducer(initial, {
+    type: "started",
+    intentId: "opaque-intent",
+    submittedEmail: "person@example.com",
+  });
+  assert.deepEqual(started, { intentId: "opaque-intent", submittedEmail: "person@example.com" });
+  assert.deepEqual(signupFlowReducer(started, { type: "completed" }), { intentId: null, submittedEmail: null });
+  assert.deepEqual(signupFlowReducer(started, { type: "backToWelcome" }), { intentId: null, submittedEmail: null });
 });
 
 test("a provider remount creates a fresh empty signup flow", () => {
-  const mounted = signupFlowReducer(createInitialSignupFlowState(), { type: "started", intentId: "opaque-intent" });
+  const mounted = signupFlowReducer(createInitialSignupFlowState(), {
+    type: "started",
+    intentId: "opaque-intent",
+    submittedEmail: "person@example.com",
+  });
   const remounted = createInitialSignupFlowState();
-  assert.deepEqual(mounted, { intentId: "opaque-intent" });
-  assert.deepEqual(remounted, { intentId: null });
+  assert.deepEqual(mounted, { intentId: "opaque-intent", submittedEmail: "person@example.com" });
+  assert.deepEqual(remounted, { intentId: null, submittedEmail: null });
   assert.notEqual(remounted, createInitialSignupFlowState());
 });
 

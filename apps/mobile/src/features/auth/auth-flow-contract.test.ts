@@ -40,12 +40,29 @@ test("reset tokens and signup intents never enter route or persistence APIs", as
 });
 
 test("cooldown seconds stay visual without per-second accessibility announcements", async () => {
-  for (const screenName of ["signup/signup-screen", "recovery/forgot-password-screen"] as const) {
-    const source = await readFile(new URL(`./${screenName}.tsx`, import.meta.url), "utf8");
-    assert.match(source, /cooldownSeconds > 0 \? <Typography selectable/);
-    assert.doesNotMatch(source, /cooldownSeconds > 0 \? <Typography accessibilityLiveRegion/);
-    assert.doesNotMatch(source, /accessibilityLabel=\{[^}]*`[^`]*\$\{cooldownSeconds\}/);
-  }
+  const signupSource = await readFile(new URL("./signup/signup-screen.tsx", import.meta.url), "utf8");
+  assert.match(
+    signupSource,
+    /accessibilityLabel=\{state\.isPending \? "Starting signup" : cooldownSeconds > 0 \? "Continue unavailable" : "Continue"\}/,
+  );
+  const signupCooldownButton = signupSource.match(
+    /<Button\n([\s\S]*?)\n        >\n          \{state\.isPending \? "Starting signup" : cooldownSeconds > 0 \? `Try again in \${cooldownSeconds}s` : "Continue"\}/,
+  );
+  assert.ok(signupCooldownButton);
+  assert.doesNotMatch(signupCooldownButton[1], /accessibilityLiveRegion|accessibilityLabel=\{[^}]*\$\{cooldownSeconds\}/);
+
+  const forgotPasswordSource = await readFile(
+    new URL("./recovery/forgot-password-screen.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    forgotPasswordSource,
+    /cooldownSeconds > 0 \? <Typography selectable variant="caption">You can request another reset token in \{cooldownSeconds\} seconds\.<\/Typography>/,
+  );
+  assert.match(
+    forgotPasswordSource,
+    /accessibilityLabel=\{state\.isPending \? "Resending reset token" : cooldownSeconds > 0 \? "Resend unavailable" : "Resend reset token"\}/,
+  );
 });
 
 test("every new auth submit handler uses the shared submission guard", async () => {
@@ -53,6 +70,10 @@ test("every new auth submit handler uses the shared submission guard", async () 
     const source = await readFile(new URL(`./${screenName}.tsx`, import.meta.url), "utf8");
     assert.match(source, /createSubmissionGuard/);
     assert.match(source, /await guard\.run\(/);
-    assert.match(source, /<Button[\s\S]*?onPress=\{handleSubmit\}/);
+    if (screenName === "signup/verify-email-screen") {
+      assert.match(source, /if \(\/\^\\d\{6\}\$\/\.test\(value\)\) void handleSubmit\(value\)/);
+    } else {
+      assert.match(source, /<Button[\s\S]*?onPress=\{handleSubmit\}/);
+    }
   }
 });
