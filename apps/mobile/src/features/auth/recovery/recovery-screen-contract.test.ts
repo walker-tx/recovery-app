@@ -36,6 +36,10 @@ test("accepted recovery shows enumeration-safe submitted-email confirmation", as
   assert.match(source, /cooldownSeconds/);
   assert.match(source, /onEnterResetToken/);
   assert.match(source, /Enter reset token/);
+  assert.match(source, /Didn't arrive\? Check spam, then/);
+  assert.ok(source.indexOf("Didn't arrive? Check spam, then") < source.indexOf("Resend reset token"));
+  const sentState = source.slice(source.indexOf("{state.submittedEmail ? ("), source.indexOf(") : ("));
+  assert.doesNotMatch(sentState, />PASSWORD</);
   assert.doesNotMatch(source, /onRecoveryStarted/);
   assert.doesNotMatch(source, /reset link|another link/i);
 });

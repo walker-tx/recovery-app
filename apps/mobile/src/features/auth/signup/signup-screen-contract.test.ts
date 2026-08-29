@@ -52,6 +52,11 @@ test("verification matches the submitted-email code hierarchy", async () => {
   assert.match(source, /Six digits, from your inbox/);
   assert.match(source, /Just once, to prove the address is yours\./);
   assert.match(source, /maxLength=\{6\}/);
+  assert.match(source, /if \(\/\^\\d\{6\}\$\/\.test\(value\)\) void handleSubmit\(value\)/);
+  assert.match(source, /async function handleSubmit\(code: string\)/);
+  assert.match(source, /await guard\.run\(\{ intentId, code \}/);
+  assert.doesNotMatch(source, /Verify email|<Button/);
+  assert.match(source, /state\.isPending \? \([\s\S]*?accessibilityLiveRegion="polite"[\s\S]*?Verifying…/);
   assert.match(source, /Typo in the address\? Change it — nothing has been saved yet\./);
   assert.doesNotMatch(source, /Didn't arrive\?|resend/i);
   assert.doesNotMatch(source, /import \{ Card \}|<Card\./);

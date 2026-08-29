@@ -17,7 +17,6 @@ import { useWorkOSSession } from "./session/workos-session-provider.tsx";
 
 type WorkOSSignInScreenProps = {
   onBack: () => void;
-  onSignUp: () => void;
   onForgotPassword: () => void;
 };
 
@@ -25,7 +24,6 @@ type FieldErrors = ReturnType<typeof getWorkOSSignInValidation>;
 
 export function WorkOSSignInScreen({
   onBack,
-  onSignUp,
   onForgotPassword,
 }: WorkOSSignInScreenProps) {
   const { signIn } = useWorkOSSession();
@@ -163,10 +161,7 @@ export function WorkOSSignInScreen({
         >
           {isPending ? "Signing in" : "Sign in"}
         </Button>
-        <View className="gap-xs">
-          <Button accessibilityRole="link" disabled={isPending} onPress={onForgotPassword} variant="ghost">Forgot password?</Button>
-          <Button accessibilityRole="link" disabled={isPending} onPress={onSignUp} variant="ghost">Create account</Button>
-        </View>
+        <Button accessibilityRole="link" disabled={isPending} onPress={onForgotPassword} variant="ghost">Forgot your password?</Button>
       </View>
     </Screen>
   );

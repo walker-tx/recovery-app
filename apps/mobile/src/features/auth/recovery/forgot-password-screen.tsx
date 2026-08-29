@@ -81,7 +81,6 @@ export function ForgotPasswordScreen({
       {state.submittedEmail ? (
         <View className="gap-lg">
           <View className="gap-sm">
-            <Typography variant="overline">PASSWORD</Typography>
             <Typography accessibilityRole="header" variant="display">Check your email</Typography>
             <Typography className="text-ink-muted" selectable>
               If there is an account for {state.submittedEmail}, a reset token is on its way and is good for one hour.
@@ -92,6 +91,7 @@ export function ForgotPasswordScreen({
               {state.formError}
             </Typography>
           ) : null}
+          <Typography selectable variant="caption">Didn't arrive? Check spam, then</Typography>
           {cooldownSeconds > 0 ? <Typography selectable variant="caption">You can request another reset token in {cooldownSeconds} seconds.</Typography> : null}
           <View className="gap-xs">
             <Button

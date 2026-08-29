@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const source = await readFile(new URL("./workos-sign-in-screen.tsx", import.meta.url), "utf8");
+const routeSource = await readFile(new URL("../../app/(auth)/sign-in.tsx", import.meta.url), "utf8");
 
 test("WorkOS sign-in uses the session hook and shared submission guard", () => {
   assert.match(source, /const \{ signIn \} = useWorkOSSession\(\)/);
@@ -11,15 +12,13 @@ test("WorkOS sign-in uses the session hook and shared submission guard", () => {
   assert.match(source, /email: normalizeEmail\(submittedValues\.email\)/);
 });
 
-test("WorkOS sign-in exposes accessible signup and recovery navigation links", () => {
+test("WorkOS sign-in exposes only the accessible recovery navigation link", () => {
   assert.match(
     source,
-    /<Button accessibilityRole="link"[^>]*onPress=\{onForgotPassword\}[^>]*>Forgot password\?<\/Button>/,
+    /<Button accessibilityRole="link"[^>]*onPress=\{onForgotPassword\}[^>]*>Forgot your password\?<\/Button>/,
   );
-  assert.match(
-    source,
-    /<Button accessibilityRole="link"[^>]*onPress=\{onSignUp\}[^>]*>Create account<\/Button>/,
-  );
+  assert.doesNotMatch(source, /onSignUp|Create account/);
+  assert.doesNotMatch(routeSource, /onSignUp|sign-up/);
 });
 
 test("WorkOS sign-in focuses invalid fields and announces neutral failures", () => {

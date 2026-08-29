@@ -70,6 +70,10 @@ test("every new auth submit handler uses the shared submission guard", async () 
     const source = await readFile(new URL(`./${screenName}.tsx`, import.meta.url), "utf8");
     assert.match(source, /createSubmissionGuard/);
     assert.match(source, /await guard\.run\(/);
-    assert.match(source, /<Button[\s\S]*?onPress=\{handleSubmit\}/);
+    if (screenName === "signup/verify-email-screen") {
+      assert.match(source, /if \(\/\^\\d\{6\}\$\/\.test\(value\)\) void handleSubmit\(value\)/);
+    } else {
+      assert.match(source, /<Button[\s\S]*?onPress=\{handleSubmit\}/);
+    }
   }
 });

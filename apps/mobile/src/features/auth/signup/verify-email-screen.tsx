@@ -1,7 +1,6 @@
 import { useReducer, useRef, useState } from "react";
 import { Pressable, View, type TextInput } from "react-native";
 
-import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/field";
 import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
@@ -19,13 +18,13 @@ export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
   const [state, dispatch] = useReducer(reduceVerificationState, initialVerificationState);
   const [codeError, setCodeError] = useState<string>();
 
-  async function handleSubmit() {
-    const error = getVerificationCodeError(state.code);
+  async function handleSubmit(code: string) {
+    const error = getVerificationCodeError(code);
     setCodeError(error);
     if (error) { codeInput.current?.focus(); return; }
     if (intentId === null) return;
 
-    await guard.run({ intentId, code: state.code }, async (values) => {
+    await guard.run({ intentId, code }, async (values) => {
       dispatch({ type: "submissionStarted" });
       try {
         await completeSignup(values);
@@ -84,27 +83,23 @@ export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
           onChangeText={(value) => {
             dispatch({ type: "codeChanged", value });
             setCodeError(undefined);
+            if (/^\d{6}$/.test(value)) void handleSubmit(value);
           }}
-          onSubmitEditing={handleSubmit}
           ref={codeInput}
           returnKeyType="done"
           textContentType="oneTimeCode"
           value={state.code}
         />
+        {state.isPending ? (
+          <Typography accessibilityLiveRegion="polite" className="text-ink-muted" selectable variant="caption">
+            Verifying…
+          </Typography>
+        ) : null}
         {state.formError ? (
           <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
             {state.formError}
           </Typography>
         ) : null}
-        <Button
-          accessibilityLabel={state.isPending ? "Verifying email" : "Verify email"}
-          className="w-full"
-          disabled={intentId === null}
-          loading={state.isPending}
-          onPress={handleSubmit}
-        >
-          {state.isPending ? "Verifying" : "Verify email"}
-        </Button>
         <Pressable
           accessibilityRole="link"
           accessibilityState={{ disabled: state.isPending }}
