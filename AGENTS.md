@@ -16,6 +16,7 @@
 ## Expo and secrets
 
 - Routes and layouts live under `apps/mobile/src/app`.
+- Local development credentials and environment values are managed through the gitignored `mise.local.toml`. Run local commands through `mise exec -- ...` so those values are loaded. Never print, commit, or copy values from `mise.local.toml` into `.env` files.
 - `EXPO_PUBLIC_*` values are bundled into the app and must never contain secrets.
 - Convex Auth tokens on mobile must remain in `expo-secure-store`.
 
