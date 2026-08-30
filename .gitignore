@@ -7,7 +7,7 @@ node_modules/
 .env
 .env.local
 mise.local.toml
-.kit/mcp.local.json
+.mcp.json
 !.env.example
 .expo/
 dist/

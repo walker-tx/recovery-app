@@ -44,10 +44,10 @@ Expo and local Convex bind to loopback. The default zero workflow works directly
 
 ## Pitchfork MCP in Kit
 
-`mise run zero` generates the checkout-specific `.kit/mcp.local.json`. The file contains the absolute checkout path and is ignored by Git, so regenerate it in each checkout rather than copying or committing it. Start Kit from the repository root with that generated configuration:
+`mise run zero` generates the checkout-specific `.mcp.json`. The file contains the absolute checkout path and is ignored by Git, so regenerate it in each checkout rather than copying or committing it. Kit discovers it automatically when started from the repository root:
 
 ```sh
-kit tui --root . --mcp-config .kit/mcp.local.json
+kit tui --root .
 ```
 
 ## Checks
