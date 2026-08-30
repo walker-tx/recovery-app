@@ -70,11 +70,10 @@ convex_url=$(sed -n 's/^CONVEX_URL=//p' "$DEPLOYMENT_CONFIG")
 printf %s "$convex_url" | mise exec -- node -e 'let s=""; process.stdin.on("data", c => s += c).on("end", () => { try { const u=new URL(s); if (u.protocol !== "http:" || u.username || u.password || !["127.0.0.1", "localhost"].includes(u.hostname) || !u.port) process.exit(1); } catch { process.exit(1); } });' || die 'Generated Convex URL is not loopback-only.'
 printf %s "$convex_url" | set_stdin EXPO_PUBLIC_CONVEX_URL
 
-mkdir -p .kit
-MCP_TMP=$(mktemp .kit/mcp.local.json.XXXXXX)
+MCP_TMP=$(mktemp .mcp.json.XXXXXX)
 mise exec -- node -e 'const cwd=process.argv[1]; process.stdout.write(JSON.stringify({mcpServers:{pitchfork:{command:"mise",args:["exec","--","pitchfork","mcp"],cwd}}}, null, 2)+"\n")' "$ROOT" > "$MCP_TMP"
 chmod 600 "$MCP_TMP"
-mv "$MCP_TMP" .kit/mcp.local.json
+mv "$MCP_TMP" .mcp.json
 MCP_TMP=
 
 pitchfork start --group recovery >/dev/null

@@ -48,7 +48,7 @@ assert_section "$MISE" '[tasks.bootstrap-test]' 'run = "./scripts/test-zero.sh"'
 refute_fixed "$PITCHFORK" '--web'
 node -e 'const p=require(process.argv[1]); if ("setup:auth" in p.scripts) process.exit(1)' "$PACKAGE" || fail 'stale setup:auth script remains'
 
-for text in 'mise install' 'mise run zero' 'mise run dev' 'mise run status' 'mise run logs' 'mise run stop' 'http://127.0.0.1:8025' 'local Convex' 'WorkOS staging' 'kit tui --root . --mcp-config .kit/mcp.local.json' 'native mobile only' 'iOS Simulator' 'separate explicit native networking setup' 'not configured by zero' 'shows recent logs' 'staging-only and still calls WorkOS staging' 'only local delivery of Recovery verification and password-reset email'; do
+for text in 'mise install' 'mise run zero' 'mise run dev' 'mise run status' 'mise run logs' 'mise run stop' 'http://127.0.0.1:8025' 'local Convex' 'WorkOS staging' 'kit tui --root .' 'native mobile only' 'iOS Simulator' 'separate explicit native networking setup' 'not configured by zero' 'shows recent logs' 'staging-only and still calls WorkOS staging' 'only local delivery of Recovery verification and password-reset email'; do
   assert_fixed "$README" "$text"
 done
 for text in 'walker@air' 'ssh -L' 'ssh -R' 'expo start --web' 'setup:auth' 'follows their combined logs' 'use the iOS or Android Expo client' 'Open it with the iOS or Android Expo client'; do
@@ -249,8 +249,8 @@ for daemon in mailpit backend mobile; do
 done
 [ "$(cat "$first/state/env/WORKOS_API_KEY")" = preserved-dashboard-value ] || fail 'existing value changed'
 [ "$(stat -f '%Lp' "$first/mise.local.toml")" = 600 ] || fail 'mise.local.toml mode is not 0600'
-[ "$(stat -f '%Lp' "$first/.kit/mcp.local.json")" = 600 ] || fail 'MCP config mode is not 0600'
-node -e 'const fs=require("fs"); const [file,cwd]=process.argv.slice(1); const j=JSON.parse(fs.readFileSync(file)); const s=j.mcpServers.pitchfork; if(s.command!=="mise"||JSON.stringify(s.args)!==JSON.stringify(["exec","--","pitchfork","mcp"])||s.cwd!==cwd) process.exit(1)' "$first/.kit/mcp.local.json" "$(cd "$first" && pwd -P)" || fail 'invalid MCP config'
+[ "$(stat -f '%Lp' "$first/.mcp.json")" = 600 ] || fail 'MCP config mode is not 0600'
+node -e 'const fs=require("fs"); const [file,cwd]=process.argv.slice(1); const j=JSON.parse(fs.readFileSync(file)); const s=j.mcpServers.pitchfork; if(s.command!=="mise"||JSON.stringify(s.args)!==JSON.stringify(["exec","--","pitchfork","mcp"])||s.cwd!==cwd) process.exit(1)' "$first/.mcp.json" "$(cd "$first" && pwd -P)" || fail 'invalid MCP config'
 [ "$(printf '%s\n' "$output" | wc -l | tr -d ' ')" -le 6 ] || fail 'bootstrap output is not concise'
 printf '%s' "$output" | grep -F 'http://127.0.0.1:8025' >/dev/null || fail 'missing Mailpit URL'
 printf '%s' "$output" | grep -F 'http://127.0.0.1:8081' >/dev/null || fail 'missing Expo URL'
@@ -307,5 +307,5 @@ put_env "$failed" WORKOS_API_KEY fixture
 ZERO_TEST_FAIL_ENV=WORKOS_API_KEY run_zero "$failed" >/dev/null 2>&1 && fail 'failed Convex sync was accepted'
 refute_log "$failed" 'pitchfork start --group recovery'
 
-grep -Fx '.kit/mcp.local.json' "$ROOT/.gitignore" >/dev/null || fail '.kit/mcp.local.json is not ignored'
+grep -Fx '.mcp.json' "$ROOT/.gitignore" >/dev/null || fail '.mcp.json is not ignored'
 echo 'PASS: secure idempotent bootstrap'
