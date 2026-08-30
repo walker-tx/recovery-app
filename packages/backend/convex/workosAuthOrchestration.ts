@@ -58,9 +58,9 @@ type SignupIntentStore = {
 };
 
 type AuthDelivery = {
-  verification(input: { email: string; code: string; expiresAt: number }): void;
-  reset(input: { email: string; resetToken: string; expiresAt: number }): void;
-  guidance(input: { email: string; category: PrivateGuidanceCategory; expiresAt: number }): void;
+  verification(input: { email: string; code: string; expiresAt: number }): void | Promise<void>;
+  reset(input: { email: string; resetToken: string; expiresAt: number }): void | Promise<void>;
+  guidance(input: { email: string; category: PrivateGuidanceCategory; expiresAt: number }): void | Promise<void>;
 };
 
 export type WorkOSAuthOrchestrationDependencies = {
@@ -111,7 +111,7 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
             authentication.emailVerificationId,
           );
           if (verification.userId !== user.id) throw new WorkOSGatewayError("providerUnavailable");
-          dependencies.delivery.verification({
+          await dependencies.delivery.verification({
             email,
             code: verification.code,
             expiresAt: Date.parse(verification.expiresAt),
@@ -131,7 +131,7 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
 
       const guidance = guidanceFor(classification);
       if (guidance !== undefined) {
-        dependencies.delivery.guidance({
+        await dependencies.delivery.guidance({
           email,
           category: guidance,
           expiresAt: dependencies.now() + 10 * 60_000,
@@ -267,7 +267,7 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       const classification = await dependencies.gateway.lookupUserByEmail(email);
       if (classification.kind === "password" || classification.kind === "unverifiedPassword") {
         const reset = await dependencies.gateway.createPasswordReset(email);
-        dependencies.delivery.reset({
+        await dependencies.delivery.reset({
           email,
           resetToken: reset.token,
           expiresAt: Date.parse(reset.expiresAt),
@@ -275,7 +275,7 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       } else {
         const guidance = guidanceFor(classification);
         if (guidance !== undefined && classification.kind !== "new") {
-          dependencies.delivery.guidance({
+          await dependencies.delivery.guidance({
             email,
             category: guidance,
             expiresAt: dependencies.now() + 10 * 60_000,

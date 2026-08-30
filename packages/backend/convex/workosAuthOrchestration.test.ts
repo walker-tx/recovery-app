@@ -250,9 +250,9 @@ function harness() {
       cleanupExpiredAuthData: cleanup,
     },
     delivery: {
-      verification: (input) => delivered.verification.push(input),
-      reset: (input) => delivered.reset.push(input),
-      guidance: (input) => delivered.guidance.push(input),
+      verification: (input) => { delivered.verification.push(input); },
+      reset: (input) => { delivered.reset.push(input); },
+      guidance: (input) => { delivered.guidance.push(input); },
     },
   };
   return {
@@ -273,6 +273,29 @@ function expectAuthError(code: string) {
 }
 
 describe("WorkOS auth orchestration", () => {
+  it("waits for verification delivery before completing signup initiation", async () => {
+    const test = harness();
+    let resolveDelivery!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      resolveDelivery = resolve;
+    });
+    const verification = vi.fn(() => delivery);
+    test.dependencies.delivery.verification = verification;
+
+    const operation = test.auth.startSignup({ email: "awaited@example.net", password: "password" });
+    const settled = vi.fn();
+    void operation.then(settled);
+    await vi.waitFor(() => expect(verification).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(settled).not.toHaveBeenCalled();
+    resolveDelivery();
+    await expect(operation).resolves.toEqual({
+      accepted: true,
+      intentId: "00000000-0000-4000-8000-000000000001",
+    });
+  });
+
   beforeEach(() => vi.restoreAllMocks());
 
   it("returns a neutral fallback without starting signup when intent ID generation fails", async () => {
@@ -555,7 +578,7 @@ describe("WorkOS auth orchestration", () => {
       };
     }],
     ["delivery", (test: ReturnType<typeof harness>) => {
-      test.dependencies.delivery.verification = () => {
+      test.dependencies.delivery.verification = async () => {
         throw new Error("delivery failed");
       };
     }],
@@ -601,7 +624,7 @@ describe("WorkOS auth orchestration", () => {
         { kind: "password", user: userFor("neutral-recovery@example.net") },
         "password",
       );
-      test.dependencies.delivery.reset = () => {
+      test.dependencies.delivery.reset = async () => {
         throw new Error("delivery failed");
       };
     }],

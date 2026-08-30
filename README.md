@@ -1,32 +1,57 @@
 # Recovery
 
-A small mobile-first foundation for a recovery app. It includes an Expo Router app, a Convex backend, and password authentication. No recovery domain model has been introduced yet.
+A small mobile-first foundation for a recovery app. It includes an Expo Router app, a Convex backend, and password authentication. No recovery domain model has been introduced yet. Development is native mobile only; the default workflow is intended for the iOS Simulator, not Expo web.
 
 Development conventions and abstraction triggers are defined in [`docs/architecture.md`](docs/architecture.md). Kit can also discover the repository-owned and selected official Convex and Expo skills under [`.agents/skills`](.agents/skills).
 
-## Prerequisites
+## Prerequisite
 
-Tool versions are pinned by mise (`Node 24.16.0`, `pnpm 11.19.0`).
+Install [mise](https://mise.jdx.dev/). It is the sole manually installed development tool; the repository pins and installs Node, pnpm, Pitchfork, and Mailpit.
+
+## First start
+
+From the repository root, prepare the toolchain and start the complete local development environment:
 
 ```sh
 mise install
-mise run install
+mise run zero
 ```
 
-The commands below assume mise is activated in your shell. Otherwise, prefix direct pnpm commands with `mise exec --`, or use the checked-in `mise run check` and `mise run doctor` tasks.
+`zero` installs workspace dependencies and configures a local Convex deployment. It uses WorkOS staging credentials, prompting only for a missing `WORKOS_API_KEY` or `WORKOS_CLIENT_ID`, and generates missing email HMAC and intent-encryption secrets. It stores these values in the ignored, checkout-local `mise.local.toml`, sets that file to owner-only access, and syncs the required values to local Convex. Re-running `zero` preserves existing values. Never commit or paste local credentials into tracked files.
 
-## Connect Convex
+The generated `EXPO_PUBLIC_CONVEX_URL` is safe to expose to the mobile client because every `EXPO_PUBLIC_*` value is bundled into the app. Treat that prefix as public configuration, never as a place for secrets. The bootstrap rejects cloud Convex configuration and accepts only a loopback local deployment.
 
-1. Run `pnpm dev:backend` and sign in to Convex when prompted. Choose or create a development deployment. This writes `packages/backend/.env.local`.
-2. Stop the dev command, run `pnpm setup:auth` to generate and set the Convex Auth signing keys, then restart `pnpm dev:backend`. Because the CLI runs from the split backend package, it may also ask for a `SITE_URL`; accept the default for this password-only native app. A successful backend run deploys functions and generates `packages/backend/convex/_generated`.
-3. Copy `apps/mobile/.env.example` to `apps/mobile/.env` and set `EXPO_PUBLIC_CONVEX_URL` to the generated `CONVEX_URL`.
-4. In another terminal run `pnpm dev:mobile`, then open iOS or Android from Expo.
+Local development remains staging-only and still calls WorkOS staging. Mailpit provides only local delivery of Recovery verification and password-reset email. Pitchfork starts Mailpit, the Convex backend, and Expo in dependency order. Open Mailpit at <http://127.0.0.1:8025> to read those messages. Mailpit listens only on loopback and keeps its inbox in memory, so messages remain on this machine and disappear when Mailpit restarts.
 
-## Commands
+## Daily development cycle
 
-- `pnpm dev` — run workspace development tasks through Turbo
-- `pnpm dev:backend` — configure and develop Convex
-- `pnpm dev:mobile` — start Expo
-- `mise run check` — run workspace TypeScript checks
+After the first start, manage the same services with mise:
+
+```sh
+mise run dev
+mise run status
+mise run logs
+mise run stop
+```
+
+- `mise run dev` starts the Mailpit, backend, and mobile daemons.
+- `mise run status` reports each daemon's state.
+- `mise run logs` shows recent logs from the three daemons.
+- `mise run stop` stops the development daemons.
+- `mise run zero` remains safe to use when a checkout needs to be repaired or completed.
+
+Expo and local Convex bind to loopback. The default zero workflow works directly with the iOS Simulator, with Expo at <http://127.0.0.1:8081>. Android emulators and physical devices require separate explicit native networking setup not configured by zero.
+
+## Pitchfork MCP in Kit
+
+`mise run zero` generates the checkout-specific `.kit/mcp.local.json`. The file contains the absolute checkout path and is ignored by Git, so regenerate it in each checkout rather than copying or committing it. Start Kit from the repository root with that generated configuration:
+
+```sh
+kit tui --root . --mcp-config .kit/mcp.local.json
+```
+
+## Checks
+
+- `mise run bootstrap-test` — test the secure bootstrap and documentation contract
+- `mise run check` — run workspace static checks
 - `mise run doctor` — run Expo Doctor
-- `pnpm setup:auth` — configure Convex Auth keys after selecting a deployment

@@ -6,6 +6,8 @@ node_modules/
 *.log
 .env
 .env.local
+mise.local.toml
+.kit/mcp.local.json
 !.env.example
 .expo/
 dist/

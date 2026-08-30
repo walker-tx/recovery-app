@@ -9,6 +9,31 @@ pin = true
 node = "24.16.0"
 "github:pnpm/pnpm" = "11.19.0"
 pitchfork = "2.22.0"
+mailpit = "1.31.0"
+
+[tasks.zero]
+description = "Prepare and start local development"
+run = "./scripts/zero.sh"
+
+[tasks.dev]
+description = "Start Recovery development daemons"
+run = "pitchfork start --group recovery"
+
+[tasks.stop]
+description = "Stop Recovery development daemons"
+run = "pitchfork stop --group recovery"
+
+[tasks.status]
+description = "Show Recovery development daemon status"
+run = "pitchfork status mailpit && pitchfork status backend && pitchfork status mobile"
+
+[tasks.logs]
+description = "Show Recovery development daemon logs"
+run = "pitchfork logs mailpit backend mobile"
+
+[tasks.bootstrap-test]
+description = "Test the zero bootstrap contract"
+run = "./scripts/test-zero.sh"
 
 [tasks.install]
 description = "Install workspace dependencies from the lockfile"

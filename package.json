@@ -7,7 +7,6 @@
     "dev": "turbo dev",
     "dev:mobile": "pnpm --filter @recovery/mobile start",
     "dev:backend": "pnpm --filter @recovery/backend dev",
-    "setup:auth": "pnpm --filter @recovery/backend run auth:setup",
     "check": "turbo check",
     "doctor": "pnpm --filter @recovery/mobile run doctor"
   },
