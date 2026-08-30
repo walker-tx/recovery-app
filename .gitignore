@@ -11,3 +11,4 @@ node_modules/
 dist/
 apps/mobile/.expo/
 packages/backend/.convex/
+.worktrees/
