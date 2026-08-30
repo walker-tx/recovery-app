@@ -34,7 +34,7 @@ It does not authorize changing scope, acceptance criteria, priority, iteration, 
 
 ## Preflight
 
-Read `.github/project-workflow.yml`, then inspect current GitHub and repository state before edits. Stop unless all of these hold:
+Locate the repository root with `git rev-parse --show-toplevel`; sessions may start under `apps/mobile`. Read `$ROOT/.github/project-workflow.yml`, resolve linked specification paths from `$ROOT`, then inspect current GitHub and repository state before edits. Stop unless all of these hold:
 
 - the issue exists and is open;
 - the user authorized this issue or a precisely defined ready-set selection;

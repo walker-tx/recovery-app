@@ -27,7 +27,7 @@ Invoke other applicable repository and domain skills while inspecting or plannin
 
 ## Authority
 
-Read `.github/project-workflow.yml` before Project operations. Resolve Project, item, field, and option IDs at runtime; never commit opaque IDs.
+Locate the repository root with `git rev-parse --show-toplevel` before resolving repository paths; sessions may start under `apps/mobile`. Read `$ROOT/.github/project-workflow.yml` before Project operations and resolve specification paths from `$ROOT`. Resolve Project, item, field, and option IDs at runtime; never commit opaque IDs.
 
 | Information | Authority |
 | --- | --- |
@@ -123,7 +123,7 @@ Fix the draft before presenting it.
 
 ### 6. Preview when authorization is needed
 
-Present a compact hierarchy with titles, parent/leaf roles, dependencies, initial Status, and specification path. Ask one direct question: "Create these issues and add them to the Recovery App Project?"
+Present a compact hierarchy with each issue's title, type or parent/leaf role, scope, acceptance criteria, dependencies, initial Status, and specification path. Ask one direct question: "Create these issues and add them to the Recovery App Project?"
 
 If the user already explicitly requested publication, the preview may be included in the completion report rather than becoming another approval gate.
 
