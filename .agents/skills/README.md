@@ -13,6 +13,8 @@ Kit discovers valid skills recursively from `<root>/.agents/skills` and progress
 - `audit-design-artifact` — audits the complete Recovery auth/onboarding flow against the Claude design artifact with explicit evidence levels.
 - `inspect-claude-design-artifacts` — clean-browser retrieval for Claude artifact frames and evidence captures.
 - `exposing-dev-servers-over-tailscale` — safe tailnet-only HTTP service exposure and cleanup; native Metro normally uses direct tailnet routing instead.
+- `planning-project-work` — applies Superpowers planning discipline while publishing approved implementation plans as GitHub issues instead of Markdown plan files.
+- `executing-project-work` — claims and delivers authorized executable Project issues without broadening scope or bypassing repository safeguards.
 
 ## Copied third-party skills
 

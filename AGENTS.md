@@ -34,6 +34,15 @@
 - Organize growing mobile code by user capability. Keep routes focused on navigation and composition, preserve one-way dependencies, and give every state value one authoritative owner.
 - Libraries are welcome when they consolidate demonstrated complexity; document the concrete trigger rather than adopting them for hypothetical scale.
 
+## GitHub Project work tracking
+
+- Markdown is authoritative for research, approved design specifications, architecture, and decisions. Do not create Markdown implementation plans.
+- GitHub Issues and sub-issues are authoritative for user stories, scopes, implementation plans, executable tasks, acceptance criteria, and dependencies. GitHub Project fields own workflow status.
+- Do not turn a conversation into an issue unless the user explicitly requests it or approves a preview. Search for overlapping work before creation.
+- Once work is authorized, routine status, linkage, and evidence updates are allowed. Material scope, acceptance-criteria, priority, iteration, and backlog changes still require approval. Tracking authorization never grants permission to bypass review safeguards, merge, deploy, or make production changes.
+- Keep vendored Superpowers skills unchanged. Before ordinary `writing-plans`, use the repository-owned `planning-project-work` wrapper so planning discipline produces approved issue-backed work instead of a Markdown plan. Use `executing-project-work` for authorized issue-backed delivery.
+- Project identity and supported workflow values live in `.github/project-workflow.yml`. Resolve opaque GitHub IDs at runtime.
+
 ## Working agreement
 
 - Inspect before editing and make the smallest coherent change. Avoid speculative abstractions.

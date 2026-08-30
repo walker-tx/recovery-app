@@ -1,0 +1,7 @@
+owner: walker-tx
+repository: walker-tx/recovery-app
+project_number: 3
+status:
+  todo: Todo
+  in_progress: In Progress
+  done: Done
