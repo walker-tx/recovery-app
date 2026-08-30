@@ -3,9 +3,9 @@ set -u
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 [ "$(pwd -P)" = "$ROOT" ] || { echo 'Run this command from the repository root.' >&2; exit 1; }
+./scripts/check-no-dotenv.sh || exit 1
 STATE_DIR=$ROOT/.recovery-tailnet
 LOCAL_CONFIG=$ROOT/mise.local.toml
-DEPLOYMENT_CONFIG=$ROOT/packages/backend/.env.local
 STATUS=0
 CLEAN_STATE=1
 
@@ -65,19 +65,20 @@ if [ -d "$STATE_DIR" ]; then
   fi
 fi
 
-if [ -f "$DEPLOYMENT_CONFIG" ]; then
-  CONVEX_URL=$(sed -n 's/^CONVEX_URL=//p' "$DEPLOYMENT_CONFIG")
-  if printf '%s' "$CONVEX_URL" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{try{const u=new URL(s);if(u.protocol!=="http:"||!["127.0.0.1","localhost"].includes(u.hostname)||!u.port)process.exit(1)}catch{process.exit(1)}})'; then
-    printf '%s' "$CONVEX_URL" | mise set --file "$LOCAL_CONFIG" --stdin EXPO_PUBLIC_CONVEX_URL >/dev/null || { STATUS=1; CLEAN_STATE=0; }
+if [ -d "$STATE_DIR" ]; then
+  if CONVEX_URL=$(env -u CONVEX_URL mise exec -- sh -c 'printenv CONVEX_URL' 2>/dev/null); then
+    if printf '%s' "$CONVEX_URL" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{try{const u=new URL(s);if(u.protocol!=="http:"||!["127.0.0.1","localhost"].includes(u.hostname)||!u.port)process.exit(1)}catch{process.exit(1)}})'; then
+      printf '%s' "$CONVEX_URL" | mise set --file "$LOCAL_CONFIG" --stdin EXPO_PUBLIC_CONVEX_URL >/dev/null || { STATUS=1; CLEAN_STATE=0; }
+    else
+      echo 'Cannot restore the mobile client without a loopback Convex URL; route ledger retained.' >&2
+      STATUS=1
+      CLEAN_STATE=0
+    fi
   else
-    echo 'Cannot restore the mobile client without a loopback Convex URL; route ledger retained.' >&2
+    echo 'Cannot restore the mobile client without local Convex configuration in mise.local.toml; route ledger retained.' >&2
     STATUS=1
     CLEAN_STATE=0
   fi
-else
-  echo 'Cannot restore the mobile client without local Convex configuration; route ledger retained.' >&2
-  STATUS=1
-  CLEAN_STATE=0
 fi
 printf '%s' localhost | mise set --file "$LOCAL_CONFIG" --stdin RECOVERY_EXPO_MODE >/dev/null || { STATUS=1; CLEAN_STATE=0; }
 printf '%s' localhost | mise set --file "$LOCAL_CONFIG" --stdin RECOVERY_EXPO_HOSTNAME >/dev/null || { STATUS=1; CLEAN_STATE=0; }

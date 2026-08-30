@@ -17,8 +17,8 @@ grep -F '.recovery-tailnet' "$ROOT/scripts/zero.sh" >/dev/null || fail 'normal z
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/recovery-tailnet-test.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 mkdir -p "$TMP/scripts" "$TMP/packages/backend" "$TMP/fake-bin" "$TMP/state/env"
-cp "$ROOT/scripts/zero-tailnet.sh" "$ROOT/scripts/stop.sh" "$ROOT/scripts/status.sh" "$TMP/scripts/"
-printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'CONVEX_URL=http://127.0.0.1:3210' > "$TMP/packages/backend/.env.local"
+cp "$ROOT/scripts/zero-tailnet.sh" "$ROOT/scripts/stop.sh" "$ROOT/scripts/status.sh" "$ROOT/scripts/check-no-dotenv.sh" "$ROOT/scripts/migrate-convex-dotenv.sh" "$TMP/scripts/"
+printf '%s\n' '# Deployment used by `npx convex dev`' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' '' 'CONVEX_URL=http://127.0.0.1:3210' '' 'CONVEX_SITE_URL=http://127.0.0.1:3211' > "$TMP/packages/backend/.env.local"
 : > "$TMP/mise.local.toml"
 : > "$TMP/state/commands"
 printf '%s' '{"TCP":{"443":{"HTTPS":true},"8443":{"HTTPS":true}},"Web":{"fixture.tail.test:443":{"Handlers":{"/":{"Proxy":"http://localhost:4000"}}},"fixture.tail.test:8443":{"Handlers":{"/":{"Proxy":"http://localhost:5000"}}}}}' > "$TMP/state/serve.json"
@@ -30,6 +30,7 @@ echo "mise $*" >> "$TAILNET_TEST_STATE/commands"
 case "${1:-} ${2:-}" in
   'run stop') exec "$TAILNET_TEST_ROOT/scripts/stop.sh" ;;
   'run zero') exit 0 ;;
+  'exec --') cat "$TAILNET_TEST_STATE/env/CONVEX_URL" ;;
   'set --file')
     [ "${4:-}" = --stdin ] || exit 64
     value=$(cat)
@@ -88,6 +89,8 @@ chmod +x "$TMP/fake-bin/"*
 
 run_env=(env HOME="$TMP/home" TAILNET_TEST_ROOT="$TMP" TAILNET_TEST_STATE="$TMP/state" PATH="$TMP/fake-bin:$PATH")
 (cd "$TMP" && "${run_env[@]}" ./scripts/zero-tailnet.sh >/dev/null)
+[ ! -e "$TMP/packages/backend/.env.local" ] || fail 'tailnet startup did not migrate Convex dotenv configuration'
+[ "$(cat "$TMP/state/env/CONVEX_DEPLOYMENT")" = anonymous:fixture-local ] || fail 'tailnet startup did not store Convex deployment in Mise'
 [ "$(cat "$TMP/state/env/RECOVERY_EXPO_MODE")" = tailnet ] || fail 'Expo tailnet mode was not selected'
 [ "$(cat "$TMP/state/env/RECOVERY_EXPO_HOSTNAME")" = 100.64.0.2 ] || fail 'tailnet IP was not configured'
 [ "$(cat "$TMP/state/env/EXPO_PUBLIC_CONVEX_URL")" = https://fixture.tail.test:8444 ] || fail 'tailnet Convex URL was not configured'
@@ -143,10 +146,10 @@ printf '8081\tlocalhost:8081\n' > "$TMP/.recovery-tailnet/tcp-route.tsv"
 (cd "$TMP" && "${run_env[@]}" ./scripts/stop.sh >/dev/null)
 
 (cd "$TMP" && "${run_env[@]}" ./scripts/zero-tailnet.sh >/dev/null)
-printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'CONVEX_URL=https://remote.invalid' > "$TMP/packages/backend/.env.local"
+printf '%s' 'https://remote.invalid' > "$TMP/state/env/CONVEX_URL"
 if (cd "$TMP" && "${run_env[@]}" ./scripts/stop.sh >/dev/null 2>&1); then fail 'cleanup accepted a non-loopback Convex URL'; fi
 [ -d "$TMP/.recovery-tailnet" ] || fail 'ledger was discarded before loopback restoration'
-printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'CONVEX_URL=http://127.0.0.1:3210' > "$TMP/packages/backend/.env.local"
+printf '%s' 'http://127.0.0.1:3210' > "$TMP/state/env/CONVEX_URL"
 (cd "$TMP" && "${run_env[@]}" ./scripts/stop.sh >/dev/null)
 [ ! -e "$TMP/.recovery-tailnet" ] || fail 'ledger remained after successful restoration retry'
 

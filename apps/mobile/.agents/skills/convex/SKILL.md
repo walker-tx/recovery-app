@@ -16,7 +16,7 @@ Resolve `REPO_ROOT="$(git rev-parse --show-toplevel)"`. Backend source lives in 
 - Authorize each read and write against server-owned data. Authentication alone is not authorization.
 - Add schema indexes for normal lookup paths and query through them; avoid loading a table and filtering in application code.
 - Keep actions for external side effects. Prefer queries and mutations for database work.
-- Keep deployment credentials and secrets in Convex environment variables. `.env.local` is uncommitted.
+- Keep deployment credentials and secrets in Convex deployment variables or checkout-local `mise.local.toml`. `.env*` files are forbidden.
 
 ## Convex Auth
 

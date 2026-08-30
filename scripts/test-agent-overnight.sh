@@ -7,7 +7,7 @@ FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/recovery-supervisor.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
 mkdir -p "$FIXTURE/scripts" "$FIXTURE/docs" "$FIXTURE/packages/backend" "$FIXTURE/fake-bin"
-cp "$ROOT/scripts/agent-overnight.sh" "$FIXTURE/scripts/"
+cp "$ROOT/scripts/agent-overnight.sh" "$ROOT/scripts/check-no-dotenv.sh" "$FIXTURE/scripts/"
 cp "$ROOT/docs/overnight-auth-plan.md" "$ROOT/docs/overnight-auth-handoff.md" "$FIXTURE/docs/"
 cp "$ROOT/.gitignore" "$FIXTURE/"
 
@@ -35,7 +35,14 @@ handoff_text = re.sub(
 handoff.write_text(handoff_text)
 PY
 
-printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:anonymous-agent' > "$FIXTURE/packages/backend/.env.local"
+printf '%s' 'anonymous:anonymous-agent' > "$FIXTURE/convex-deployment"
+
+cat > "$FIXTURE/fake-bin/mise" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "$1 $2 $3 $4" = 'exec -- sh -c' ] || exit 64
+cat convex-deployment
+EOF
 
 cat > "$FIXTURE/fake-bin/kit" <<'EOF'
 #!/usr/bin/env bash
@@ -74,7 +81,7 @@ git commit -m "Fake transition to $FAKE_NEXT_ACTION/$FAKE_NEXT_COUNT" >/dev/null
 echo OVERNIGHT_RESULT=progress
 echo 'session_id: fake-session-001'
 EOF
-chmod +x "$FIXTURE/fake-bin/kit" "$FIXTURE/scripts/agent-overnight.sh"
+chmod +x "$FIXTURE/fake-bin/kit" "$FIXTURE/fake-bin/mise" "$FIXTURE/scripts/agent-overnight.sh"
 
 cd "$FIXTURE"
 git init -b agent/test >/dev/null
@@ -91,12 +98,12 @@ if CONVEX_AGENT_MODE=cloud PATH="$FIXTURE/fake-bin:$PATH" scripts/agent-overnigh
   echo "conflicting inherited agent mode was not rejected" >&2
   exit 1
 fi
-printf '%s\n' 'CONVEX_DEPLOYMENT=dev:cloud' > packages/backend/.env.local
+printf '%s' 'dev:cloud' > convex-deployment
 if PATH="$FIXTURE/fake-bin:$PATH" scripts/agent-overnight.sh --dry-run >/dev/null 2>&1; then
   echo "cloud deployment selection was not rejected" >&2
   exit 1
 fi
-printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:anonymous-agent' > packages/backend/.env.local
+printf '%s' 'anonymous:anonymous-agent' > convex-deployment
 
 git checkout --detach >/dev/null 2>&1
 if PATH="$FIXTURE/fake-bin:$PATH" scripts/agent-overnight.sh --dry-run >/dev/null 2>&1; then

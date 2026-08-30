@@ -103,7 +103,7 @@ function WorkOSMissingConfiguration() {
           <Typography variant="overline">RECOVERY</Typography>
           <Typography accessibilityRole="header" variant="display">Connect your backend.</Typography>
           <Typography className="text-ink-muted">
-            Copy .env.example to .env and add the Convex deployment URL to begin.
+            Run mise run zero from the repository root to configure and start the backend.
           </Typography>
         </View>
       </Screen>

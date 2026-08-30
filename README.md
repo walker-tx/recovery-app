@@ -17,7 +17,7 @@ mise install
 mise run zero
 ```
 
-`zero` installs workspace dependencies and configures a local Convex deployment. It uses WorkOS staging credentials, prompting only for a missing `WORKOS_API_KEY` or `WORKOS_CLIENT_ID`, and generates missing email HMAC and intent-encryption secrets. It stores these values in the ignored, checkout-local `mise.local.toml`, sets that file to owner-only access, and syncs the required values to local Convex. Re-running `zero` preserves existing values. Never commit or paste local credentials into tracked files.
+`zero` installs workspace dependencies and configures a local Convex deployment. It uses WorkOS staging credentials, prompting only for a missing `WORKOS_API_KEY` or `WORKOS_CLIENT_ID`, and generates missing email HMAC and intent-encryption secrets. It stores these values in the ignored, checkout-local `mise.local.toml`, sets that file to owner-only access, and syncs the required values to local Convex. Re-running `zero` preserves existing values. All `.env*` files—including examples—are forbidden so they cannot override Mise; never create them or paste local credentials into tracked files.
 
 The generated `EXPO_PUBLIC_CONVEX_URL` is safe to expose to the mobile client because every `EXPO_PUBLIC_*` value is bundled into the app. Treat that prefix as public configuration, never as a place for secrets. The bootstrap rejects cloud Convex configuration and accepts only a loopback local deployment.
 

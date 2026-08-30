@@ -3,9 +3,10 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 [ "$(pwd -P)" = "$ROOT" ] || { echo 'Run this command from the repository root.' >&2; exit 1; }
+./scripts/migrate-convex-dotenv.sh
+./scripts/check-no-dotenv.sh
 STATE_DIR=$ROOT/.recovery-tailnet
 LOCAL_CONFIG=$ROOT/mise.local.toml
-DEPLOYMENT_CONFIG=$ROOT/packages/backend/.env.local
 ACTIVE=0
 
 die() { echo "$*" >&2; exit 1; }
@@ -33,7 +34,7 @@ mise run stop >/dev/null
 ACTIVE=1
 mise run zero >/dev/null
 
-CONVEX_URL=$(sed -n 's/^CONVEX_URL=//p' "$DEPLOYMENT_CONFIG")
+CONVEX_URL=$(env -u CONVEX_URL mise exec -- sh -c 'printenv CONVEX_URL')
 printf '%s' "$CONVEX_URL" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{try{const u=new URL(s);if(u.protocol!=="http:"||!["127.0.0.1","localhost"].includes(u.hostname)||!u.port)process.exit(1)}catch{process.exit(1)}})' || die 'Local Convex URL is not loopback-only.'
 curl -fsS --max-time 5 "$CONVEX_URL" >/dev/null || die 'Local Convex is not healthy.'
 

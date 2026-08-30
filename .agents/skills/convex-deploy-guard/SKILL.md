@@ -11,7 +11,7 @@ Deployments are not interchangeable, and most incidents start with a command aim
 
 ## Workflow
 
-1. IDENTIFY before you act: read `CONVEX_DEPLOYMENT` in .env.local, `convex.json`, and whether `CONVEX_DEPLOY_KEY` is set; or call the official Convex MCP `status` tool. Classify the target: local-anonymous | dev | preview | prod. If two sources disagree, resolve before proceeding.
+1. IDENTIFY before you act: read `CONVEX_DEPLOYMENT` through `mise exec`, inspect `convex.json`, and determine whether `CONVEX_DEPLOY_KEY` is set; or call the official Convex MCP `status` tool. Classify the target: local-anonymous | dev | preview | prod. If two sources disagree, resolve before proceeding.
 2. ANNOUNCE in one line before any deployment-affecting command: `target: dev (joyful-capybara-123, personal dev)`. Never run the command in the same breath as discovering the target — announce first.
 3. PROD needs a FRESH explicit yes: before `npx convex deploy` (when it resolves to prod), `npx convex run --prod`, `env set` on prod, snapshot `import`/`export` on prod, or starting the MCP with prod access — state exactly what will change on which deployment and get an explicit yes in THIS session. A yes given earlier, or for a different target, does not carry.
 4. MCP safety defaults: start the official MCP scoped non-prod (`--deployment dev`). The two prod flags are DIFFERENT risk levels — keep them split: a read-only prod audit (advisor/insights reading data/logs/insights) passes ONLY `--cautiously-allow-production-pii` (read tools); `--dangerously-enable-production-deployments` (which enables MUTATING prod tools) stays OFF unless the user explicitly asked to CHANGE prod this session. Never pair them by default — 'look at prod' must not silently grant 'mutate prod'.

@@ -126,7 +126,7 @@ On cleanup:
 
 ## Common mistakes
 
-- Assuming `.env.local` owns WorkOS secrets instead of `mise.local.toml`.
+- Creating any `.env*` file; all checkout-local configuration belongs in `mise.local.toml`.
 - Starting Expo while Convex is absent, then diagnosing the result as a WorkOS failure.
 - Treating a log-tail process as the backend.
 - Running Metro in CI mode and expecting hot reload.

@@ -4,6 +4,7 @@ set -uo pipefail
 umask 077
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+"$ROOT/scripts/check-no-dotenv.sh" || exit 1
 PLAN="$ROOT/docs/overnight-auth-plan.md"
 HANDOFF="$ROOT/docs/overnight-auth-handoff.md"
 RUNTIME_DIR="$ROOT/.agent-overnight"
@@ -126,13 +127,9 @@ validate_action() {
 }
 
 validate_local_deployment() {
-  local deployment_file="$ROOT/packages/backend/.env.local"
-  local count selected
-  [ -f "$deployment_file" ] || { echo "Missing local Convex selection at packages/backend/.env.local." >&2; return 1; }
-  count=$(grep -Ec '^CONVEX_DEPLOYMENT=' "$deployment_file" || true)
-  [ "$count" -eq 1 ] || { echo "Expected exactly one CONVEX_DEPLOYMENT assignment; found $count." >&2; return 1; }
-  grep -Eq '^CONVEX_DEPLOYMENT=(local|anonymous):[A-Za-z0-9._-]+$' "$deployment_file" || { echo "Convex deployment is not unambiguously local." >&2; return 1; }
-  selected=$(sed -n 's/^CONVEX_DEPLOYMENT=//p' "$deployment_file")
+  local selected
+  selected=$(cd "$ROOT" && env -u CONVEX_DEPLOYMENT mise exec -- sh -c 'printenv CONVEX_DEPLOYMENT' 2>/dev/null) || { echo "Missing local Convex selection in mise.local.toml." >&2; return 1; }
+  printf '%s' "$selected" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{if(!/^(?:local|anonymous):[A-Za-z0-9._-]+$/.test(s))process.exit(1)})' || { echo "Convex deployment is not unambiguously local." >&2; return 1; }
   case "$selected" in
     anonymous:*)
       if [ -n "${CONVEX_AGENT_MODE:-}" ] && [ "$CONVEX_AGENT_MODE" != "anonymous" ]; then

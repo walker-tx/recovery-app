@@ -4,8 +4,9 @@ set -euo pipefail
 SCRIPT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 ROOT=$(pwd -P)
 [ "$ROOT" = "$SCRIPT_ROOT" ] || { echo 'Run this command from the repository root.' >&2; exit 1; }
+./scripts/migrate-convex-dotenv.sh
+./scripts/check-no-dotenv.sh
 LOCAL_CONFIG=mise.local.toml
-DEPLOYMENT_CONFIG=packages/backend/.env.local
 MCP_TMP=
 umask 077
 cleanup() { [ -z "$MCP_TMP" ] || rm -f "$MCP_TMP"; }
@@ -35,7 +36,7 @@ ensure_fixed() {
   fi
 }
 
-run_convex() { env -u CONVEX_AGENT_MODE pnpm --filter @recovery/backend exec convex "$@"; }
+run_convex() { env -u CONVEX_AGENT_MODE -u CONVEX_DEPLOYMENT mise exec -- pnpm --filter @recovery/backend exec convex "$@"; }
 
 sync_convex() {
   env -u "$1" mise exec -- sh -c 'printenv "$1"' sh "$1" | run_convex env set "$1" >/dev/null
@@ -58,18 +59,18 @@ ensure_generated WORKOS_INTENT_ENCRYPTION_KEY
 ensure_fixed WORKOS_MODE staging
 ensure_fixed AUTH_EMAIL_DELIVERY_URL http://127.0.0.1:8025/api/v1/send
 
-if [ -f "$DEPLOYMENT_CONFIG" ] && grep -q '^CONVEX_DEPLOYMENT=' "$DEPLOYMENT_CONFIG"; then
-  [ "$(grep -Ec '^CONVEX_DEPLOYMENT=(local|anonymous):[A-Za-z0-9._-]+$' "$DEPLOYMENT_CONFIG" || true)" -eq 1 ] || die 'Selected Convex deployment is not local.'
-fi
-
 pitchfork start mailpit backend >/dev/null
-[ "$(grep -Ec '^CONVEX_DEPLOYMENT=(local|anonymous):[A-Za-z0-9._-]+$' "$DEPLOYMENT_CONFIG" || true)" -eq 1 ] || die 'Selected Convex deployment is not local.'
+./scripts/migrate-convex-dotenv.sh
+./scripts/check-no-dotenv.sh
+
+selected_deployment=$(env -u CONVEX_DEPLOYMENT mise exec -- sh -c 'printenv CONVEX_DEPLOYMENT')
+printf %s "$selected_deployment" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{if(!/^(?:local|anonymous):[A-Za-z0-9._-]+$/.test(s))process.exit(1)})' || die 'Selected Convex deployment is not local.'
 
 for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL; do
   sync_convex "$key"
 done
 
-convex_url=$(sed -n 's/^CONVEX_URL=//p' "$DEPLOYMENT_CONFIG")
+convex_url=$(env -u CONVEX_URL mise exec -- sh -c 'printenv CONVEX_URL')
 printf %s "$convex_url" | mise exec -- node -e 'let s=""; process.stdin.on("data", c => s += c).on("end", () => { try { const u=new URL(s); if (u.protocol !== "http:" || u.username || u.password || !["127.0.0.1", "localhost"].includes(u.hostname) || !u.port) process.exit(1); } catch { process.exit(1); } });' || die 'Generated Convex URL is not loopback-only.'
 printf %s "$convex_url" | set_stdin EXPO_PUBLIC_CONVEX_URL
 printf %s localhost | set_stdin RECOVERY_EXPO_MODE

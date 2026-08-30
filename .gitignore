@@ -5,11 +5,8 @@ node_modules/
 .recovery-tailnet/
 .DS_Store
 *.log
-.env
-.env.local
 mise.local.toml
 .mcp.json
-!.env.example
 .expo/
 dist/
 apps/mobile/.expo/

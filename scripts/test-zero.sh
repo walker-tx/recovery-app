@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 ZERO=$ROOT/scripts/zero.sh
+DOTENV_CHECK=$ROOT/scripts/check-no-dotenv.sh
+DOTENV_MIGRATE=$ROOT/scripts/migrate-convex-dotenv.sh
 [ -f "$ZERO" ] || { echo "FAIL: scripts/zero.sh does not exist" >&2; exit 1; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
@@ -14,6 +16,8 @@ MOBILE=$ROOT/scripts/mobile.sh
 
 assert_fixed() { grep -F -- "$2" "$1" >/dev/null || fail "$1 is missing: $2"; }
 refute_fixed() { ! grep -F -- "$2" "$1" >/dev/null || fail "$1 contains forbidden text: $2"; }
+dotenv_files=$(find "$ROOT" -path "$ROOT/.git" -prune -o -path "$ROOT/node_modules" -prune -o -type f -name '.env*' -print)
+[ -z "$dotenv_files" ] || fail "dotenv files are forbidden: $dotenv_files"
 section() { awk -v header="$2" '$0 == header { found=1; next } found && /^\[/ { exit } found { print }' "$1"; }
 assert_section() { section "$1" "$2" | grep -F -- "$3" >/dev/null || fail "$1 $2 is missing: $3"; }
 refute_section() { ! section "$1" "$2" | grep -F -- "$3" >/dev/null || fail "$1 $2 contains forbidden text: $3"; }
@@ -63,8 +67,7 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 daemon_fixture=$TMP/daemon-env
 mkdir -p "$daemon_fixture/fake-bin" "$daemon_fixture/local-env" "$daemon_fixture/packages/backend" "$daemon_fixture/scripts"
 cp "$MOBILE" "$daemon_fixture/scripts/mobile.sh"
-printf '%s\n' 'CONVEX_DEPLOYMENT=local:fixture-local' > "$daemon_fixture/packages/backend/.env.local"
-for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL EXPO_PUBLIC_CONVEX_URL; do
+for key in CONVEX_DEPLOYMENT CONVEX_URL CONVEX_SITE_URL WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL EXPO_PUBLIC_CONVEX_URL; do
   printf 'checkout-%s' "$key" > "$daemon_fixture/local-env/$key"
 done
 cat > "$daemon_fixture/fake-bin/mise" <<'FAKE'
@@ -86,10 +89,9 @@ cat > "$daemon_fixture/fake-bin/pnpm" <<'FAKE'
 set -euo pipefail
 case " $* " in
   *' @recovery/backend '*)
-    [ -z "${CONVEX_DEPLOYMENT+x}" ] && [ -z "${CONVEX_DEPLOY_KEY+x}" ] || exit 66
+    [ -z "${CONVEX_DEPLOY_KEY+x}" ] || exit 66
     [ -z "${CONVEX_AGENT_MODE+x}" ] || exit 68
-    grep -Eq '^CONVEX_DEPLOYMENT=(local|anonymous):' packages/backend/.env.local
-    keys='WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL'
+    keys='CONVEX_DEPLOYMENT CONVEX_URL CONVEX_SITE_URL WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL'
     ;;
   *' @recovery/mobile '*) keys=EXPO_PUBLIC_CONVEX_URL ;;
   *) exit 64 ;;
@@ -112,7 +114,7 @@ put_env() {
 new_fixture() {
   fixture=$TMP/$1
   mkdir -p "$fixture/scripts" "$fixture/packages/backend/convex" "$fixture/fake-bin" "$fixture/state/env"
-  cp "$ZERO" "$fixture/scripts/zero.sh"
+  cp "$ZERO" "$DOTENV_CHECK" "$DOTENV_MIGRATE" "$fixture/scripts/"
   : > "$fixture/mise.toml"
   : > "$fixture/state/commands"
 
@@ -173,13 +175,14 @@ shift 4
 case "${1:-} ${2:-}" in
   'dev --configure')
     [ "$*" = 'dev --configure new --dev-deployment local --once --tail-logs disable' ] || exit 64
-    printf '%s\n' 'CONVEX_DEPLOYMENT=local:fixture-local' 'CONVEX_URL=http://127.0.0.1:3210' > packages/backend/.env.local
+    printf '%s\n' 'CONVEX_DEPLOYMENT=local:fixture-local' 'CONVEX_URL=http://127.0.0.1:3210' 'CONVEX_SITE_URL=http://127.0.0.1:3211' > packages/backend/.env.local
     ;;
   'dev --once')
     [ "$*" = 'dev --once --tail-logs disable' ] || exit 64
     [ "${ZERO_TEST_FAIL_DEV:-0}" = 0 ] || exit 70
     ;;
   'env set')
+    [ "${CONVEX_DEPLOYMENT:-}" = "$(cat "$ZERO_TEST_STATE/env/CONVEX_DEPLOYMENT")" ] || exit 69
     shift 2
     key=${1:-}
     [ -n "$key" ] && [ $# -eq 1 ] || exit 64
@@ -200,7 +203,7 @@ case ${1:-} in
   start)
     case "$*" in
       'start mailpit backend')
-        [ -f packages/backend/.env.local ] || printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'CONVEX_URL=http://127.0.0.1:3210' > packages/backend/.env.local
+        [ -f packages/backend/.env.local ] || [ -f "$ZERO_TEST_STATE/env/CONVEX_DEPLOYMENT" ] || printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'CONVEX_URL=http://127.0.0.1:3210' 'CONVEX_SITE_URL=http://127.0.0.1:3211' > packages/backend/.env.local
         ;;
       'start mobile') ;;
       *) exit 64 ;;
@@ -289,11 +292,33 @@ for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_E
   assert_log "$ambient" "convex env set-local-stdin $key"
 done
 
+cloud_migration=$(new_fixture cloud-migration)
+printf '%s\n' 'CONVEX_DEPLOYMENT=dev:cloud' 'CONVEX_URL=https://cloud.invalid' 'CONVEX_SITE_URL=https://cloud.invalid' > "$cloud_migration/packages/backend/.env.local"
+if run_zero "$cloud_migration" >/dev/null 2>&1; then fail 'cloud Convex dotenv migration was accepted'; fi
+refute_log "$cloud_migration" 'pitchfork start mailpit backend'
+
+symlink_migration=$(new_fixture symlink-migration)
+printf '%s\n' '# Deployment used by `npx convex dev`' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' '' 'CONVEX_URL=http://127.0.0.1:3210' '' 'CONVEX_SITE_URL=http://127.0.0.1:3211' > "$symlink_migration/state/generated"
+ln -s "$symlink_migration/state/generated" "$symlink_migration/packages/backend/.env.local"
+if run_zero "$symlink_migration" >/dev/null 2>&1; then fail 'symlinked Convex dotenv migration was accepted'; fi
+refute_log "$symlink_migration" 'pitchfork start mailpit backend'
+
+migration=$(new_fixture migration)
+for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY; do put_env "$migration" "$key" fixture; done
+put_env "$migration" WORKOS_MODE staging
+put_env "$migration" AUTH_EMAIL_DELIVERY_URL http://127.0.0.1:8025/api/v1/send
+printf '%s\n' '# Deployment used by `npx convex dev`' 'CONVEX_DEPLOYMENT=anonymous:migrated-local' '' 'CONVEX_URL=http://127.0.0.1:3210' '' 'CONVEX_SITE_URL=http://127.0.0.1:3211' > "$migration/packages/backend/.env.local"
+run_zero "$migration" >/dev/null
+[ ! -e "$migration/packages/backend/.env.local" ] || fail 'generated Convex dotenv file was not removed'
+[ "$(cat "$migration/state/env/CONVEX_DEPLOYMENT")" = anonymous:migrated-local ] || fail 'Convex deployment was not migrated to Mise'
+
 existing=$(new_fixture existing)
 for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL; do put_env "$existing" "$key" existing-fixture-value; done
 put_env "$existing" WORKOS_MODE staging
 put_env "$existing" AUTH_EMAIL_DELIVERY_URL http://127.0.0.1:8025/api/v1/send
-printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'CONVEX_URL=http://localhost:3210' > "$existing/packages/backend/.env.local"
+put_env "$existing" CONVEX_DEPLOYMENT anonymous:fixture-local
+put_env "$existing" CONVEX_URL http://localhost:3210
+put_env "$existing" CONVEX_SITE_URL http://localhost:3211
 run_zero "$existing" >/dev/null
 refute_log "$existing" 'pnpm --filter @recovery/backend exec convex dev --configure new --dev-deployment local --once --tail-logs disable'
 refute_log "$existing" 'pnpm --filter @recovery/backend exec convex dev --once --tail-logs disable'
@@ -301,6 +326,11 @@ for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_E
   refute_log "$existing" "mise set prompt $key"
   refute_log "$existing" "mise set stdin $key"
 done
+
+dotenv=$(new_fixture dotenv)
+printf '%s' 'forbidden' > "$dotenv/.env"
+if run_zero "$dotenv" >/dev/null 2>&1; then fail 'dotenv file was accepted'; fi
+refute_log "$dotenv" 'pitchfork start mailpit backend'
 
 cloud=$(new_fixture cloud)
 if run_zero "$cloud" CONVEX_DEPLOYMENT=prod:fixture-cloud >/dev/null 2>&1; then fail 'production deployment was accepted'; fi
@@ -314,7 +344,9 @@ malicious_url=$(new_fixture malicious-url)
 for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY; do put_env "$malicious_url" "$key" fixture; done
 put_env "$malicious_url" WORKOS_MODE staging
 put_env "$malicious_url" AUTH_EMAIL_DELIVERY_URL http://127.0.0.1:8025/api/v1/send
-printf '%s\n' 'CONVEX_DEPLOYMENT=local:fixture-local' 'CONVEX_URL=http://localhost:3210@evil.example' > "$malicious_url/packages/backend/.env.local"
+put_env "$malicious_url" CONVEX_DEPLOYMENT local:fixture-local
+put_env "$malicious_url" CONVEX_URL http://localhost:3210@evil.example
+put_env "$malicious_url" CONVEX_SITE_URL http://localhost:3211
 if run_zero "$malicious_url" >/dev/null 2>&1; then fail 'credential-shaped remote Convex URL was accepted'; fi
 refute_log "$malicious_url" 'pitchfork start mobile'
 
