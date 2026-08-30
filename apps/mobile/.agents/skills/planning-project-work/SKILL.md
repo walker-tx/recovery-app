@@ -27,7 +27,7 @@ Invoke other applicable repository and domain skills while inspecting or plannin
 
 ## Authority
 
-Locate the repository root with `git rev-parse --show-toplevel` before resolving repository paths; sessions may start under `apps/mobile`. Read `$ROOT/.github/project-workflow.yml` before Project operations and resolve specification paths from `$ROOT`. Resolve Project, item, field, and option IDs at runtime; never commit opaque IDs.
+Locate the repository root with `git rev-parse --show-toplevel` before resolving repository paths; sessions may start under `apps/mobile`. Read `$ROOT/.github/project-workflow.yml` before Project operations. Specification links must be repository-relative paths under `docs/`: reject absolute paths and traversal, canonicalize an existing target, and verify it remains below `$ROOT/docs` before reading it. Resolve Project, item, field, and option IDs at runtime; never commit opaque IDs.
 
 | Information | Authority |
 | --- | --- |
