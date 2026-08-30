@@ -10,6 +10,7 @@ MISE=$ROOT/mise.toml
 PITCHFORK=$ROOT/pitchfork.toml
 PACKAGE=$ROOT/package.json
 README=$ROOT/README.md
+MOBILE=$ROOT/scripts/mobile.sh
 
 assert_fixed() { grep -F -- "$2" "$1" >/dev/null || fail "$1 is missing: $2"; }
 refute_fixed() { ! grep -F -- "$2" "$1" >/dev/null || fail "$1 contains forbidden text: $2"; }
@@ -23,6 +24,7 @@ assert_fixed "$MISE" 'mailpit = "1.31.0"'
 for task in zero dev stop status logs bootstrap-test install check doctor; do
   assert_fixed "$MISE" "[tasks.$task]"
 done
+assert_fixed "$MISE" '[tasks."zero:tailnet"]'
 assert_fixed "$PITCHFORK" 'namespace = "recovery"'
 for daemon in mailpit backend mobile; do
   assert_fixed "$PITCHFORK" "[daemons.$daemon]"
@@ -32,19 +34,19 @@ assert_section "$PITCHFORK" '[daemons.mailpit]' 'run = "mise exec -- mailpit --l
 assert_section "$PITCHFORK" '[daemons.mailpit]' 'ready_http = "http://127.0.0.1:8025/api/v1/info"'
 refute_section "$PITCHFORK" '[daemons.mailpit]' '--database'
 refute_section "$PITCHFORK" '[daemons.mailpit]' ' -d'
-assert_section "$PITCHFORK" '[daemons.backend]' 'run = "env -u CONVEX_DEPLOYMENT -u CONVEX_DEPLOY_KEY -u WORKOS_API_KEY -u WORKOS_CLIENT_ID -u WORKOS_EMAIL_HMAC_KEY -u WORKOS_INTENT_ENCRYPTION_KEY -u WORKOS_MODE -u AUTH_EMAIL_DELIVERY_URL mise exec -- pnpm --filter @recovery/backend dev"'
+assert_section "$PITCHFORK" '[daemons.backend]' 'run = "env -u CONVEX_DEPLOYMENT -u CONVEX_DEPLOY_KEY -u CONVEX_AGENT_MODE -u WORKOS_API_KEY -u WORKOS_CLIENT_ID -u WORKOS_EMAIL_HMAC_KEY -u WORKOS_INTENT_ENCRYPTION_KEY -u WORKOS_MODE -u AUTH_EMAIL_DELIVERY_URL mise exec -- pnpm --filter @recovery/backend dev"'
 assert_section "$PITCHFORK" '[daemons.backend]' 'depends = ["mailpit"]'
 assert_section "$PITCHFORK" '[daemons.backend]' 'ready_port = 3210'
-assert_section "$PITCHFORK" '[daemons.mobile]' 'run = "env -u EXPO_PUBLIC_CONVEX_URL mise exec -- pnpm --filter @recovery/mobile exec expo start --localhost --port 8081"'
+assert_section "$PITCHFORK" '[daemons.mobile]' 'run = "env -u EXPO_PUBLIC_CONVEX_URL -u REACT_NATIVE_PACKAGER_HOSTNAME -u RECOVERY_EXPO_MODE -u RECOVERY_EXPO_HOSTNAME mise exec -- ./scripts/mobile.sh"'
 assert_section "$PITCHFORK" '[daemons.mobile]' 'depends = ["backend"]'
 [ "$(grep -c '^\[groups\.' "$PITCHFORK")" -eq 1 ] || fail 'pitchfork.toml must declare exactly one group'
 assert_section "$PITCHFORK" '[groups.recovery]' 'daemons = ["mailpit", "backend", "mobile"]'
 assert_section "$MISE" '[tasks.zero]' 'run = "./scripts/zero.sh"'
 assert_section "$MISE" '[tasks.dev]' 'run = "pitchfork start --group recovery"'
-assert_section "$MISE" '[tasks.stop]' 'run = "pitchfork stop --group recovery"'
-assert_section "$MISE" '[tasks.status]' 'run = "pitchfork status mailpit && pitchfork status backend && pitchfork status mobile"'
+assert_section "$MISE" '[tasks.stop]' 'run = "./scripts/stop.sh"'
+assert_section "$MISE" '[tasks.status]' 'run = "./scripts/status.sh"'
 assert_section "$MISE" '[tasks.logs]' 'run = "pitchfork logs mailpit backend mobile"'
-assert_section "$MISE" '[tasks.bootstrap-test]' 'run = "./scripts/test-zero.sh"'
+assert_section "$MISE" '[tasks.bootstrap-test]' 'run = "./scripts/test-zero.sh && ./scripts/test-zero-tailnet.sh"'
 refute_fixed "$PITCHFORK" '--web'
 node -e 'const p=require(process.argv[1]); if ("setup:auth" in p.scripts) process.exit(1)' "$PACKAGE" || fail 'stale setup:auth script remains'
 
@@ -59,7 +61,8 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/recovery-zero-test.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
 daemon_fixture=$TMP/daemon-env
-mkdir -p "$daemon_fixture/fake-bin" "$daemon_fixture/local-env" "$daemon_fixture/packages/backend"
+mkdir -p "$daemon_fixture/fake-bin" "$daemon_fixture/local-env" "$daemon_fixture/packages/backend" "$daemon_fixture/scripts"
+cp "$MOBILE" "$daemon_fixture/scripts/mobile.sh"
 printf '%s\n' 'CONVEX_DEPLOYMENT=local:fixture-local' > "$daemon_fixture/packages/backend/.env.local"
 for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL EXPO_PUBLIC_CONVEX_URL; do
   printf 'checkout-%s' "$key" > "$daemon_fixture/local-env/$key"
@@ -71,7 +74,7 @@ set -euo pipefail
 shift 2
 case " $* " in
   *' @recovery/backend '*) keys='CONVEX_DEPLOYMENT CONVEX_DEPLOY_KEY WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL' ;;
-  *' @recovery/mobile '*) keys=EXPO_PUBLIC_CONVEX_URL ;;
+  *' ./scripts/mobile.sh '*) keys='EXPO_PUBLIC_CONVEX_URL REACT_NATIVE_PACKAGER_HOSTNAME RECOVERY_EXPO_MODE RECOVERY_EXPO_HOSTNAME' ;;
   *) exit 64 ;;
 esac
 for key in $keys; do [ -z "${!key+x}" ] || exit 65; done
@@ -84,7 +87,8 @@ set -euo pipefail
 case " $* " in
   *' @recovery/backend '*)
     [ -z "${CONVEX_DEPLOYMENT+x}" ] && [ -z "${CONVEX_DEPLOY_KEY+x}" ] || exit 66
-    grep -Fx 'CONVEX_DEPLOYMENT=local:fixture-local' packages/backend/.env.local >/dev/null
+    [ -z "${CONVEX_AGENT_MODE+x}" ] || exit 68
+    grep -Eq '^CONVEX_DEPLOYMENT=(local|anonymous):' packages/backend/.env.local
     keys='WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL'
     ;;
   *' @recovery/mobile '*) keys=EXPO_PUBLIC_CONVEX_URL ;;
@@ -94,11 +98,10 @@ for key in $keys; do [ "${!key:-}" = "checkout-$key" ] || exit 67; done
 FAKE
 chmod +x "$daemon_fixture/fake-bin/"*
 daemon_run() { section "$PITCHFORK" "[daemons.$1]" | sed -n 's/^run = "\(.*\)"$/\1/p'; }
-ambient='CONVEX_DEPLOYMENT=prod:ambient CONVEX_DEPLOY_KEY=ambient-key WORKOS_API_KEY=ambient-api WORKOS_CLIENT_ID=ambient-client WORKOS_EMAIL_HMAC_KEY=ambient-hmac WORKOS_INTENT_ENCRYPTION_KEY=ambient-encryption WORKOS_MODE=ambient-mode AUTH_EMAIL_DELIVERY_URL=http://ambient.invalid EXPO_PUBLIC_CONVEX_URL=https://ambient.invalid'
+ambient='CONVEX_DEPLOYMENT=prod:ambient CONVEX_DEPLOY_KEY=ambient-key WORKOS_API_KEY=ambient-api WORKOS_CLIENT_ID=ambient-client WORKOS_EMAIL_HMAC_KEY=ambient-hmac WORKOS_INTENT_ENCRYPTION_KEY=ambient-encryption WORKOS_MODE=ambient-mode AUTH_EMAIL_DELIVERY_URL=http://ambient.invalid EXPO_PUBLIC_CONVEX_URL=https://ambient.invalid REACT_NATIVE_PACKAGER_HOSTNAME=ambient-host RECOVERY_EXPO_MODE=lan RECOVERY_EXPO_HOSTNAME=ambient-host'
 for daemon in backend mobile; do
   (cd "$daemon_fixture" && eval "env $ambient DAEMON_TEST_ROOT=\"$daemon_fixture\" PATH=\"$daemon_fixture/fake-bin:$PATH\" $(daemon_run "$daemon")") || fail "$daemon daemon inherited managed ambient environment"
 done
-
 assert_log() { grep -Fx "$2" "$1/state/commands" >/dev/null || fail "missing command: $2"; }
 refute_log() { ! grep -Fx "$2" "$1/state/commands" >/dev/null || fail "unexpected command: $2"; }
 put_env() {
@@ -178,9 +181,8 @@ case "${1:-} ${2:-}" in
     ;;
   'env set')
     shift 2
-    [ "${1:-}" = --deployment ] && [ "${2:-}" = local ] || exit 64
-    key=${3:-}
-    [ -n "$key" ] && [ $# -eq 3 ] || exit 64
+    key=${1:-}
+    [ -n "$key" ] && [ $# -eq 1 ] || exit 64
     value=$(cat)
     [ -n "$value" ] || exit 65
     [ -f "$ZERO_TEST_STATE/env/$key" ] && [ "$value" = "$(cat "$ZERO_TEST_STATE/env/$key")" ] || exit 66
@@ -195,7 +197,17 @@ FAKE
 #!/usr/bin/env bash
 set -euo pipefail
 case ${1:-} in
-  start) [ "$*" = 'start --group recovery' ] || exit 64; echo 'pitchfork start --group recovery' >> "$ZERO_TEST_STATE/commands"; printf '%s\n' start-chatter start-chatter start-chatter start-chatter ;;
+  start)
+    case "$*" in
+      'start mailpit backend')
+        [ -f packages/backend/.env.local ] || printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'CONVEX_URL=http://127.0.0.1:3210' > packages/backend/.env.local
+        ;;
+      'start mobile') ;;
+      *) exit 64 ;;
+    esac
+    echo "pitchfork $*" >> "$ZERO_TEST_STATE/commands"
+    printf '%s\n' start-chatter start-chatter start-chatter start-chatter
+    ;;
   status)
     case "$*" in
       'status mailpit'|'status backend'|'status mobile') echo "pitchfork $*" >> "$ZERO_TEST_STATE/commands"; echo "${2}: running" ;;
@@ -237,17 +249,21 @@ assert_log "$first" 'mise set prompt WORKOS_CLIENT_ID'
 assert_log "$first" 'mise set stdin WORKOS_EMAIL_HMAC_KEY'
 assert_log "$first" 'mise set stdin WORKOS_INTENT_ENCRYPTION_KEY'
 [ ! -e "$first/fake-bin/convex" ] || fail 'fixture masks a global convex executable'
-assert_log "$first" 'pnpm --filter @recovery/backend exec convex dev --configure new --dev-deployment local --once --tail-logs disable'
-assert_log "$first" 'pnpm --filter @recovery/backend exec convex dev --once --tail-logs disable'
+refute_log "$first" 'pnpm --filter @recovery/backend exec convex dev --configure new --dev-deployment local --once --tail-logs disable'
+refute_log "$first" 'pnpm --filter @recovery/backend exec convex dev --once --tail-logs disable'
 for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL; do
   assert_log "$first" "convex env set-local-stdin $key"
 done
 assert_log "$first" 'mise set stdin EXPO_PUBLIC_CONVEX_URL'
-assert_log "$first" 'pitchfork start --group recovery'
+assert_log "$first" 'pitchfork start mailpit backend'
+assert_log "$first" 'pitchfork start mobile'
 for daemon in mailpit backend mobile; do
   assert_log "$first" "pitchfork status $daemon"
 done
 [ "$(cat "$first/state/env/WORKOS_API_KEY")" = preserved-dashboard-value ] || fail 'existing value changed'
+for key in WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY; do
+  node -e 'const fs=require("fs");const value=fs.readFileSync(process.argv[1],"utf8");const decoded=Buffer.from(value,"base64");if(decoded.length!==32||decoded.toString("base64")!==value)process.exit(1)' "$first/state/env/$key" || fail "$key is not a canonical base64-encoded 32-byte key"
+done
 [ "$(stat -f '%Lp' "$first/mise.local.toml")" = 600 ] || fail 'mise.local.toml mode is not 0600'
 [ "$(stat -f '%Lp' "$first/.mcp.json")" = 600 ] || fail 'MCP config mode is not 0600'
 node -e 'const fs=require("fs"); const [file,cwd]=process.argv.slice(1); const j=JSON.parse(fs.readFileSync(file)); const s=j.mcpServers.pitchfork; if(s.command!=="mise"||JSON.stringify(s.args)!==JSON.stringify(["exec","--","pitchfork","mcp"])||s.cwd!==cwd) process.exit(1)' "$first/.mcp.json" "$(cd "$first" && pwd -P)" || fail 'invalid MCP config'
@@ -277,10 +293,10 @@ existing=$(new_fixture existing)
 for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY WORKOS_MODE AUTH_EMAIL_DELIVERY_URL; do put_env "$existing" "$key" existing-fixture-value; done
 put_env "$existing" WORKOS_MODE staging
 put_env "$existing" AUTH_EMAIL_DELIVERY_URL http://127.0.0.1:8025/api/v1/send
-printf '%s\n' 'CONVEX_DEPLOYMENT=local:fixture-local' 'CONVEX_URL=http://localhost:3210' > "$existing/packages/backend/.env.local"
+printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'CONVEX_URL=http://localhost:3210' > "$existing/packages/backend/.env.local"
 run_zero "$existing" >/dev/null
 refute_log "$existing" 'pnpm --filter @recovery/backend exec convex dev --configure new --dev-deployment local --once --tail-logs disable'
-assert_log "$existing" 'pnpm --filter @recovery/backend exec convex dev --once --tail-logs disable'
+refute_log "$existing" 'pnpm --filter @recovery/backend exec convex dev --once --tail-logs disable'
 for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY; do
   refute_log "$existing" "mise set prompt $key"
   refute_log "$existing" "mise set stdin $key"
@@ -288,11 +304,11 @@ done
 
 cloud=$(new_fixture cloud)
 if run_zero "$cloud" CONVEX_DEPLOYMENT=prod:fixture-cloud >/dev/null 2>&1; then fail 'production deployment was accepted'; fi
-refute_log "$cloud" 'pitchfork start --group recovery'
+refute_log "$cloud" 'pitchfork start mailpit backend'
 
 deploy_key=$(new_fixture deploy-key)
 if run_zero "$deploy_key" CONVEX_DEPLOY_KEY=fixture-cloud-key >/dev/null 2>&1; then fail 'cloud deployment key was accepted'; fi
-refute_log "$deploy_key" 'pitchfork start --group recovery'
+refute_log "$deploy_key" 'pitchfork start mailpit backend'
 
 malicious_url=$(new_fixture malicious-url)
 for key in WORKOS_API_KEY WORKOS_CLIENT_ID WORKOS_EMAIL_HMAC_KEY WORKOS_INTENT_ENCRYPTION_KEY; do put_env "$malicious_url" "$key" fixture; done
@@ -300,7 +316,7 @@ put_env "$malicious_url" WORKOS_MODE staging
 put_env "$malicious_url" AUTH_EMAIL_DELIVERY_URL http://127.0.0.1:8025/api/v1/send
 printf '%s\n' 'CONVEX_DEPLOYMENT=local:fixture-local' 'CONVEX_URL=http://localhost:3210@evil.example' > "$malicious_url/packages/backend/.env.local"
 if run_zero "$malicious_url" >/dev/null 2>&1; then fail 'credential-shaped remote Convex URL was accepted'; fi
-refute_log "$malicious_url" 'pitchfork start --group recovery'
+refute_log "$malicious_url" 'pitchfork start mobile'
 
 failed=$(new_fixture failed)
 put_env "$failed" WORKOS_API_KEY fixture
