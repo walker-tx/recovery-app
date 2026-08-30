@@ -42,6 +42,16 @@ mise run stop
 
 Expo and local Convex bind to loopback. The default zero workflow works directly with the iOS Simulator, with Expo at <http://127.0.0.1:8081>. Android emulators and physical devices require separate explicit native networking setup not configured by zero.
 
+### Expo Go over Tailscale
+
+To use Expo Go on a phone connected to the same tailnet, even when the phone is on another physical network, run:
+
+```sh
+mise run zero:tailnet
+```
+
+This keeps Metro bound to loopback, forwards it through a tailnet-only raw TCP Serve listener, and publishes local Convex through a separate tailnet-only HTTPS listener. It never uses Funnel or exposes Mailpit publicly. The command preserves unrelated Serve routes and prints the `exp://` URL to open in Expo Go. `mise run status` reports whether the checkout-owned routes are active. Run `mise run stop` to stop the development services, remove only those exact routes, and restore loopback configuration.
+
 ## Pitchfork MCP in Kit
 
 `mise run zero` generates the checkout-specific `.mcp.json`. The file contains the absolute checkout path and is ignored by Git, so regenerate it in each checkout rather than copying or committing it. Kit discovers it automatically when started from the repository root:

@@ -15,17 +15,21 @@ mailpit = "1.31.0"
 description = "Prepare and start local development"
 run = "./scripts/zero.sh"
 
+[tasks."zero:tailnet"]
+description = "Prepare and start local development for Expo Go over Tailscale"
+run = "./scripts/zero-tailnet.sh"
+
 [tasks.dev]
 description = "Start Recovery development daemons"
 run = "pitchfork start --group recovery"
 
 [tasks.stop]
 description = "Stop Recovery development daemons"
-run = "pitchfork stop --group recovery"
+run = "./scripts/stop.sh"
 
 [tasks.status]
 description = "Show Recovery development daemon status"
-run = "pitchfork status mailpit && pitchfork status backend && pitchfork status mobile"
+run = "./scripts/status.sh"
 
 [tasks.logs]
 description = "Show Recovery development daemon logs"
@@ -33,7 +37,7 @@ run = "pitchfork logs mailpit backend mobile"
 
 [tasks.bootstrap-test]
 description = "Test the zero bootstrap contract"
-run = "./scripts/test-zero.sh"
+run = "./scripts/test-zero.sh && ./scripts/test-zero-tailnet.sh"
 
 [tasks.install]
 description = "Install workspace dependencies from the lockfile"

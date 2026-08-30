@@ -7,12 +7,12 @@ run = "mise exec -- mailpit --listen 127.0.0.1:8025 --smtp 127.0.0.1:1025"
 ready_http = "http://127.0.0.1:8025/api/v1/info"
 
 [daemons.backend]
-run = "env -u CONVEX_DEPLOYMENT -u CONVEX_DEPLOY_KEY -u WORKOS_API_KEY -u WORKOS_CLIENT_ID -u WORKOS_EMAIL_HMAC_KEY -u WORKOS_INTENT_ENCRYPTION_KEY -u WORKOS_MODE -u AUTH_EMAIL_DELIVERY_URL mise exec -- pnpm --filter @recovery/backend dev"
+run = "env -u CONVEX_DEPLOYMENT -u CONVEX_DEPLOY_KEY -u CONVEX_AGENT_MODE -u WORKOS_API_KEY -u WORKOS_CLIENT_ID -u WORKOS_EMAIL_HMAC_KEY -u WORKOS_INTENT_ENCRYPTION_KEY -u WORKOS_MODE -u AUTH_EMAIL_DELIVERY_URL mise exec -- pnpm --filter @recovery/backend dev"
 depends = ["mailpit"]
 ready_port = 3210
 
 [daemons.mobile]
-run = "env -u EXPO_PUBLIC_CONVEX_URL mise exec -- pnpm --filter @recovery/mobile exec expo start --localhost --port 8081"
+run = "env -u EXPO_PUBLIC_CONVEX_URL -u REACT_NATIVE_PACKAGER_HOSTNAME -u RECOVERY_EXPO_MODE -u RECOVERY_EXPO_HOSTNAME mise exec -- ./scripts/mobile.sh"
 depends = ["backend"]
 
 [groups.recovery]

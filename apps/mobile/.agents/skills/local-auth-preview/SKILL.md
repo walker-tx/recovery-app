@@ -71,39 +71,15 @@ Before starting Expo, identify what the second device will run: Expo Go, a devel
 
 This repository has no supported web preview. Do not run `expo start --web`, invent a web port or HTTP root, add React Native Web dependencies, or create a Tailscale Serve route for an Expo web page. Those actions require a separate explicit product/configuration change.
 
-Resolve the host's tailnet IPv4 address without changing Serve state:
+For Expo Go on a physical tailnet device, use the repository-owned workflow instead of reconstructing Tailscale state manually:
 
 ```bash
-if tailscale status >/dev/null 2>&1; then
-  TS=tailscale
-elif ~/.local/bin/tailscale-cli status >/dev/null 2>&1; then
-  TS="$HOME/.local/bin/tailscale-cli"
-else
-  echo "No working Tailscale CLI" >&2
-  exit 1
-fi
-TAILNET_IP="$($TS ip -4 | head -1)"
-test -n "$TAILNET_IP"
+mise run zero:tailnet
 ```
 
-A second device also needs a tailnet-reachable Convex URL. After local Convex readiness, invoke `exposing-dev-servers-over-tailscale`, inspect existing Serve state, and publish the locally healthy Convex endpoint on an unused task-owned HTTPS listener. Record the exact listener and target in that skill's ledger. For example, only when `8443` is unused and local Convex is healthy on `3210`:
+This task verifies local Convex first, publishes only Convex through a task-owned tailnet HTTPS handler, forwards Metro through a task-owned raw TCP Serve listener on port `8081`, advertises the host's tailnet IPv4 address to Expo Go, and records both routes in the ignored checkout-local ledger. Raw TCP forwarding is required in environments where Tailscale Serve works but direct phone-to-Metro traffic stalls. `mise run status` reports whether the checkout ledger is active, and `mise run stop` removes only the exact owned handlers and restores loopback configuration.
 
-```bash
-printf '8443\t/\thttp://localhost:3210\n' >>"$STATE_DIR/added-routes.tsv"
-$TS serve --bg --yes --https=8443 http://localhost:3210
-TAILNET_HOST="$($TS status --json | jq -er '.Self.DNSName | rtrimstr(".")')"
-TAILNET_CONVEX_URL="https://$TAILNET_HOST:8443"
-```
-
-Use the actual inspected local Convex port; never assume `3210` after a remap. Confirm the tailnet URL responds and supports the Convex client connection before starting Expo. Do not expose the deployment-management UI or any unrelated local service.
-
-For a native Expo client on the tailnet, start Metro in LAN mode while making the installed Expo CLI advertise the tailnet address and overriding only the public Convex URL for this process:
-
-```bash
-REACT_NATIVE_PACKAGER_HOSTNAME="$TAILNET_IP" \
-  mise exec -- env EXPO_PUBLIC_CONVEX_URL="$TAILNET_CONVEX_URL" \
-  pnpm run dev:mobile -- --lan
-```
+Invoke `exposing-dev-servers-over-tailscale` before troubleshooting or changing Serve state outside these tasks. Never expose the deployment-management UI, Mailpit, or an unrelated local service.
 
 The repository's installed Expo SDK still supports `REACT_NATIVE_PACKAGER_HOSTNAME`, but Expo marks it for future removal. Recheck the installed `@expo/cli` implementation during SDK upgrades; do not persist this override in configuration.
 
@@ -113,12 +89,12 @@ Wait for Metro's listener and manifest response with a bounded timeout. Report t
 
 ## 4. Tailnet access
 
-Native Metro access normally uses direct tailnet routing to the advertised `TAILNET_IP`; it does not need or benefit from an invented Tailscale Serve route. Invoke `exposing-dev-servers-over-tailscale` before changing Serve state for any separate, locally healthy HTTP service. That skill owns Serve inspection, route ledgers, tailnet-only validation, and cleanup.
+The supported Recovery workflow uses a raw TCP Tailscale Serve forward for Metro because direct iPhone-to-Metro routing can be blocked even when both peers are online. Do not replace it with Funnel or an Expo public tunnel when the requested boundary is tailnet-only. The checkout ledger and `mise run stop` own cleanup.
 
 Classify the target:
 
 - **Browser-visible HTTP preview:** stop. This repository currently has no supported web preview. Do not create one implicitly or publish an invented route.
-- **Expo Go or development build:** confirm the printed manifest or deep link uses `TAILNET_IP`, verify Metro responds on that address and its actual selected port, and verify the process received `TAILNET_CONVEX_URL` before opening the QR or deep link on the second tailnet device. The manifest, bundle URL, WebSocket host, and Convex URL must all remain tailnet-reachable. Do not invent a Tailscale Serve path for Metro.
+- **Expo Go or development build:** run `mise run zero:tailnet`, confirm the printed manifest or deep link uses the host tailnet IPv4, verify the raw TCP Metro route and HTTPS Convex route, then open the printed `exp://` URL on the second device. The manifest, bundle URL, WebSocket host, and Convex URL must all remain tailnet-reachable.
 - **SSH port forwarding:** treat it as a user/machine-specific transport. Record the forwarded port and process, but never bake hostnames such as `air` into repository instructions.
 
 Do not use Expo's public tunnel as a substitute when the user asked for tailnet-only access. Do not alter WorkOS callback allowlists unless the actual tested flow requires browser redirects and the user authorizes the external configuration change.
@@ -142,8 +118,8 @@ When the user wants the preview left running, report what is running, the bounde
 
 On cleanup:
 
-- stop only recorded backend and Expo processes;
-- remove only task-owned Tailscale routes using the Tailscale skill's ledger; direct native tailnet routing creates no Serve route to remove;
+- for the repository-owned workflow, run `mise run stop` to stop the Recovery group and remove only the checkout-ledgered HTTPS and raw TCP Serve routes;
+- for any manual troubleshooting route, remove only entries recorded in that task's Tailscale ledger;
 - verify pre-existing routes and processes remain;
 - preserve unrelated stashes and working-tree files;
 - report whether any second-device validation was never performed.

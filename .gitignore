@@ -2,6 +2,7 @@ node_modules/
 .pnpm-store/
 .turbo/
 .agent-overnight/
+.recovery-tailnet/
 .DS_Store
 *.log
 .env
