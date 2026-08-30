@@ -8,6 +8,7 @@ pin = true
 [tools]
 node = "24.16.0"
 "github:pnpm/pnpm" = "11.19.0"
+pitchfork = "2.22.0"
 
 [tasks.install]
 description = "Install workspace dependencies from the lockfile"
