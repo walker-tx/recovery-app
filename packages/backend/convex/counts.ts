@@ -63,7 +63,13 @@ export const list = query({
     return await ctx.db
       .query("counts")
       .withIndex("by_owner_order", (q) => q.eq("ownerSubject", subject))
-      .paginate(paginationOpts);
+      .paginate({
+        ...paginationOpts,
+        // endCursor can exceed numItems; keep read budgets server-owned.
+        maximumRowsRead: 100,
+        // Bound large graphemes too; Convex may split the page at this budget.
+        maximumBytesRead: 1024 * 1024,
+      });
   },
 });
 export const get = query({

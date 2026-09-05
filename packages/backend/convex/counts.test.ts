@@ -245,3 +245,62 @@ test("collection exceeds a page; request bounds do not impose a collection limit
       a.query(api.counts.list, { paginationOpts: { numItems, cursor: null } }),
     ).rejects.toThrow();
 });
+
+test("endCursor cannot bypass server read budgets, even with client overrides", async () => {
+  const { a } = setup();
+  for (let i = 0; i < 205; i++)
+    await a.mutation(api.counts.create, { ...draft, name: `Count ${i}` });
+  const first = await a.query(api.counts.list, {
+    paginationOpts: { numItems: 100, cursor: null },
+  });
+  const second = await a.query(api.counts.list, {
+    paginationOpts: { numItems: 100, cursor: first.continueCursor },
+  });
+  for (const overrides of [
+    {},
+    { maximumRowsRead: 10000, maximumBytesRead: 100000000 },
+  ]) {
+    const page = await a.query(api.counts.list, {
+      paginationOpts: {
+        numItems: 1,
+        cursor: null,
+        endCursor: second.continueCursor,
+        ...overrides,
+      },
+    });
+    expect(page.page).toHaveLength(100);
+    expect(page.pageStatus).toBe("SplitRequired");
+    expect(page.splitCursor).toEqual(expect.any(String));
+    expect(page.continueCursor).toBe(first.continueCursor);
+    const rest = await a.query(api.counts.list, {
+      paginationOpts: {
+        numItems: 1,
+        cursor: page.continueCursor,
+        endCursor: second.continueCursor,
+      },
+    });
+    expect(rest.page.map((count) => count._id)).toEqual(
+      second.page.map((count) => count._id),
+    );
+  }
+});
+
+test("large valid names hit the server byte budget despite client overrides", async () => {
+  const { a } = setup();
+  // One grapheme can contain many combining marks; no product byte cap is needed.
+  const name = "a" + "\u0301".repeat(40000);
+  for (let i = 0; i < 20; i++)
+    await a.mutation(api.counts.create, { ...draft, name });
+  const page = await a.query(api.counts.list, {
+    paginationOpts: {
+      numItems: 100,
+      cursor: null,
+      maximumRowsRead: 10000,
+      maximumBytesRead: 100000000,
+    },
+  });
+  expect(page.page.length).toBeGreaterThan(0);
+  expect(page.page.length).toBeLessThan(20);
+  expect(page.pageStatus).toBe("SplitRequired");
+  expect(page.splitCursor).toEqual(expect.any(String));
+});
