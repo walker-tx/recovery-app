@@ -3,7 +3,7 @@ import { api } from '@recovery/backend/convex/_generated/api';
 import { useConvex, useConvexConnectionState, useMutation, useQuery } from 'convex/react';
 import { useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Screen } from '@/components/ui/screen';
@@ -19,27 +19,34 @@ function DuplicateNotice({ name, id }: { name: string; id: Id<'counts'> }) {
 }
 
 export function EditCountScreen({ id }: { id: Id<'counts'> }) {
-  const router = useRouter();
-  return <CountQueryBoundary recovery={<Button variant="secondary" onPress={() => router.replace('/(app)/(tabs)/home')}>Counts</Button>} key={id} message="This Count couldn’t be loaded. It may have been deleted. Try again or return to Counts."><LoadedEditCount id={id} /></CountQueryBoundary>;
+  return <EditCountForm key={id} id={id} />;
 }
-function LoadedEditCount({ id }: { id: Id<'counts'> }) {
+
+// A failed/retrying subscription replaces only this subtree, not the draft owner.
+// Cached draft values never bypass the live query or the mutation's ownership check.
+function LoadedEditCount({ id, onInitialize, children }: { id: Id<'counts'>; onInitialize: (count: CountDraft) => void; children: ReactNode }) {
   const count = useQuery(api.counts.get, { id });
-  return count === undefined ? <Screen><Typography>Loading Count…</Typography></Screen> : <EditCountForm id={id} initial={count} />;
+  useEffect(() => { if (count !== undefined) onInitialize(count); }, [count, onInitialize]);
+  return count === undefined ? <Screen><Typography>Loading Count…</Typography></Screen> : children;
 }
-function EditCountForm({ id, initial }: { id: Id<'counts'>; initial: CountDraft }) {
+function EditCountForm({ id }: { id: Id<'counts'> }) {
   const router = useRouter();
   const navigation = useNavigation();
   const convex = useConvex();
   const connection = useConvexConnectionState();
   const edit = useMutation(api.counts.edit);
-  const [original] = useState(initial);
-  const [draft, setDraft] = useState(original);
+  const [original, setOriginal] = useState<CountDraft | null>(null);
+  const [draft, setDraft] = useState<CountDraft | null>(null);
+  const initialize = useCallback((count: CountDraft) => {
+    setOriginal((previous) => previous ?? count);
+    setDraft((previous) => previous ?? count);
+  }, []);
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
 
-  usePreventRemove(!saved && (pending || isCountDraftDirty(draft, original)), ({ data }) => {
+  usePreventRemove(!saved && (pending || (draft !== null && original !== null && isCountDraftDirty(draft, original))), ({ data }) => {
     if (submitting.current) {
       Alert.alert('Saving Count', 'Please wait while your save completes. Your draft is still here.');
       return;
@@ -52,7 +59,7 @@ function EditCountForm({ id, initial }: { id: Id<'counts'>; initial: CountDraft 
   useEffect(() => { if (saved) router.back(); }, [saved, router]);
 
   async function save() {
-    if (submitting.current || !canSaveCountEdit(draft, original, convex.connectionState().isWebSocketConnected, pending)) return;
+    if (!draft || !original || submitting.current || !canSaveCountEdit(draft, original, convex.connectionState().isWebSocketConnected, pending)) return;
     submitting.current = true;
     setPending(true);
     setError(null);
@@ -67,7 +74,9 @@ function EditCountForm({ id, initial }: { id: Id<'counts'>; initial: CountDraft 
     }
   }
 
-  return <Screen contentClassName="justify-start" automaticallyAdjustKeyboardInsets>
+  return <CountQueryBoundary recovery={<Button variant="secondary" onPress={() => router.replace('/(app)/(tabs)/home')}>Counts</Button>} message="This Count couldn’t be loaded. It may have been deleted. Try again or return to Counts.">
+    <LoadedEditCount id={id} onInitialize={initialize}>
+    {draft && original ? <Screen contentClassName="justify-start" automaticallyAdjustKeyboardInsets>
     <View className="flex-row justify-between gap-md">
       <Button variant="secondary" disabled={pending || saved} onPress={() => router.back()}>Cancel</Button>
       <Button disabled={saved || !canSaveCountEdit(draft, original, connection.isWebSocketConnected, pending)} accessibilityState={{ busy: pending }} onPress={() => void save()}>{pending ? 'Saving…' : 'Save'}</Button>
@@ -80,5 +89,7 @@ function EditCountForm({ id, initial }: { id: Id<'counts'>; initial: CountDraft 
     } />
     {!connection.isWebSocketConnected ? <Typography accessibilityLiveRegion="polite">{pending ? 'Waiting for connection to finish saving. Your draft is still here.' : 'Connect to save. Your draft is still here.'}</Typography> : null}
     {error ? <Typography accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Typography> : null}
-  </Screen>;
+  </Screen> : null}
+    </LoadedEditCount>
+  </CountQueryBoundary>;
 }
