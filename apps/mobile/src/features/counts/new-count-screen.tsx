@@ -3,11 +3,11 @@ import { useConvex, useConvexConnectionState, useMutation, useQuery } from 'conv
 import { useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, View } from 'react-native';
-import { Button } from '@/components/ui/button';
+import { Alert } from 'react-native';
 import { Screen } from '@/components/ui/screen';
 import { Typography } from '@/components/ui/text';
 import { CountForm } from './count-form';
+import { CountFormHeader } from './count-form-header';
 import { canSaveCount, countNameError, duplicateNotice, EMPTY_COUNT_DRAFT, isCountDraftDirty } from './count-form-policy';
 import { CountQueryBoundary } from './count-query-boundary';
 
@@ -57,12 +57,10 @@ export function NewCountScreen() {
     }
   }
 
-  return <Screen contentClassName="justify-start" automaticallyAdjustKeyboardInsets>
-    <View className="flex-row justify-between gap-md">
-      <Button variant="secondary" disabled={pending || saved} onPress={() => router.back()}>Cancel</Button>
-      <Button disabled={saved || !canSaveCount(draft, connection.isWebSocketConnected, pending)} accessibilityState={{ busy: pending }} onPress={() => void save()}>{pending ? 'Saving…' : 'Save'}</Button>
-    </View>
-    <Typography accessibilityRole="header" variant="display">New Count</Typography>
+  return <Screen contentClassName="justify-start" contentContainerStyle={{ paddingHorizontal: 20 }} automaticallyAdjustKeyboardInsets>
+    <CountFormHeader title="New Count" cancelDisabled={pending || saved}
+      saveDisabled={saved || !canSaveCount(draft, connection.isWebSocketConnected, pending)} pending={pending}
+      onCancel={() => router.back()} onSave={() => void save()} />
     <CountForm draft={draft} onChange={setDraft} disabled={pending || saved} nameNotice={
       <CountQueryBoundary message="Duplicate names couldn’t be checked. You can still save.">
         <DuplicateNotice name={draft.name} />

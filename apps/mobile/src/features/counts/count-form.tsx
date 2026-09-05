@@ -1,6 +1,6 @@
 import DateTimePicker from '@expo/ui/community/datetime-picker';
 import { useState, type ReactNode } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/field';
 import { Typography } from '@/components/ui/text';
@@ -25,13 +25,16 @@ export function CountForm({ draft, onChange, disabled = false, nameNotice }: Cou
     {nameNotice}
     <View className="gap-sm">
       <Typography variant="label">Start date</Typography>
-      <Button variant="secondary" disabled={disabled} accessibilityLabel={`Start date: ${draft.startAt === null ? 'Choose date' : new Date(draft.startAt).toLocaleDateString()}`}
+      <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled, expanded: showDate && !disabled }}
+        className="flex-row items-center justify-between rounded-md border border-line bg-surface px-md active:opacity-70"
+        style={{ minHeight: 48, paddingVertical: 10, gap: 12 }} accessibilityLabel={`Start date: ${draft.startAt === null ? 'Choose date' : new Date(draft.startAt).toLocaleDateString()}`}
         onPress={() => {
           setPickerDate(new Date(draft.startAt ?? Date.now()));
           setShowDate(!showDate);
         }}>
-        {draft.startAt === null ? 'Choose date' : new Date(draft.startAt).toLocaleDateString()}
-      </Button>
+        <Typography className={disabled ? 'text-ink-muted' : 'text-ink'} style={{ flex: 1, fontSize: 14.5, textAlign: 'left' }}>{draft.startAt === null ? 'Choose date' : new Date(draft.startAt).toLocaleDateString()}</Typography>
+        <Typography accessibilityElementsHidden importantForAccessibility="no">›</Typography>
+      </Pressable>
       {showDate && !disabled ? <><DateTimePicker value={countPickerValue(pickerDate, Platform.OS)} mode="date" maximumDate={new Date()}
         display={Platform.OS === 'ios' ? 'inline' : 'default'}
         onDismiss={() => setShowDate(false)}
