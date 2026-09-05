@@ -1,10 +1,10 @@
 import { api } from "@recovery/backend/convex/_generated/api.js";
-import type { ConvexReactClient } from "convex/react";
+import type { ConvexHttpClient } from "convex/browser";
 
 import type { WorkOSSessionActions } from "./workos-session-state.ts";
 
 export function createWorkOSSessionActions(
-  client: ConvexReactClient,
+  client: ConvexHttpClient,
 ): WorkOSSessionActions {
   return {
     signIn: (input) => client.action(api.workosAuth.signIn, input),

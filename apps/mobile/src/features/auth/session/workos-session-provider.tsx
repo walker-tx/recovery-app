@@ -1,4 +1,4 @@
-import type { ConvexReactClient } from "convex/react";
+import type { ConvexHttpClient } from "convex/browser";
 import * as SecureStore from "expo-secure-store";
 import {
   createContext,
@@ -27,6 +27,8 @@ const secureStoreSessionStorage = createWorkOSSessionStorage({
 });
 
 type WorkOSSessionContextValue = {
+  lifetime: number;
+  getLifetime(): number;
   isLoading: boolean;
   isAuthenticated: boolean;
   isRefreshing: boolean;
@@ -48,7 +50,7 @@ export function WorkOSSessionProvider({
   storage = secureStoreSessionStorage,
 }: {
   children?: ReactNode;
-  client: ConvexReactClient;
+  client: ConvexHttpClient;
   storage?: WorkOSSessionStorage;
 }) {
   const owner = useMemo(
@@ -64,6 +66,7 @@ export function WorkOSSessionProvider({
   }, [owner]);
 
   const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
+  const getLifetime = useCallback(() => owner.getSnapshot().lifetime, [owner]);
   const retryRestore = useCallback(owner.retryRestore, [owner]);
   const signIn = useCallback(owner.signIn, [owner]);
   const completeSignup = useCallback(owner.completeSignup, [owner]);
@@ -77,6 +80,7 @@ export function WorkOSSessionProvider({
   const value = useMemo(
     () => ({
       ...snapshot,
+      getLifetime,
       retryRestore,
       signIn,
       completeSignup,
@@ -84,7 +88,7 @@ export function WorkOSSessionProvider({
       signOut,
       fetchAccessToken,
     }),
-    [snapshot, retryRestore, signIn, completeSignup, refresh, signOut, fetchAccessToken],
+    [snapshot, getLifetime, retryRestore, signIn, completeSignup, refresh, signOut, fetchAccessToken],
   );
 
   return <WorkOSSessionContext.Provider value={value}>{children}</WorkOSSessionContext.Provider>;

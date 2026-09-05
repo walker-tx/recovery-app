@@ -15,27 +15,42 @@ import { canSaveUnit } from './count-reading';
 import type { LargestUnit } from './elapsed-policy';
 
 export function CountUnitsScreen({ id }: { id: Id<'counts'> }) {
-  const router = useRouter();
-  return <Screen contentClassName="justify-start" contentContainerStyle={{ paddingHorizontal: 20 }}><CountQueryBoundary key={id} message="This Count couldn’t be loaded. Try again or cancel." recovery={<Button variant="ghost" onPress={() => router.back()}>Cancel</Button>}><UnitsContent id={id} /></CountQueryBoundary></Screen>;
+  // Authentication scope belongs to the protected app navigator.
+  return <UnitsScope id={id} />;
 }
-function UnitsContent({ id }: { id: Id<'counts'> }) {
-  const router = useRouter();
-  const count = useQuery(api.counts.get, { id });
-  if (count === undefined) return <><Button variant="ghost" onPress={() => router.back()}>Cancel</Button><ActivityIndicator accessibilityLabel="Loading units" /></>;
-  return <UnitsForm key={id} count={count} />;
-}
-function UnitsForm({ count }: { count: FunctionReturnType<typeof api.counts.get> }) {
-  const [selected, setSelected] = useState<LargestUnit>(count.unit);
+function UnitsScope({ id }: { id: Id<'counts'> }) { return <UnitsOwner key={id} id={id} />; }
+function UnitsOwner({ id }: { id: Id<'counts'> }) {
+  const [selected, setSelected] = useState<LargestUnit | null>(null);
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
   const router = useRouter();
+  usePreventRemove(pending, () => {});
+  useEffect(() => { if (saved) router.back(); }, [saved, router]);
+  const state = {selected, setSelected, pending, setPending, saved, setSaved, error, setError, submitting};
+  return <Screen contentClassName="justify-start" contentContainerStyle={{ paddingHorizontal: 20 }}><CountQueryBoundary message="This Count couldn’t be loaded. Try again or cancel." recovery={<Button variant="ghost" disabled={pending} onPress={() => router.back()}>Cancel</Button>}><UnitsContent id={id} state={state} /></CountQueryBoundary></Screen>;
+}
+type UnitsState = {
+  selected: LargestUnit | null; setSelected: (value: LargestUnit) => void;
+  pending: boolean; setPending: (value: boolean) => void;
+  saved: boolean; setSaved: (value: boolean) => void;
+  error: string | null; setError: (value: string | null) => void;
+  submitting: React.RefObject<boolean>;
+};
+function UnitsContent({ id, state }: { id: Id<'counts'>; state: UnitsState }) {
+  const router = useRouter();
+  const count = useQuery(api.counts.get, { id });
+  if (count === undefined) return <><Button variant="ghost" disabled={state.pending} onPress={() => router.back()}>Cancel</Button><ActivityIndicator accessibilityLabel="Loading units" /></>;
+  return <UnitsForm count={count} state={state} />;
+}
+function UnitsForm({ count, state }: { count: FunctionReturnType<typeof api.counts.get>; state: UnitsState }) {
+  const {setSelected, pending, setPending, saved, setSaved, error, setError, submitting} = state;
+  const selected = state.selected ?? count.unit;
+  const router = useRouter();
   const convex = useConvex();
   const connection = useConvexConnectionState();
   const setUnit = useMutation(api.counts.setUnit);
-  usePreventRemove(pending, () => {});
-  useEffect(() => { if (saved) router.back(); }, [saved, router]);
   async function save() {
     if (submitting.current || !canSaveUnit(count.unit, selected, convex.connectionState().isWebSocketConnected, pending)) return;
     submitting.current = true; setPending(true); setError(null);

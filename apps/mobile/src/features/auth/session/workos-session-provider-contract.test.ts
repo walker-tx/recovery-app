@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import type { ConvexReactClient } from "convex/react";
+import type { ConvexHttpClient } from "convex/browser";
 import { getFunctionName } from "convex/server";
 import { createWorkOSSessionActions } from "./workos-session-actions.ts";
 
@@ -19,7 +19,7 @@ test("injected client action bindings call each generated public action with exa
       return { accessToken: "access", refreshToken: "refresh" };
     },
   };
-  const actions = createWorkOSSessionActions(client as unknown as ConvexReactClient);
+  const actions = createWorkOSSessionActions(client as unknown as ConvexHttpClient);
 
   await actions.signIn({ email: "person@example.com", password: "password" });
   await actions.completeSignup({ intentId: "intent", code: "123456" });

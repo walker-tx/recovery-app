@@ -67,3 +67,55 @@ mise exec -- pnpm --filter @recovery/backend run check
 ```
 
 Sources inspected in the installed packages include `src/providers/Password.ts`, `src/providers/Email.ts`, `src/server/implementation/signIn.ts`, `createVerificationCode.ts`, `verifyCodeAndSignIn.ts`, `invalidateSessions.ts`, `src/react/client.tsx`, Auth.js `providers/email.d.ts`, and Expo Router `build/views/Protected.d.ts` / `build/layouts/JSStack.d.ts`.
+
+## WorkOS session lifetime (#30, approved #12 extension)
+
+The historical Convex Auth notes above are not the current mobile session owner.
+`createWorkOSSessionOwner` owns a process-local, non-identity `lifetime` discriminator.
+Establishing/restoring/replacing a session and terminal invalidation/revocation advance it;
+authenticated token rotation, transient refresh failure, and retry retain it. Credential
+operations are serialized through persistence, with single-flight refresh and no refresh
+during revocation, so old refresh writes cannot overwrite a replacement session.
+
+Auth actions use the installed SDK's independent, unauthenticated `ConvexHttpClient`
+transport. Refresh takes a refresh-token argument, not the current user's JWT, and must
+complete while the sync client's authentication manager has stopped its WebSocket.
+The session owner and persistence serialization do not depend on the sync client.
+
+The lifetime keys a fresh sync client, Convex auth provider, and protected route subtree.
+Clients are created in effect setup, not render; every cleanup retires its client and
+closes it after descendant auth cleanup. StrictMode setup allocates another client rather
+than reviving a closed one. Token callbacks check the authoritative lifetime before and
+after awaiting, so an old client cannot obtain replacement credentials. Each new
+lifetime must obtain `useConvexAuth` server confirmation before reading `profiles.getMine`;
+that query does not identify its owner and must not be carried across lifetimes. Only a
+confirmed, onboarding-complete result establishes a lifetime-local readiness latch. Initial
+restoration, sign-in, and incomplete onboarding remain gated. This is presentation readiness,
+not authentication authority: all Convex authorization remains server-enforced.
+
+Once ready, transient authentication refresh and profile-query retry leave the protected
+Stack, Counts draft owners, and pending submission owners mounted. The profile observer has
+its own sibling error boundary; retry remounts only that observer. Refresh retry is sibling
+presentation, not a replacement navigator. Successful sign-out, terminal invalidation, and
+account replacement discard the keyed subtree and readiness. Failed revocation retains the
+existing session and sync client (including pending same-lifetime requests) for retry.
+Retained UI state is not a cross-session offline queue: unsent requests from a retired
+client are never transferred to the replacement client. Closing a client does not undo
+already-sent or committed server writes, nor establish whether a lost response committed.
+Those uncertain writes remain governed by server authorization at execution time; this
+change does not claim cancellation or add identity binding. Pending screen state belongs
+to the discarded subtree; late completion cannot mount its navigation effect.
+No profile/identity store, persistent offline cache,
+new dependencies, or backend authorization changes are introduced.
+
+Reducer/policy/session-owner tests exercise lifetime and operation behavior. Installed-SDK
+HTTP and stopped-WebSocket stubs demonstrate independent refresh; client-factory tests
+exercise retirement, setup/cleanup replay, stable retry clients, and stale-token rejection.
+These are local transport/lifecycle probes, not deployed-network or mounted React tests. TSX source
+contracts are structural checks, not evidence of mounted Expo navigation or native recovery.
+Device disconnect/reconnect, native draft persistence, and actual Convex-provider effect
+ordering still require runtime validation and independent review.
+
+After the server confirms invalidation/revocation, SecureStore deletion failure cannot
+restore authenticated presentation: the in-memory session is discarded and lifetime advances.
+Residual credentials on disk remain subject to mandatory server validation on restart.

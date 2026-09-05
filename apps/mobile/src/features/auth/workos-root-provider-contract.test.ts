@@ -4,11 +4,11 @@ import test from "node:test";
 
 const source = await readFile(new URL("./workos-root-provider.tsx", import.meta.url), "utf8");
 
-test("WorkOS root nests session, Convex custom auth hook, signup flow, and protected routes", () => {
-  assert.match(
-    source,
-    /<WorkOSSessionProvider client=\{client\}>[\s\S]*?<ConvexProviderWithAuth client=\{client\} useAuth=\{useWorkOSConvexAuth\}>[\s\S]*?<SignupFlowProvider>[\s\S]*?<WorkOSProtectedRoutes \/>[\s\S]*?<\/SignupFlowProvider>[\s\S]*?<\/ConvexProviderWithAuth>[\s\S]*?<\/WorkOSSessionProvider>/,
-  );
+test("structural: lifetime keys Convex confirmation and its protected route subtree", () => {
+  assert.match(source, /<WorkOSLifetime client=\{client\} \/>/);
+  assert.match(source, /<WorkOSSyncLifetime key=\{lifetime\}/);
+  assert.match(source, /const \{ isAuthenticated \} = useConvexAuth\(\)/);
+  assert.match(source, /<WorkOSProfileBoundary><WorkOSProfileObserver/);
 });
 
 test("protected retries dispatch restore and authenticated refresh through their matching callbacks", () => {

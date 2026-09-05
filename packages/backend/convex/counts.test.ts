@@ -23,7 +23,7 @@ function setup(transactionLimits: boolean | { documentsWritten: number } = true)
       issuer: `https://api.workos.com/user_management/${clientId}`,
       client_id: clientId,
     });
-  return { t, a: user("a"), b: user("b") };
+  return { t, a: user("a"), a2: user("a"), b: user("b") };
 }
 const paginationOpts = { numItems: 2, cursor: null };
 const draft = { name: "Recovery", startAt: 1000 };
@@ -399,4 +399,23 @@ test("reorder validators reject malformed and wrong-table ids without collateral
       profile: await ctx.db.get(profileId),
     }))).toEqual(before);
   }
+});
+
+test("same owner separate sessions alternate writes and cannot revive deleted Counts", async () => {
+  const { a, a2 } = setup();
+  const first = await a.mutation(api.counts.create, draft);
+  const second = await a2.mutation(api.counts.create, {...draft, name: "Second"});
+  await a.mutation(api.counts.edit, {id: first, name: "Earlier", startAt: 2000});
+  await a2.mutation(api.counts.setUnit, {id: first, unit: "years"});
+  await a2.mutation(api.counts.reorder, {ids: [first, second]});
+  await a2.mutation(api.counts.edit, {id: first, name: "Latest", startAt: 3000});
+  await a.mutation(api.counts.setUnit, {id: first, unit: "months"});
+  await a.mutation(api.counts.reorder, {ids: [second, first]});
+  expect(await a2.query(api.counts.get, {id:first})).toMatchObject({name:"Latest", startAt:3000, unit:"months"});
+  expect((await a2.query(api.counts.list, {paginationOpts})).page.map(x => x._id)).toEqual([second, first]);
+  await a2.mutation(api.counts.remove, {id:first});
+  await expect(a.mutation(api.counts.edit, {id:first, ...draft})).rejects.toThrow();
+  await expect(a.mutation(api.counts.setUnit, {id:first, unit:"days"})).rejects.toThrow();
+  await a.mutation(api.counts.reorder, {ids:[first, second]});
+  expect((await a2.query(api.counts.list, {paginationOpts})).page.map(x => x._id)).toEqual([second]);
 });
