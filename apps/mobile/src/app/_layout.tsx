@@ -1,4 +1,9 @@
 import "../../global.css";
+import { useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
+import { fontAssets } from "@/theme/fonts";
+
+void SplashScreen.preventAutoHideAsync();
 
 import { ConvexHttpClient } from "convex/browser";
 import * as SecureStore from "expo-secure-store";
@@ -15,6 +20,15 @@ const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null;
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts(fontAssets);
+  useEffect(() => {
+    if (fontsLoaded || fontError) void SplashScreen.hideAsync();
+    // Report load errors only after releasing the splash for the error boundary.
+    if (fontError) throw fontError;
+  }, [fontsLoaded, fontError]);
+  if (!fontsLoaded && !fontError) return null;
+  if (fontError) return null;
+
   if (convexUrl === undefined) return <WorkOSRootProvider client={null} />;
 
   return (

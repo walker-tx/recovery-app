@@ -15,6 +15,7 @@
     "dangerSurface": "#F8EDED",
     "overlay": "rgba(43, 43, 45, 0.5)"
   },
+  "fonts": {"body": "Barlow_400Regular", "medium": "Barlow_500Medium", "semibold": "Barlow_600SemiBold", "bold": "Barlow_700Bold", "heading": "BarlowCondensed_600SemiBold"},
   "spacing": { "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "xxl": 32, "xxxl": 48 },
   "touchTarget": 48,
   "shadows": {

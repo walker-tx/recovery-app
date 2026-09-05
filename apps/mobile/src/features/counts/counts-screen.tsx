@@ -95,15 +95,22 @@ function CountsContent({draft, dispatch, submitting, dirty}: {draft: ReturnType<
     finally { submitting.current = false; }
   }
   if (view === 'loading') return <View accessibilityRole="progressbar" accessibilityLabel="Loading Counts"><ActivityIndicator /><Typography>Loading Counts…</Typography></View>;
-  if (view === 'empty' && !draft) return <ScrollView contentContainerStyle={{flexGrow:1, justifyContent:"center", gap:20, paddingVertical:20}}>
+  if (view === 'empty' && !draft) return <ScrollView contentContainerStyle={{flexGrow:1, paddingVertical:20}}>
     {offlineNotice ? <Typography accessibilityRole="alert">{offlineNotice}</Typography> : null}
-    <Typography accessibilityRole="header" variant="display">Counts</Typography>
-    <Typography variant="overline">NO COUNTS YET</Typography>
-    <Typography accessibilityRole="header" variant="title">Track your sobriety.</Typography>
-    <Typography>Counts keep track of sobriety from any unwanted substance or behavior. Name yours and give it a start date.</Typography>
-    <Button onPress={() => router.push('/(app)/counts/new')}>Create your first Count</Button>
-    <Typography className="text-center">Your Counts are private to you.</Typography>
-    <Typography className="text-center">Create as many as you like.</Typography>
+    <View style={{paddingBottom:18}}><CountsHeader /></View>
+    <View className="border border-line" style={{paddingVertical:22, paddingHorizontal:18, gap:11}}>
+      {(['top', 'bottom'] as const).flatMap(vertical => (['left', 'right'] as const).map(horizontal =>
+        <View key={`${vertical}-${horizontal}`} pointerEvents="none" accessible={false} style={{position:'absolute', [vertical]:-6, [horizontal]:-6, width:11, height:11}}>
+          <View className="bg-ink-muted" style={{position:'absolute', left:5, width:1, height:11}} />
+          <View className="bg-ink-muted" style={{position:'absolute', top:5, width:11, height:1}} />
+        </View>
+      ))}
+      <Typography variant="overline" className="text-ink-muted" style={{fontSize:10, lineHeight:10, fontWeight:'600', letterSpacing:1.6}}>NO COUNTS YET</Typography>
+      <Typography accessibilityRole="header" variant="title" style={{fontSize:26, lineHeight:28.6, fontWeight:'600'}}>Track your sobriety.</Typography>
+      <Typography className="text-ink-muted" style={{fontSize:13.5, lineHeight:20.925}}>Counts keep track of sobriety from any unwanted substance or behavior. Name yours and give it a start date.</Typography>
+      <Button style={{marginTop:6}} onPress={() => router.push('/(app)/counts/new')}>Create your first Count</Button>
+    </View>
+    <Typography className="text-ink-muted" style={{marginTop:20, fontSize:12.5, lineHeight:18.75}}>Your Counts are private to you. Create as many as you like.</Typography>
   </ScrollView>;
   return <ScrollView ref={scroll} contentContainerStyle={{gap:20, paddingVertical:20}} scrollEventThrottle={16}
     onLayout={event => {metrics.current.height = event.nativeEvent.layout.height;}}
@@ -111,7 +118,7 @@ function CountsContent({draft, dispatch, submitting, dirty}: {draft: ReturnType<
     onScroll={event => {metrics.current.offset = event.nativeEvent.contentOffset.y;}}>
     {offlineNotice ? <Typography accessibilityRole="alert">{offlineNotice}</Typography> : null}
     <View className="flex-row flex-wrap items-center justify-between">
-      <View><Typography variant="overline">RECOVERY</Typography><Typography accessibilityRole="header" variant="display">Counts</Typography></View>
+      <CountsHeader />
       <View className="flex-row">{draft ? <>
         <Pressable ref={modeControl} accessibilityRole="button" accessibilityState={{disabled:pending}} disabled={pending} onPress={cancel} className="min-h-touch justify-center px-md"><Typography className="text-blueprint">Cancel</Typography></Pressable>
         <Button variant="ghost" disabled={pending || !connection.isWebSocketConnected} onPress={save}>{pending ? 'Saving…' : draft.error ? 'Retry' : 'Done'}</Button>
@@ -128,4 +135,12 @@ function CountsContent({draft, dispatch, submitting, dirty}: {draft: ReturnType<
     </> : <View>{results.map((count) => <CountRow key={count._id} count={count} now={now} onPress={() => router.push({ pathname: '/(app)/counts/[id]', params: { id: count._id } })} />)}</View>}
     {status === 'CanLoadMore' || status === 'LoadingMore' ? <Button variant="secondary" disabled={pending || status === 'LoadingMore'} onPress={() => loadMore(25)}>{status === 'LoadingMore' ? 'Loading…' : 'Load more'}</Button> : null}
   </ScrollView>;
+}
+
+// Local metrics from the approved Counts board; font-family loading is a separate slice.
+function CountsHeader() {
+  return <View>
+    <Typography variant="overline" style={{fontSize:10, lineHeight:10, fontWeight:'600', letterSpacing:1.6}}>RECOVERY</Typography>
+    <Typography accessibilityRole="header" variant="title" style={{fontSize:30, lineHeight:31.5, fontWeight:'600', letterSpacing:0, marginTop:2}}>Counts</Typography>
+  </View>;
 }
