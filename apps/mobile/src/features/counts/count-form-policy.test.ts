@@ -40,3 +40,45 @@ test('loading never masquerades as empty', () => {
   assert.equal(countsView('Exhausted', 0), 'empty');
   assert.equal(countsView('CanLoadMore', 1), 'populated');
 });
+
+test('picker dates preserve chosen calendar days across zones, DST and small years', async () => {
+  const { countPickerValue, countPickerStartAt } = await import('./count-form-policy.ts');
+  const previousTZ = process.env.TZ;
+  try {
+    for (const zone of ['America/Chicago', 'Asia/Tokyo', 'Europe/Berlin']) {
+      process.env.TZ = zone;
+      for (const [year, month, day] of [[2026, 8, 5], [2026, 2, 8], [2026, 10, 1], ...Array.from({ length: 100 }, (_, year) => [year, 8, 5])]) {
+        const local = new Date(0);
+        local.setFullYear(year, month, day);
+        local.setHours(0, 0, 0, 0);
+        const utc = new Date(0);
+        utc.setUTCFullYear(year, month, day);
+        utc.setUTCHours(0, 0, 0, 0);
+        assert.equal(countPickerStartAt(utc, 'android', null), local.getTime(), zone);
+        assert.equal(countPickerValue(local, 'android').getTime(), utc.getTime(), zone);
+        assert.equal(countPickerValue(local, 'ios').getTime(), local.getTime());
+        assert.equal(countPickerStartAt(local, 'ios', null), local.getTime());
+        const differentDay = new Date(local);
+        differentDay.setDate(differentDay.getDate() - 1);
+        assert.equal(countPickerStartAt(utc, 'android', differentDay.getTime()), local.getTime());
+        assert.equal(countPickerStartAt(local, 'ios', differentDay.getTime()), local.getTime());
+        const original = new Date(local);
+        original.setHours(15, 37, 42, 123);
+        assert.equal(countPickerStartAt(utc, 'android', original.getTime()), original.getTime());
+        assert.equal(countPickerStartAt(local, 'ios', original.getTime()), original.getTime());
+      }
+      assert.equal(countPickerStartAt(new Date(Date.UTC(2026, 8, 5)), 'android', null), new Date(2026, 8, 5).getTime());
+    }
+  } finally { if (previousTZ === undefined) delete process.env.TZ; else process.env.TZ = previousTZ; }
+});
+
+test('offline disclosure follows loaded query state without replacing results', async () => {
+  const { countsOfflineNotice } = await import('./count-form-policy.ts');
+  assert.equal(countsOfflineNotice('LoadingFirstPage', false), null);
+  for (const status of ['Exhausted', 'CanLoadMore', 'LoadingMore']) {
+    assert.equal(countsOfflineNotice(status, false), 'Offline. Showing last synced Counts.');
+    assert.equal(countsOfflineNotice(status, true), null);
+    assert.equal(countsView(status, 2), 'populated');
+    assert.equal(countsView(status, 0), 'empty');
+  }
+});

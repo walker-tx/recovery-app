@@ -4,7 +4,7 @@ import { Platform, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/field';
 import { Typography } from '@/components/ui/text';
-import { countNameError, toLocalMidnight, type CountDraft } from './count-form-policy';
+import { countNameError, countPickerValue, countPickerStartAt, type CountDraft } from './count-form-policy';
 
 export type CountFormProps = {
   draft: CountDraft;
@@ -32,18 +32,18 @@ export function CountForm({ draft, onChange, disabled = false, nameNotice }: Cou
         }}>
         {draft.startAt === null ? 'Choose date' : new Date(draft.startAt).toLocaleDateString()}
       </Button>
-      {showDate && !disabled ? <><DateTimePicker value={pickerDate} mode="date" maximumDate={new Date()}
+      {showDate && !disabled ? <><DateTimePicker value={countPickerValue(pickerDate, Platform.OS)} mode="date" maximumDate={new Date()}
         display={Platform.OS === 'ios' ? 'inline' : 'default'}
         onDismiss={() => setShowDate(false)}
         onValueChange={(_, date) => {
-          setPickerDate(date);
+          if (Platform.OS === 'ios') setPickerDate(date);
           if (Platform.OS !== 'ios') {
-            onChange({ ...draft, startAt: toLocalMidnight(date) });
+            onChange({ ...draft, startAt: countPickerStartAt(date, Platform.OS, draft.startAt) });
             setShowDate(false);
           }
         }} />
         {Platform.OS === 'ios' ? <Button variant="secondary" onPress={() => {
-          onChange({ ...draft, startAt: toLocalMidnight(pickerDate) });
+          onChange({ ...draft, startAt: countPickerStartAt(pickerDate, 'ios', draft.startAt) });
           setShowDate(false);
         }}>Done</Button> : null}
       </> : null}

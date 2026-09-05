@@ -29,3 +29,27 @@ export function duplicateNotice(count: { name: string; startAt: number } | null 
 export function countsView(status: string, length: number): 'loading' | 'empty' | 'populated' {
   return status === 'LoadingFirstPage' ? 'loading' : length === 0 ? 'empty' : 'populated';
 }
+
+// Material value/output use UTC calendar days; its maximumDate already converts
+// local calendar components natively. Keep bounds as local Dates (no UTC shift).
+export function countPickerValue(date: Date, platform: string): Date {
+  if (platform !== 'android') return new Date(date);
+  const value = new Date(0);
+  value.setUTCFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+  value.setUTCHours(0, 0, 0, 0);
+  return value;
+}
+
+export function countPickerStartAt(date: Date, platform: string, original: number | null): number {
+  const local = new Date(date);
+  if (platform === 'android') {
+    local.setFullYear(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  }
+  const midnight = toLocalMidnight(local);
+  // Confirming the same displayed day must not rewrite an Edit instant after travel.
+  return original !== null && toLocalMidnight(new Date(original)) === midnight ? original : midnight;
+}
+
+export function countsOfflineNotice(status: string, connected: boolean): string | null {
+  return !connected && status !== 'LoadingFirstPage' ? 'Offline. Showing last synced Counts.' : null;
+}

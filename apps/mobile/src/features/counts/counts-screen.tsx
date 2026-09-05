@@ -1,11 +1,11 @@
 import { api } from '@recovery/backend/convex/_generated/api';
-import { usePaginatedQuery } from 'convex/react';
+import { usePaginatedQuery, useConvexConnectionState } from 'convex/react';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Screen } from '@/components/ui/screen';
 import { Typography } from '@/components/ui/text';
-import { countsView } from './count-form-policy';
+import { countsView, countsOfflineNotice } from './count-form-policy';
 import { CountQueryBoundary } from './count-query-boundary';
 
 export function CountsScreen() {
@@ -18,9 +18,12 @@ export function CountsScreen() {
 function CountsContent() {
   const router = useRouter();
   const { results, status, loadMore } = usePaginatedQuery(api.counts.list, {}, { initialNumItems: 25 });
+  const connection = useConvexConnectionState();
+  const offlineNotice = countsOfflineNotice(status, connection.isWebSocketConnected);
   const view = countsView(status, results.length);
   if (view === 'loading') return <View accessibilityRole="progressbar" accessibilityLabel="Loading Counts"><ActivityIndicator /><Typography>Loading Counts…</Typography></View>;
   if (view === 'empty') return <View className="flex-1 justify-center gap-lg">
+    {offlineNotice ? <Typography accessibilityRole="alert">{offlineNotice}</Typography> : null}
     <Typography variant="overline">NO COUNTS YET</Typography>
     <Typography accessibilityRole="header" variant="title">Track your sobriety.</Typography>
     <Typography>Counts keep track of sobriety from any unwanted substance or behavior. Name yours and give it a start date.</Typography>
@@ -29,6 +32,7 @@ function CountsContent() {
     <Typography className="text-center">Create as many as you like.</Typography>
   </View>;
   return <View className="gap-lg">
+    {offlineNotice ? <Typography accessibilityRole="alert">{offlineNotice}</Typography> : null}
     <Button onPress={() => router.push('/(app)/counts/new')}>Add Count</Button>
     {results.map((count) => <View key={count._id} className="gap-sm border-b border-line py-md">
       <Typography variant="title">{count.name}</Typography>
