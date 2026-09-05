@@ -6,7 +6,7 @@ const source = await readFile(new URL("./workos-root-provider.tsx", import.meta.
 
 test("structural: lifetime keys Convex confirmation and its protected route subtree", () => {
   assert.match(source, /<WorkOSLifetime client=\{client\} \/>/);
-  assert.match(source, /<ConvexProviderWithAuth key=\{lifetime\}/);
+  assert.match(source, /<WorkOSSyncLifetime key=\{lifetime\}/);
   assert.match(source, /const \{ isAuthenticated \} = useConvexAuth\(\)/);
   assert.match(source, /<WorkOSProfileBoundary><WorkOSProfileObserver/);
 });

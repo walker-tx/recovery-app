@@ -1,4 +1,6 @@
-import { ConvexProviderWithAuth, type ConvexReactClient, useConvexAuth, useQuery } from "convex/react";
+import type { ConvexHttpClient } from "convex/browser";
+import { createSessionTransport } from "./session/session-transport.ts";
+import { ConvexProviderWithAuth, ConvexReactClient, useConvexAuth, useQuery } from "convex/react";
 import { Component, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Stack } from "expo-router/stack";
 import { StatusBar } from "expo-status-bar";
@@ -17,7 +19,7 @@ import {
 import { getWorkOSRouteDestination } from "./workos-auth-policy.ts";
 
 type WorkOSRootProviderProps = {
-  client: ConvexReactClient | null;
+  client: ConvexHttpClient | null;
 };
 
 export function WorkOSRootProvider({ client }: WorkOSRootProviderProps) {
@@ -30,10 +32,32 @@ export function WorkOSRootProvider({ client }: WorkOSRootProviderProps) {
   );
 }
 
-function WorkOSLifetime({ client }: { client: ConvexReactClient }) {
+function WorkOSLifetime({ client }: { client: ConvexHttpClient }) {
   const { lifetime } = useWorkOSSession();
+  return <WorkOSSyncLifetime key={lifetime} url={client.url} />;
+}
+
+function WorkOSSyncLifetime({ url }: { url: string }) {
+  const { lifetime, getLifetime } = useWorkOSSession();
+  const [transport, setTransport] = useState<ReturnType<typeof createSessionTransport<ConvexReactClient>> | null>(null);
+  useEffect(() => {
+    const next = createSessionTransport(() => new ConvexReactClient(url), lifetime, getLifetime);
+    setTransport(next);
+    return () => next.retire();
+  }, [url, lifetime, getLifetime]);
+
+  function useLifetimeAuth() {
+    const auth = useWorkOSConvexAuth();
+    const fetchAccessToken = useCallback(
+      (input: { forceRefreshToken: boolean }) => transport!.fetchAccessToken(auth.fetchAccessToken, input),
+      [auth.fetchAccessToken, transport],
+    );
+    return { ...auth, fetchAccessToken };
+  }
+
+  if (transport === null) return <WorkOSRestorationLoading />;
   return (
-      <ConvexProviderWithAuth key={lifetime} client={client} useAuth={useWorkOSConvexAuth}>
+      <ConvexProviderWithAuth client={transport.client} useAuth={useLifetimeAuth}>
         <SignupFlowProvider>
           <StatusBar style="dark" />
           <WorkOSProtectedRoutes />

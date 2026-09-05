@@ -1,6 +1,6 @@
 import "../../global.css";
 
-import { ConvexReactClient } from "convex/react";
+import { ConvexHttpClient } from "convex/browser";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, View } from "react-native";
@@ -12,7 +12,7 @@ import { migrateLegacyConvexAuthStorage } from "@/features/auth/session/legacy-c
 import { WorkOSRootProvider } from "@/features/auth/workos-root-provider";
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
-const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
+const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null;
 
 export default function RootLayout() {
   if (convexUrl === undefined) return <WorkOSRootProvider client={null} />;

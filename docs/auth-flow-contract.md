@@ -77,7 +77,16 @@ authenticated token rotation, transient refresh failure, and retry retain it. Cr
 operations are serialized through persistence, with single-flight refresh and no refresh
 during revocation, so old refresh writes cannot overwrite a replacement session.
 
-The lifetime keys the existing Convex auth provider and protected route subtree. Each new
+Auth actions use the installed SDK's independent, unauthenticated `ConvexHttpClient`
+transport. Refresh takes a refresh-token argument, not the current user's JWT, and must
+complete while the sync client's authentication manager has stopped its WebSocket.
+The session owner and persistence serialization do not depend on the sync client.
+
+The lifetime keys a fresh sync client, Convex auth provider, and protected route subtree.
+Clients are created in effect setup, not render; every cleanup retires its client and
+closes it after descendant auth cleanup. StrictMode setup allocates another client rather
+than reviving a closed one. Token callbacks check the authoritative lifetime before and
+after awaiting, so an old client cannot obtain replacement credentials. Each new
 lifetime must obtain `useConvexAuth` server confirmation before reading `profiles.getMine`;
 that query does not identify its owner and must not be carried across lifetimes. Only a
 confirmed, onboarding-complete result establishes a lifetime-local readiness latch. Initial
@@ -89,10 +98,20 @@ Stack, Counts draft owners, and pending submission owners mounted. The profile o
 its own sibling error boundary; retry remounts only that observer. Refresh retry is sibling
 presentation, not a replacement navigator. Successful sign-out, terminal invalidation, and
 account replacement discard the keyed subtree and readiness. Failed revocation retains the
-existing session for retry, as before. No profile/identity store, persistent offline cache,
+existing session and sync client (including pending same-lifetime requests) for retry.
+Retained UI state is not a cross-session offline queue: unsent requests from a retired
+client are never transferred to the replacement client. Closing a client does not undo
+already-sent or committed server writes, nor establish whether a lost response committed.
+Those uncertain writes remain governed by server authorization at execution time; this
+change does not claim cancellation or add identity binding. Pending screen state belongs
+to the discarded subtree; late completion cannot mount its navigation effect.
+No profile/identity store, persistent offline cache,
 new dependencies, or backend authorization changes are introduced.
 
-Reducer/policy/session-owner tests exercise lifetime and operation behavior. TSX source
+Reducer/policy/session-owner tests exercise lifetime and operation behavior. Installed-SDK
+HTTP and stopped-WebSocket stubs demonstrate independent refresh; client-factory tests
+exercise retirement, setup/cleanup replay, stable retry clients, and stale-token rejection.
+These are local transport/lifecycle probes, not deployed-network or mounted React tests. TSX source
 contracts are structural checks, not evidence of mounted Expo navigation or native recovery.
 Device disconnect/reconnect, native draft persistence, and actual Convex-provider effect
 ordering still require runtime validation and independent review.
