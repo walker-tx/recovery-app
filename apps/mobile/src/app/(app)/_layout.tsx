@@ -1,5 +1,10 @@
-import { Stack } from "expo-router/stack";
+import { Stack } from 'expo-router/stack';
+
+export const unstable_settings = { initialRouteName: '(tabs)' };
 
 export default function AppLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack screenOptions={{ headerShown: false }}>
+    <Stack.Screen name="(tabs)" />
+    <Stack.Screen name="counts/new" options={{ presentation: 'fullScreenModal' }} />
+  </Stack>;
 }
