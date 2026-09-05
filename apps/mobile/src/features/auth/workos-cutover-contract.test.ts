@@ -22,9 +22,9 @@ test("legacy storage cleanup fails closed with an accessible retry", async () =>
   assert.match(source, /<Button[\s\S]*?onPress=\{retryMigration\}/);
 });
 
-test("live auth routes activate WorkOS sign-in and the authenticated home", async () => {
+test("live auth routes activate WorkOS sign-in and the authenticated account capability under You", async () => {
   const signIn = await route("(auth)/sign-in.tsx");
-  const home = await route("(app)/home.tsx");
+  const home = await route("(app)/(tabs)/you.tsx");
   const welcome = await route("(auth)/index.tsx");
   const authLayout = await route("(auth)/_layout.tsx");
 
