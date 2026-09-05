@@ -4,16 +4,27 @@ set -euo pipefail
 SCRIPT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 ROOT=$(pwd -P)
 [ "$ROOT" = "$SCRIPT_ROOT" ] || { echo 'Run this command from the repository root.' >&2; exit 1; }
-./scripts/migrate-convex-dotenv.sh
-./scripts/check-no-dotenv.sh
+if ./scripts/migrate-convex-dotenv.sh --check; then :; else
+  [ "$?" -eq 2 ] || exit 1
+fi
+./scripts/check-no-dotenv.sh packages/backend/.env.local
 LOCAL_CONFIG=mise.local.toml
+[ ! -L "$LOCAL_CONFIG" ] || { echo 'Mise configuration must not be a symlink.' >&2; exit 1; }
 MCP_TMP=
 umask 077
-cleanup() { [ -z "$MCP_TMP" ] || rm -f "$MCP_TMP"; }
-trap cleanup EXIT HUP INT TERM
+OWNED_SERVICES=
+cleanup() {
+  result=$?
+  [ -z "$MCP_TMP" ] || rm -f "$MCP_TMP"
+  if [ "$result" -ne 0 ]; then
+    for service in $OWNED_SERVICES; do pitchfork stop "$service" >/dev/null 2>&1 || :; done
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' HUP INT TERM
 
 die() { echo "$*" >&2; exit 1; }
-[ ! -d "$ROOT/.recovery-tailnet" ] || ./scripts/stop.sh >/dev/null
+[ ! -d "$ROOT/.recovery-tailnet" ] || die 'Stop the existing tailnet preview explicitly before bootstrap.'
 
 has_local_key() { grep -Eq "^[[:space:]]*$1[[:space:]]*=" "$LOCAL_CONFIG"; }
 has_value() { has_local_key "$1" && env -u "$1" mise exec -- sh -c 'test -n "$(printenv "$1")"' sh "$1" >/dev/null 2>&1; }
@@ -59,8 +70,30 @@ ensure_generated WORKOS_INTENT_ENCRYPTION_KEY
 ensure_fixed WORKOS_MODE staging
 ensure_fixed AUTH_EMAIL_DELIVERY_URL http://127.0.0.1:8025/api/v1/send
 
+for service in mailpit backend mobile; do
+  status=$(pitchfork status "$service") || die 'Unable to establish existing service ownership.'
+  if ! printf '%s' "$status" | grep -Eq '(^|[[:space:]:])(running|starting|restarting)([[:space:]]|$)'; then
+    OWNED_SERVICES="$OWNED_SERVICES $service"
+  fi
+done
+# Mobile is not task-owned until its start is attempted below.
+BACKEND_OWNED=$OWNED_SERVICES
+OWNED_SERVICES=
+for service in $BACKEND_OWNED; do [ "$service" = mobile ] || OWNED_SERVICES="$OWNED_SERVICES $service"; done
 pitchfork start mailpit backend >/dev/null
-./scripts/migrate-convex-dotenv.sh
+metadata_timeout=${RECOVERY_METADATA_TIMEOUT_SECONDS:-30}
+[[ "$metadata_timeout" =~ ^[0-9]+$ ]] && [ "$metadata_timeout" -le 300 ] || die 'Invalid metadata timeout.'
+deadline=$((SECONDS + metadata_timeout))
+while :; do
+  if ./scripts/migrate-convex-dotenv.sh --ready; then break; else result=$?; fi
+  [ "$result" -eq 2 ] || die 'Convex metadata validation failed.'
+  if [ ! -e packages/backend/.env.local ] && has_value CONVEX_DEPLOYMENT && has_value CONVEX_URL && has_value CONVEX_SITE_URL; then
+    env -u CONVEX_DEPLOYMENT -u CONVEX_URL -u CONVEX_SITE_URL mise exec -- node scripts/convex-metadata.cjs --env --check || die 'Invalid existing Convex configuration.'
+    break
+  fi
+  [ "$SECONDS" -lt "$deadline" ] || die 'Timed out waiting for complete Convex metadata; retained for diagnosis.'
+  sleep 0.2
+done
 ./scripts/check-no-dotenv.sh
 
 selected_deployment=$(env -u CONVEX_DEPLOYMENT mise exec -- sh -c 'printenv CONVEX_DEPLOYMENT')
@@ -82,6 +115,7 @@ chmod 600 "$MCP_TMP"
 mv "$MCP_TMP" .mcp.json
 MCP_TMP=
 
+OWNED_SERVICES=$BACKEND_OWNED
 pitchfork start mobile >/dev/null
 echo 'Recovery services:'
 for daemon in mailpit backend mobile; do
