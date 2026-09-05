@@ -53,3 +53,22 @@ export function countPickerStartAt(date: Date, platform: string, original: numbe
 export function countsOfflineNotice(status: string, connected: boolean): string | null {
   return !connected && status !== 'LoadingFirstPage' ? 'Offline. Showing last synced Counts.' : null;
 }
+
+export function editCountDraft(draft: CountDraft, original: CountDraft): CountDraft {
+  return draft.startAt !== null && original.startAt !== null &&
+    toLocalMidnight(new Date(draft.startAt)) === toLocalMidnight(new Date(original.startAt))
+    ? { ...draft, startAt: original.startAt } : draft;
+}
+export function canSaveCountEdit(draft: CountDraft, original: CountDraft, connected: boolean, pending: boolean): boolean {
+  return canSaveCount(draft, connected, pending) && isCountDraftDirty(editCountDraft(draft, original), original);
+}
+export function countDuplicateArgs<T extends string>(name: string, excludeId: T): { name: string; excludeId: T } | 'skip' {
+  return countNameError(name) === null ? { name: name.trim(), excludeId } : 'skip';
+}
+export async function deleteCountOnce(lock: { current: boolean }, connected: boolean, remove: () => Promise<unknown>): Promise<'ignored' | 'deleted' | 'failed'> {
+  if (lock.current || !connected) return 'ignored';
+  lock.current = true;
+  try { await remove(); return 'deleted'; }
+  catch { return 'failed'; }
+  finally { lock.current = false; }
+}
