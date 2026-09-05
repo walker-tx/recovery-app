@@ -1,12 +1,13 @@
 import { api } from '@recovery/backend/convex/_generated/api';
 import type { Id } from '@recovery/backend/convex/_generated/dataModel';
-import { useQuery } from 'convex/react';
+import { useConvexConnectionState, useQuery } from 'convex/react';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Screen } from '@/components/ui/screen';
 import { Typography } from '@/components/ui/text';
 import { CountQueryBoundary } from './count-query-boundary';
+import { countsOfflineNotice } from './count-form-policy';
 import { useCountNow } from './count-clock';
 import { CountReading, MilestoneBadge } from './count-presentation';
 import { formatStarted } from './count-reading';
@@ -21,11 +22,14 @@ export function CountDetailScreen({ id }: { id: Id<'counts'> }) {
 }
 function CountDetailContent({ id }: { id: Id<'counts'> }) {
   const count = useQuery(api.counts.get, { id });
+  const connection = useConvexConnectionState();
   const now = useCountNow();
   const router = useRouter();
   if (count === undefined) return <View accessibilityRole="progressbar" accessibilityLabel="Loading Count"><ActivityIndicator /><Typography>Loading Count…</Typography></View>;
+  const offlineNotice = countsOfflineNotice('loaded', connection.isWebSocketConnected);
   const milestone = latestMilestone(count.startAt, now);
   return <View style={{ gap: 22 }}>
+    {offlineNotice ? <Typography accessibilityRole="alert">{offlineNotice}</Typography> : null}
     <View className="border border-line" style={{ padding: 16, gap: 10 }}>
       {([{ top: -6, left: -6 }, { top: -6, right: -6 }, { bottom: -6, left: -6 }, { bottom: -6, right: -6 }]).map((position, index) => <View key={index} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', width: 11, height: 11, ...position }}><View className="bg-ink-muted" style={{ position: 'absolute', left: 5, width: 1, height: 11 }} /><View className="bg-ink-muted" style={{ position: 'absolute', top: 5, height: 1, width: 11 }} /></View>)}
       <Typography variant="overline">COUNT</Typography>
