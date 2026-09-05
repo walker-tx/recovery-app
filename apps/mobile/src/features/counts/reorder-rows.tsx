@@ -41,7 +41,7 @@ export function ReorderRows(props:Props) {
   const latest = useRef(props); latest.current = props;
   const list = useRef<View>(null);
   const frames = useRef(new Map<string, RowFrame>());
-  const drag = useRef<{id:string; finger:number; listTop:number; initialOffset:number; viewportTop:number} | null>(null);
+  const drag = useRef<{id:string; finger:number; listTop:number; initialOffset:number; viewportTop:number; rows:RowFrame[]} | null>(null);
   const generation = useRef(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [active, setActive] = useState<{id:string; y:number} | null>(null);
@@ -57,9 +57,7 @@ export function ReorderRows(props:Props) {
     if (!d || latest.current.pending) return;
     d.finger = y;
     const contentY = y - d.listTop + latest.current.metrics.current.offset - d.initialOffset;
-    const rows = latest.current.counts.flatMap(count => {const frame = frames.current.get(count._id); return frame ? [frame] : [];});
-    if (rows.length !== latest.current.counts.length) return;
-    const to = dragTarget(rows, contentY);
+    const to = dragTarget(d.rows, contentY);
     latest.current.onMove(d.id, to);
     setActive(previous => previous?.id === d.id && previous.y === contentY ? previous : {id:d.id, y:contentY});
   }
@@ -69,7 +67,10 @@ export function ReorderRows(props:Props) {
     list.current?.measureInWindow((_x, listTop) => {
       props.scroll.current?.getNativeScrollRef()?.measureInWindow((_sx, viewportTop) => {
         if (token !== generation.current || latest.current.pending) return;
-        drag.current = {id, finger:y, listTop, initialOffset:props.metrics.current.offset, viewportTop};
+        // Freeze insertion slots: reordered layout must not move the hit-test boundaries.
+        const rows = latest.current.counts.flatMap(count => {const frame = frames.current.get(count._id); return frame ? [frame] : [];});
+        if (rows.length !== latest.current.counts.length) return;
+        drag.current = {id, finger:y, listTop, initialOffset:props.metrics.current.offset, viewportTop, rows};
         update(y);
         timer.current = setInterval(() => {
           const d = drag.current; if (!d) return;
@@ -87,7 +88,15 @@ export function ReorderRows(props:Props) {
     const held = active?.id === count._id;
     return <Animated.View key={count._id}
       layout={held ? undefined : LinearTransition.duration(150).reduceMotion(ReduceMotion.System)}
-      onLayout={event => {frames.current.set(count._id, {id:count._id, ...event.nativeEvent.layout});}}
+      onLayout={event => {
+        const next = {id:count._id, ...event.nativeEvent.layout};
+        const previous = frames.current.get(count._id);
+        frames.current.set(count._id, next);
+        // A stationary pointer still needs a new transform after the held slot moves.
+        if (previous?.y !== next.y || previous?.height !== next.height) {
+          setActive(current => current?.id === count._id ? {...current} : current);
+        }
+      }}
       style={{flexDirection:'row', alignItems:'center', backgroundColor:colors.canvas, zIndex:held ? 1 : 0, transform:[{translateY:held && frame ? active.y - frame.y - frame.height / 2 : 0}]}}>
       <View style={{flex:1}}><CountRow count={count} now={props.now} /></View>
       <Handle name={count.name} index={index} total={props.counts.length} pending={props.pending}
