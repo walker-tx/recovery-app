@@ -3,21 +3,21 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { countUnit, validatedName, validateStart } from "./countPolicy";
 import { requireWorkOSIdentity } from "./workosIdentity";
 
 const countValue = v.object({
   _id: v.id("counts"),
-  _creationTime: v.number(),
-  ownerSubject: v.string(),
   name: v.string(),
-  nameKey: v.string(),
   startAt: v.number(),
   unit: countUnit,
-  order: v.number(),
 });
+function publicCount({ _id, name, startAt, unit }: Doc<"counts">) {
+  return { _id, name, startAt, unit };
+}
+
 async function owned(ctx: QueryCtx, id: Id<"counts">, subject: string) {
   const count = await ctx.db.get(id);
   if (count === null || count.ownerSubject !== subject)
@@ -60,7 +60,7 @@ export const list = query({
     ) {
       throw new ConvexError({ code: "INVALID_PAGE_SIZE" });
     }
-    return await ctx.db
+    const result = await ctx.db
       .query("counts")
       .withIndex("by_owner_order", (q) => q.eq("ownerSubject", subject))
       .paginate({
@@ -70,6 +70,7 @@ export const list = query({
         // Bound large graphemes too; Convex may split the page at this budget.
         maximumBytesRead: 1024 * 1024,
       });
+    return { ...result, page: result.page.map(publicCount) };
   },
 });
 export const get = query({
@@ -77,7 +78,7 @@ export const get = query({
   returns: countValue,
   handler: async (ctx, { id }) => {
     const { subject } = await requireWorkOSIdentity(ctx);
-    return await owned(ctx, id, subject);
+    return publicCount(await owned(ctx, id, subject));
   },
 });
 export const findDuplicate = query({
@@ -94,7 +95,8 @@ export const findDuplicate = query({
         q.eq("ownerSubject", subject).eq("nameKey", nameKey),
       )
       .take(2);
-    return matches.find((count) => count._id !== excludeId) ?? null;
+    const match = matches.find((count) => count._id !== excludeId);
+    return match === undefined ? null : publicCount(match);
   },
 });
 export const edit = mutation({

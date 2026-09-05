@@ -26,6 +26,21 @@ function setup() {
 }
 const paginationOpts = { numItems: 2, cursor: null };
 const draft = { name: "Recovery", startAt: 1000 };
+test.each(["list", "get", "findDuplicate"] as const)(
+  "%s returns only public Count fields",
+  async (read) => {
+    const { a } = setup();
+    const id = await a.mutation(api.counts.create, draft);
+    const count =
+      read === "list"
+        ? (await a.query(api.counts.list, { paginationOpts })).page[0]
+        : read === "get"
+          ? await a.query(api.counts.get, { id })
+          : await a.query(api.counts.findDuplicate, { name: draft.name });
+    expect(Object.keys(count!).sort()).toEqual(["_id", "name", "startAt", "unit"]);
+    expect(count).toEqual({ _id: id, ...draft, unit: "days" });
+  },
+);
 test("requires authentication for every operation and isolates owners atomically", async () => {
   const { t, a, b } = setup();
   const id = await a.mutation(api.counts.create, draft);
@@ -60,7 +75,7 @@ test("requires authentication for every operation and isolates owners atomically
   });
 });
 test("new-first pagination, scoped writes, last successful writes and stale reorder membership", async () => {
-  const { a } = setup();
+  const { t, a } = setup();
   const first = await a.mutation(api.counts.create, draft);
   const second = await a.mutation(api.counts.create, {
     ...draft,
@@ -80,7 +95,7 @@ test("new-first pagination, scoped writes, last successful writes and stale reor
       })
     ).page.map((x) => x._id),
   ).toEqual([first]);
-  const before = await a.query(api.counts.get, { id: first });
+  const before = await t.run((ctx) => ctx.db.get(first));
   await a.mutation(api.counts.setUnit, { id: first, unit: "years" });
   await a.mutation(api.counts.edit, {
     id: first,
@@ -92,18 +107,18 @@ test("new-first pagination, scoped writes, last successful writes and stale reor
     name: "Latest",
     startAt: 3000,
   });
-  expect(await a.query(api.counts.get, { id: first })).toMatchObject({
+  expect(await t.run((ctx) => ctx.db.get(first))).toMatchObject({
     name: "Latest",
     startAt: 3000,
     unit: "years",
-    order: before.order,
+    order: before!.order,
   });
   await a.mutation(api.counts.setUnit, { id: first, unit: "months" });
-  expect(await a.query(api.counts.get, { id: first })).toMatchObject({
+  expect(await t.run((ctx) => ctx.db.get(first))).toMatchObject({
     name: "Latest",
     startAt: 3000,
     unit: "months",
-    order: before.order,
+    order: before!.order,
   });
   await a.mutation(api.counts.reorder, { ids: [first, second, third] });
   await a.mutation(api.counts.reorder, { ids: [second, third, first] });
