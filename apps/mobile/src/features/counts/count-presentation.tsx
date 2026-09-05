@@ -10,7 +10,10 @@ export function MilestoneBadge({ milestone }: { milestone: Milestone }) {
 export function CountReading({ count, now, size = 'row' }: { count: FunctionReturnType<typeof api.counts.get>; now: number; size?: 'row' | 'detail' }) {
   const parts = elapsedParts(count.startAt, now, count.unit);
   return <View className="flex-row flex-wrap items-baseline" style={{ gap: size === 'row' ? 7 : 9 }}>
-    {parts ? parts.map((part, index) => <Typography key={part.unit} className={index === 0 ? 'text-blueprint' : 'text-ink-muted'} style={{ fontSize: index === 0 ? (size === 'row' ? 24 : 40) : (size === 'row' ? 15 : 20), fontVariant: ['tabular-nums'] }}>{formatPart(part)}</Typography>) : <Typography>Reading unavailable.</Typography>}
+    {parts ? parts.map((part, index) => {
+      const fontSize = index === 0 ? (size === 'row' ? 24 : 40) : (size === 'row' ? 15 : 20);
+      return <Typography key={part.unit} variant="heading" className={index === 0 ? 'text-blueprint' : 'text-ink-muted'} style={{ fontSize, lineHeight: fontSize * 0.86, letterSpacing: fontSize * -0.03, fontVariant: ['tabular-nums'] }}>{formatPart(part)}</Typography>;
+    }) : <Typography>Reading unavailable.</Typography>}
   </View>;
 }
 export function CountRow({ count, now, onPress }: { count: FunctionReturnType<typeof api.counts.get>; now: number; onPress?: () => void }) {

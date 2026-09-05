@@ -34,7 +34,7 @@ export function TextField({ accessibilityHint: providedAccessibilityHint, appear
           accessibilityHint={accessibilityHint}
           accessibilityLabel={label}
           accessibilityState={{ disabled: props.editable === false }}
-          className={`min-h-touch flex-1 bg-transparent px-md py-md text-body text-ink ${className ?? ""}`}
+          className={`min-h-touch flex-1 bg-transparent px-md py-md font-body text-body text-ink ${className ?? ""}`}
           nativeID={id}
           placeholderTextColor={colors.inkMuted}
           {...props}

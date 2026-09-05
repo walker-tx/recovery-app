@@ -27,6 +27,7 @@ module.exports = {
       minHeight: { touch: `${tokens.touchTarget}px` },
       width: { touch: `${tokens.touchTarget}px` },
       boxShadow: tokens.shadows,
+      fontFamily: Object.fromEntries(Object.entries(tokens.fonts).map(([name, family]) => [name, [family]])),
       fontSize: {
         display: ["38px", { lineHeight: "44px", letterSpacing: "-1px", fontWeight: "700" }],
         title: ["24px", { lineHeight: "30px", fontWeight: "700" }],
