@@ -88,3 +88,22 @@ test('CLI rejects enroll without changing a mock credential file', async () => {
     assert.equal(await readFile(join(cwd,'mise.local.toml'),'utf8'),original);
   } finally { await rm(cwd,{recursive:true,force:true}); }
 });
+for (const field of ['code', 'error']) {
+  for (const [value, reason] of [['invalid_grant', 'INVALID_GRANT'], ['organization_authentication_methods_required', 'ORGANIZATION_AUTHENTICATION_METHODS_REQUIRED'], [secret, 'UNKNOWN']]) {
+    test(`sanitized auth ${field} ${reason}`, async () => {
+      const f = fixture();
+      f.api.authenticateWithPassword = async () => { throw { [field]: value, status: 400, message: secret, rawData: { error: secret }, headers: secret, requestID: secret }; };
+      const r = await smoke(env, () => f.api);
+      assert.equal(r.authReason, reason); assert.equal(r.authStatus, 400);
+      assert.equal(JSON.stringify(r).includes(secret), false); assert.equal(r.cleanup, 'deleted');
+    });
+  }
+}
+test('unknown status and missing auth response fields stay sanitized', async () => {
+  for (const [response, reason] of [[{}, 'MISSING_USER_ID'], [{user:{id:'other'}}, 'USER_ID_MISMATCH'], [{user:{id:'created-user'}}, 'MISSING_TOKENS']] as const) {
+    const f = fixture(); f.api.authenticateWithPassword = async () => response as any;
+    const r = await smoke(env, () => f.api); assert.equal(r.authReason, reason); assert.equal(r.cleanup, 'deleted');
+  }
+  const f = fixture(); f.api.authenticateWithPassword = async () => { throw {code:secret,status:secret}; };
+  const r = await smoke(env, () => f.api); assert.equal(r.authReason, 'UNKNOWN'); assert.equal(r.authStatus, undefined); assert.equal(JSON.stringify(r).includes(secret), false);
+});

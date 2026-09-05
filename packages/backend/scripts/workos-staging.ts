@@ -20,7 +20,7 @@ export function stagingGuard(env: Env): boolean {
       && env.WORKOS_STAGING_CLIENT_ID === env.WORKOS_CLIENT_ID);
 }
 export async function smoke(env: Env, factory: () => Api | Promise<Api>) {
-  const result = { runId: randomUUID(), code: 'GUARD_REFUSED', cleanup: 'not_needed', sessions: 'not_attempted' };
+  const result: { runId: string; code: string; cleanup: string; sessions: string; authReason?: string; authStatus?: number } = { runId: randomUUID(), code: 'GUARD_REFUSED', cleanup: 'not_needed', sessions: 'not_attempted' };
   if (!stagingGuard(env)) return result;
   let api: Api;
   try { api = await factory(); } catch { result.code = 'SDK_INIT_FAILED'; return result; }
@@ -38,9 +38,30 @@ export async function smoke(env: Env, factory: () => Api | Promise<Api>) {
     userId = user.id;
     result.code = 'AUTH_FAILED';
     const auth = await api.authenticateWithPassword({ clientId: env.WORKOS_CLIENT_ID!, email, password });
-    if (auth.user.id !== userId || !auth.accessToken || !auth.refreshToken) return result;
+    if (!auth?.user?.id) { result.authReason = 'MISSING_USER_ID'; return result; }
+    if (auth.user.id !== userId) { result.authReason = 'USER_ID_MISMATCH'; return result; }
+    if (!auth.accessToken || !auth.refreshToken) { result.authReason = 'MISSING_TOKENS'; return result; }
     result.code = 'OK';
-  } catch { /* Never serialize SDK errors: they may contain credentials. */ }
+  } catch (error) {
+    if (result.code === 'AUTH_FAILED') {
+      // SDK OAuth exceptions use `error`; other exceptions use `code`.
+      // Only fixed values cross this boundary, never provider strings or rawData.
+      const provider = typeof error === 'object' && error !== null ? error as { code?: unknown; error?: unknown; status?: unknown } : {};
+      const reasons = new Map<unknown, string>([
+        ['invalid_grant', 'INVALID_GRANT'],
+        ['invalid_credentials', 'INVALID_CREDENTIALS'],
+        ['email_verification_required', 'EMAIL_VERIFICATION_REQUIRED'],
+        ['organization_authentication_methods_required', 'ORGANIZATION_AUTHENTICATION_METHODS_REQUIRED'],
+        ['organization_selection_required', 'ORGANIZATION_SELECTION_REQUIRED'],
+        ['sso_required', 'SSO_REQUIRED'],
+        ['mfa_enrollment', 'MFA_ENROLLMENT'],
+        ['mfa_challenge', 'MFA_CHALLENGE'],
+        ['mfa_verification', 'MFA_VERIFICATION'],
+      ]);
+      result.authReason = reasons.get(provider.code ?? provider.error) ?? 'UNKNOWN';
+      if (typeof provider.status === 'number' && [400, 401, 403, 404, 408, 409, 422, 429, 500, 502, 503, 504].includes(provider.status)) result.authStatus = provider.status;
+    }
+  }
   finally {
     if (userId) {
       result.sessions = 'failed';
