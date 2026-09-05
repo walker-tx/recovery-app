@@ -4,11 +4,12 @@ import { useConvex, useConvexConnectionState, useMutation, useQuery } from 'conv
 import { useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, View } from 'react-native';
+import { Alert } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Screen } from '@/components/ui/screen';
 import { Typography } from '@/components/ui/text';
 import { CountForm } from './count-form';
+import { CountFormHeader } from './count-form-header';
 import { canSaveCountEdit, countDuplicateArgs, duplicateNotice, editCountDraft, isCountDraftDirty, type CountDraft } from './count-form-policy';
 import { CountQueryBoundary } from './count-query-boundary';
 
@@ -76,12 +77,10 @@ function EditCountForm({ id }: { id: Id<'counts'> }) {
 
   return <CountQueryBoundary recovery={<Button variant="secondary" onPress={() => router.replace('/(app)/(tabs)/home')}>Counts</Button>} message="This Count couldn’t be loaded. It may have been deleted. Try again or return to Counts.">
     <LoadedEditCount id={id} onInitialize={initialize}>
-    {draft && original ? <Screen contentClassName="justify-start" automaticallyAdjustKeyboardInsets>
-    <View className="flex-row justify-between gap-md">
-      <Button variant="secondary" disabled={pending || saved} onPress={() => router.back()}>Cancel</Button>
-      <Button disabled={saved || !canSaveCountEdit(draft, original, connection.isWebSocketConnected, pending)} accessibilityState={{ busy: pending }} onPress={() => void save()}>{pending ? 'Saving…' : 'Save'}</Button>
-    </View>
-    <Typography accessibilityRole="header" variant="display">Edit Count</Typography>
+    {draft && original ? <Screen contentClassName="justify-start" contentContainerStyle={{ paddingHorizontal: 20 }} automaticallyAdjustKeyboardInsets>
+    <CountFormHeader title="Edit Count" cancelDisabled={pending || saved}
+      saveDisabled={saved || !canSaveCountEdit(draft, original, connection.isWebSocketConnected, pending)} pending={pending}
+      onCancel={() => router.back()} onSave={() => void save()} />
     <CountForm draft={draft} onChange={(next) => setDraft(editCountDraft(next, original))} disabled={pending || saved} nameNotice={
       <CountQueryBoundary message="Duplicate names couldn’t be checked. You can still save.">
         <DuplicateNotice name={draft.name} id={id} />
