@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { TabRouter } from 'expo-router/build/react-navigation/routers/index.js';
-import { getWorkOSRouteDestination } from '../auth/workos-auth-policy.ts';
 
 const readRoute = (path: string) => readFile(new URL(`../../app/(app)/${path}`, import.meta.url), 'utf8');
 test('authenticated tabs land on Counts and all four destinations are navigable', async () => {
@@ -25,10 +24,14 @@ test('authenticated tabs land on Counts and all four destinations are navigable'
   assert.match(await readRoute('counts/new.tsx'), /NewCountScreen/);
   assert.match(await readRoute('_layout.tsx'), /presentation: 'fullScreenModal'/);
 });
-test('neither Counts nor creation bypasses restoration or onboarding', () => {
-  assert.equal(getWorkOSRouteDestination({ isLoading: true, isAuthenticated: true }, { onboardingComplete: true }), 'loading');
-  assert.equal(getWorkOSRouteDestination({ isLoading: false, isAuthenticated: false }, null), 'auth');
-  assert.equal(getWorkOSRouteDestination({ isLoading: false, isAuthenticated: true }, undefined), 'loading');
-  assert.equal(getWorkOSRouteDestination({ isLoading: false, isAuthenticated: true }, null), 'onboarding');
-  assert.equal(getWorkOSRouteDestination({ isLoading: false, isAuthenticated: true }, { onboardingComplete: true }), 'app');
+test('structural coverage: Counts app group is nested inside app-only protection', async () => {
+  // Source wiring regression only; this does not exercise runtime navigation or deep links.
+  const source = await readFile(new URL('../auth/workos-root-provider.tsx', import.meta.url), 'utf8');
+  const appOnlyBlock = /<Stack\.Protected guard=\{destination === "app"\}>\s*<Stack\.Screen name="\(app\)" \/>\s*<\/Stack\.Protected>/;
+  const assertAppProtected = (value: string) => assert.match(value, appOnlyBlock);
+
+  // Red checks use in-memory mutations only; production auth source stays untouched.
+  assert.throws(() => assertAppProtected(source.replace(appOnlyBlock, '<Stack.Screen name="(app)" />')), assert.AssertionError);
+  assert.throws(() => assertAppProtected(source.replace('guard={destination === "app"}', 'guard={destination === "auth"}')), assert.AssertionError);
+  assertAppProtected(source);
 });
