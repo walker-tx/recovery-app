@@ -6,6 +6,7 @@ type WorkOSSignInValidation = {
 };
 
 type WorkOSRoutingSession = {
+  lifetime?: number;
   isLoading: boolean;
   isAuthenticated: boolean;
   retry?: { operation: "restore" | "refresh" | "signOut" } | null;
@@ -39,7 +40,9 @@ export function toSafeWorkOSSignInError(_error: unknown) {
 export function getWorkOSRouteDestination(
   session: WorkOSRoutingSession,
   profile: ProfileSummary,
+  readyLifetime?: number,
 ): WorkOSRouteDestination {
+  if (!session.isLoading && session.isAuthenticated && readyLifetime !== undefined && readyLifetime === session.lifetime) return "app";
   if (session.retry?.operation === "restore" || session.retry?.operation === "refresh") {
     return "retry";
   }

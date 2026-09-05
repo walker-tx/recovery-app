@@ -1,4 +1,5 @@
-import { ConvexProviderWithAuth, type ConvexReactClient, useQuery } from "convex/react";
+import { ConvexProviderWithAuth, type ConvexReactClient, useConvexAuth, useQuery } from "convex/react";
+import { Component, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Stack } from "expo-router/stack";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, View } from "react-native";
@@ -24,29 +25,45 @@ export function WorkOSRootProvider({ client }: WorkOSRootProviderProps) {
 
   return (
     <WorkOSSessionProvider client={client}>
-      <ConvexProviderWithAuth client={client} useAuth={useWorkOSConvexAuth}>
+      <WorkOSLifetime client={client} />
+    </WorkOSSessionProvider>
+  );
+}
+
+function WorkOSLifetime({ client }: { client: ConvexReactClient }) {
+  const { lifetime } = useWorkOSSession();
+  return (
+      <ConvexProviderWithAuth key={lifetime} client={client} useAuth={useWorkOSConvexAuth}>
         <SignupFlowProvider>
           <StatusBar style="dark" />
           <WorkOSProtectedRoutes />
         </SignupFlowProvider>
       </ConvexProviderWithAuth>
-    </WorkOSSessionProvider>
   );
 }
 
 export function WorkOSProtectedRoutes() {
   const session = useWorkOSSession();
-  const profile = useQuery(api.profiles.getMine, session.isAuthenticated ? {} : "skip");
-  const destination = getWorkOSRouteDestination(session, profile);
+  const [profile, setProfile] = useState<{ onboardingComplete: boolean } | null>();
+  const [readyLifetime, setReadyLifetime] = useState<number>();
+  const onProfile = useCallback((value: { onboardingComplete: boolean } | null | undefined) => {
+    setProfile(value);
+    if (value?.onboardingComplete) setReadyLifetime(session.lifetime);
+  }, [session.lifetime]);
+  const destination = getWorkOSRouteDestination(session, profile, readyLifetime);
+  const observer = <WorkOSProfileBoundary><WorkOSProfileObserver onProfile={onProfile} /></WorkOSProfileBoundary>;
 
   if (destination === "retry") {
     const retry = session.retry?.operation === "restore" ? session.retryRestore : session.refresh;
-    return <WorkOSRetryState onRetry={retry} />;
+    return <>{observer}<WorkOSRetryState onRetry={retry} /></>;
   }
 
-  if (destination === "loading") return <WorkOSRestorationLoading />;
+  if (destination === "loading") return <>{observer}<WorkOSRestorationLoading /></>;
 
   return (
+    <>
+    {observer}
+    {session.retry?.operation === "refresh" && <WorkOSRefreshRetry onRetry={session.refresh} />}
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={destination === "auth"}>
         <Stack.Screen name="(auth)" />
@@ -58,7 +75,32 @@ export function WorkOSProtectedRoutes() {
         <Stack.Screen name="(app)" />
       </Stack.Protected>
     </Stack>
+    </>
   );
+}
+
+// Only this observer can throw on profile reads; it never owns the navigator.
+function WorkOSProfileObserver({ onProfile }: { onProfile: (value: { onboardingComplete: boolean } | null | undefined) => void }) {
+  const { isAuthenticated } = useConvexAuth();
+  const profile = useQuery(api.profiles.getMine, isAuthenticated ? {} : "skip");
+  useEffect(() => { onProfile(isAuthenticated ? profile : undefined); }, [isAuthenticated, profile, onProfile]);
+  return null;
+}
+
+class WorkOSProfileBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <WorkOSRefreshRetry onRetry={async () => { this.setState({ failed: false }); }} />;
+  }
+}
+
+function WorkOSRefreshRetry({ onRetry }: { onRetry: () => Promise<unknown> }) {
+  return <View className="gap-sm p-md">
+    <Typography accessibilityRole="alert" accessibilityLiveRegion="polite">Account connection interrupted. Your open work is preserved.</Typography>
+    <Button onPress={() => void onRetry().catch(() => undefined)}>Try again</Button>
+  </View>;
 }
 
 function WorkOSRestorationLoading() {

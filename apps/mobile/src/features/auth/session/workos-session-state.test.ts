@@ -40,7 +40,7 @@ test("startup validates stored credentials and stays loading until replacement p
   const restoring = owner.restore();
   await tick();
   assert.deepEqual(refreshTokens, ["refresh-stored"]);
-  assert.deepEqual(owner.getSnapshot(), { isLoading: true, isAuthenticated: false, isRefreshing: false, isSigningOut: false, retry: null });
+  assert.deepEqual(owner.getSnapshot(), { lifetime: 0, isLoading: true, isAuthenticated: false, isRefreshing: false, isSigningOut: false, retry: null });
   refreshResult.resolve({ status: "success", ...session("startup-fresh") });
   await tick();
   assert.equal(owner.getSnapshot().isAuthenticated, false);
@@ -73,7 +73,7 @@ test("transient startup refresh retains credentials without auth flash and can r
 
   await assert.rejects(owner.restore(), /offline/);
   assert.deepEqual(persisted, session("stored"));
-  assert.deepEqual(owner.getSnapshot(), { isLoading: true, isAuthenticated: false, isRefreshing: false, isSigningOut: false, retry: { operation: "restore" } });
+  assert.deepEqual(owner.getSnapshot(), { lifetime: 0, isLoading: true, isAuthenticated: false, isRefreshing: false, isSigningOut: false, retry: { operation: "restore" } });
   assert.equal(published.some((value) => value.isAuthenticated || !value.isLoading), false);
   await owner.retryRestore();
   assert.equal(attempts, 2);
@@ -284,4 +284,49 @@ test("failed sign-out retains the session for retry", async () => {
   fail = false;
   await owner.signOut();
   assert.equal(owner.getSnapshot().isAuthenticated, false);
+});
+
+test("terminal invalidation cannot retain readiness when secure deletion fails", async () => {
+  const owner = createWorkOSSessionOwner({
+    storage: { async read() { return null; }, async write() {}, async clear() { throw new Error('storage unavailable'); } },
+    actions: actions({ async refreshSession() { return { status: 'invalid' }; } }),
+  });
+  await owner.signIn({ email: 'person@example.com', password: 'secret' });
+  const lifetime = owner.getSnapshot().lifetime;
+  await assert.rejects(owner.refresh(), /storage unavailable/);
+  assert.equal(owner.getSnapshot().isAuthenticated, false);
+  assert.equal(owner.getSnapshot().lifetime, lifetime + 1);
+  assert.equal(await owner.fetchAccessToken({ forceRefreshToken: false }), null);
+});
+
+test("replacement waits for old refresh persistence and starts a distinct lifetime", async () => {
+  const result = deferred<{ status: 'success'; accessToken: string; refreshToken: string }>();
+  let persisted: SessionCredentials | null = null;
+  const owner = createWorkOSSessionOwner({
+    storage: { async read() { return null; }, async write(value) { persisted = value; }, async clear() {} },
+    actions: actions({ async signIn({ email }) { return session(email); }, async refreshSession() { return result.promise; } }),
+  });
+  await owner.signIn({ email: 'first', password: 'secret' });
+  const lifetime = owner.getSnapshot().lifetime;
+  const refresh = owner.refresh();
+  const replacement = owner.signIn({ email: 'second', password: 'secret' });
+  await tick();
+  assert.deepEqual(persisted, session('first'));
+  result.resolve({ status: 'success', ...session('rotated-first') });
+  await refresh;
+  await replacement;
+  assert.deepEqual(persisted, session('second'));
+  assert.equal(owner.getSnapshot().lifetime, lifetime + 1);
+});
+
+test("confirmed revocation clears in-memory readiness even when secure deletion fails", async () => {
+  const owner = createWorkOSSessionOwner({
+    storage: { async read() { return null; }, async write() {}, async clear() { throw new Error('storage unavailable'); } },
+    actions: actions(),
+  });
+  await owner.signIn({ email: 'person@example.com', password: 'secret' });
+  const lifetime = owner.getSnapshot().lifetime;
+  await assert.rejects(owner.signOut(), /storage unavailable/);
+  assert.equal(owner.getSnapshot().isAuthenticated, false);
+  assert.equal(owner.getSnapshot().lifetime, lifetime + 1);
 });

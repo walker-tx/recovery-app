@@ -27,6 +27,7 @@ const secureStoreSessionStorage = createWorkOSSessionStorage({
 });
 
 type WorkOSSessionContextValue = {
+  lifetime: number;
   isLoading: boolean;
   isAuthenticated: boolean;
   isRefreshing: boolean;

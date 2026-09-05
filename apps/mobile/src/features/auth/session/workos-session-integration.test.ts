@@ -126,6 +126,7 @@ test("terminal restoration invalidation clears SecureStore and settles unauthent
   await owner.restore();
   assert.equal(secureStore.value, null);
   assert.deepEqual(owner.getSnapshot(), {
+    lifetime: 1,
     isLoading: false,
     isAuthenticated: false,
     isRefreshing: false,
