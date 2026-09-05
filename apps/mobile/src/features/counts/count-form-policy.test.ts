@@ -82,3 +82,43 @@ test('offline disclosure follows loaded query state without replacing results', 
     assert.equal(countsView(status, 0), 'empty');
   }
 });
+
+test('Edit Save requires valid changed values and live connectivity', async () => {
+  const { canSaveCountEdit, editCountDraft } = await import('./count-form-policy.ts');
+  const original = { name: 'Count', startAt: Date.parse('2026-01-02T05:37:42.123Z') };
+  assert.equal(canSaveCountEdit(original, original, true, false), false);
+  assert.equal(canSaveCountEdit({ ...original, name: 'Changed' }, original, true, false), true);
+  assert.equal(canSaveCountEdit({ ...original, name: '' }, original, true, false), false);
+  assert.equal(canSaveCountEdit({ ...original, name: 'Changed' }, original, false, false), false);
+  assert.equal(canSaveCountEdit({ ...original, name: 'Changed' }, original, true, true), false);
+  const previous = process.env.TZ;
+  try {
+    process.env.TZ = 'America/Los_Angeles';
+    const reverted = editCountDraft({ name: 'Changed', startAt: toLocalMidnight(new Date(original.startAt)) }, original);
+    assert.equal(reverted.startAt, original.startAt);
+    assert.equal(editCountDraft({ name: 'Changed', startAt: original.startAt + 86400000 }, original).startAt, original.startAt + 86400000);
+  } finally { if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; }
+});
+test('Edit duplicate lookup excludes itself and skips invalid names', async () => {
+  const { countDuplicateArgs } = await import('./count-form-policy.ts');
+  assert.deepEqual(countDuplicateArgs(' Count ', 'self'), { name: 'Count', excludeId: 'self' });
+  assert.equal(countDuplicateArgs('', 'self'), 'skip');
+});
+test('Delete holds pending until settlement, prevents repeats and permits failure retry', async () => {
+  const { deleteCountOnce } = await import('./count-form-policy.ts');
+  const lock = { current: false };
+  let resolve!: () => void;
+  let calls = 0;
+  const remove = () => { calls++; return new Promise<void>(r => { resolve = r; }); };
+  assert.equal(await deleteCountOnce(lock, false, remove), 'ignored');
+  const first = deleteCountOnce(lock, true, remove);
+  assert.equal(lock.current, true);
+  assert.equal(await deleteCountOnce(lock, true, remove), 'ignored');
+  assert.equal(calls, 1);
+  resolve();
+  assert.equal(await first, 'deleted');
+  assert.equal(lock.current, false);
+  assert.equal(await deleteCountOnce(lock, true, async () => { throw Error('failed'); }), 'failed');
+  assert.equal(lock.current, false);
+  assert.equal(await deleteCountOnce(lock, true, async () => {}), 'deleted');
+});
