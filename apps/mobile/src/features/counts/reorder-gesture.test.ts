@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { handleResponder } from './reorder-gesture.ts';
+test('native callbacks route grant/move/release/termination through current state', () => {
+  const calls: unknown[] = [];
+  const state = {pending:false, start:(y:number)=>{calls.push(['start',y]);}, move:(y:number)=>{calls.push(['move',y]);}, end:()=>{calls.push('end');}};
+  const handlers = handleResponder(() => state);
+  assert.equal(handlers.onStartShouldSetPanResponder(), true);
+  handlers.onPanResponderGrant({nativeEvent:{pageY:25}});
+  handlers.onPanResponderMove(null, {moveY:200});
+  handlers.onPanResponderRelease();
+  handlers.onPanResponderTerminate();
+  assert.deepEqual(calls, [['start',25],['move',200],'end','end']);
+  state.pending = true;
+  assert.equal(handlers.onStartShouldSetPanResponder(), false);
+  handlers.onPanResponderGrant({nativeEvent:{pageY:99}});
+  handlers.onPanResponderMove(null, {moveY:300});
+  assert.equal(calls.length, 4);
+  assert.equal(handlers.onPanResponderTerminationRequest(), false);
+});
