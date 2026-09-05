@@ -45,3 +45,46 @@ test('page bound still deletes', async () => {
   f.api.listSessions=async () => ({data:[],listMetadata:{after:String(++pages)}});
   const r=await smoke(env,()=>f.api); assert.equal(pages,3); assert.equal(r.code,'SESSION_CLEANUP_FAILED'); assert.equal(r.cleanup,'deleted');
 });
+for (const override of [
+  {CONVEX_DEPLOYMENT:'local:'}, {CONVEX_DEPLOYMENT:'anonymous:'},
+  {CONVEX_DEPLOYMENT:'local:bad value'}, {CONVEX_DEPLOYMENT:'local:fixture\n'}, {CONVEX_DEPLOYMENT:'anonymous:a:b'},
+  {CONVEX_DEPLOYMENT:'dev:cloud'}, {CONVEX_DEPLOYMENT:'cloud'}, {CONVEX_DEPLOY_KEY:'key'},
+  {WORKOS_API_KEY:'   ', WORKOS_STAGING_KEY_SHA256:createHash('sha256').update('   ').digest('hex')},
+  {WORKOS_CLIENT_ID:'   ', WORKOS_STAGING_CLIENT_ID:'   '},
+  {WORKOS_STAGING_KEY_SHA256:'   '}, {WORKOS_STAGING_CLIENT_ID:'   '},
+  {WORKOS_STAGING_KEY_SHA256:undefined}, {WORKOS_STAGING_CLIENT_ID:undefined},
+]) {
+  test(`strict guard ${JSON.stringify(override)}`, async () => {
+    const f=fixture(); let factories=0;
+    const r=await smoke({...env,...override},()=>{ factories++; return f.api; });
+    assert.equal(r.code,'GUARD_REFUSED'); assert.equal(factories,0); assert.deepEqual(f.calls,[]);
+  });
+}
+for (const deployment of ['local:fixture-123', 'anonymous:fixture_123']) {
+  test(`accept ${deployment}`, async () => {
+    const f=fixture(); const r=await smoke({...env,CONVEX_DEPLOYMENT:deployment},()=>f.api);
+    assert.equal(r.code,'OK'); assert.equal(r.cleanup,'deleted');
+  });
+}
+test('missing session ownership refuses all revocation but attempts owned deletion', async () => {
+  const f=fixture();
+  f.api.listSessions=async () => ({data:[{id:'owned',userId:'created-user'},{id:'unowned'}] as unknown as {id:string;userId:string}[],listMetadata:{}});
+  const r=await smoke(env,()=>f.api);
+  assert.equal(r.code,'SESSION_CLEANUP_FAILED'); assert.equal(r.cleanup,'deleted');
+  assert.equal(f.calls.includes('revoke'),false); assert.equal(f.calls.includes('delete'),true);
+});
+test('CLI rejects enroll without changing a mock credential file', async () => {
+  const {mkdtemp,writeFile,readFile,rm}=await import('node:fs/promises');
+  const {tmpdir}=await import('node:os');
+  const {join}=await import('node:path');
+  const {fileURLToPath}=await import('node:url');
+  const {spawnSync}=await import('node:child_process');
+  const cwd=await mkdtemp(join(tmpdir(),'workos-cli-'));
+  try {
+    const original='[env]\nMOCK = "untouched"\n';
+    await writeFile(join(cwd,'mise.local.toml'),original);
+    const r=spawnSync(process.execPath,[fileURLToPath(new URL('./workos-staging-cli.ts',import.meta.url)),'enroll','--confirm-owner-verified-staging-pair'],{cwd,env:{...env},encoding:'utf8',timeout:10000});
+    assert.equal(r.status,1); assert.deepEqual(JSON.parse(r.stdout),{code:'CLI_REFUSED'});
+    assert.equal(await readFile(join(cwd,'mise.local.toml'),'utf8'),original);
+  } finally { await rm(cwd,{recursive:true,force:true}); }
+});

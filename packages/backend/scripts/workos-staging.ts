@@ -5,18 +5,19 @@ type User = { id: string; email: string; externalId?: string | null; metadata: R
 export type Api = {
   createUser(input: { email: string; password: string; emailVerified: boolean; externalId: string; metadata: Record<string, string> }): Promise<User>;
   authenticateWithPassword(input: { clientId: string; email: string; password: string }): Promise<{ user: { id: string }; accessToken: string; refreshToken: string }>;
-  listSessions(userId: string, options: { limit: number; after?: string }): Promise<{ data: { id: string; userId?: string }[]; listMetadata: { after?: string | null } }>;
+  listSessions(userId: string, options: { limit: number; after?: string }): Promise<{ data: { id: string; userId: string }[]; listMetadata: { after?: string | null } }>;
   revokeSession(input: { sessionId: string }): Promise<void>;
   deleteUser(id: string): Promise<void>;
 };
 export const fingerprint = (key: string) => createHash('sha256').update(key).digest('hex');
-export function stagingGuard(env: Env, requireBinding = true): boolean {
+export function stagingGuard(env: Env): boolean {
   return env.WORKOS_MODE === 'staging' && env.NODE_ENV !== 'production'
     && !env.CONVEX_DEPLOY_KEY
-    && (!env.CONVEX_DEPLOYMENT || env.CONVEX_DEPLOYMENT.startsWith('local:'))
-    && !!env.WORKOS_API_KEY && !!env.WORKOS_CLIENT_ID
-    && (!requireBinding || (env.WORKOS_STAGING_KEY_SHA256 === fingerprint(env.WORKOS_API_KEY)
-      && env.WORKOS_STAGING_CLIENT_ID === env.WORKOS_CLIENT_ID));
+    && (!env.CONVEX_DEPLOYMENT || (env.CONVEX_DEPLOYMENT === env.CONVEX_DEPLOYMENT.trim()
+      && /^(?:local|anonymous):[A-Za-z0-9_-]+$/.test(env.CONVEX_DEPLOYMENT)))
+    && !!env.WORKOS_API_KEY?.trim() && !!env.WORKOS_CLIENT_ID?.trim()
+    && (env.WORKOS_STAGING_KEY_SHA256 === fingerprint(env.WORKOS_API_KEY!)
+      && env.WORKOS_STAGING_CLIENT_ID === env.WORKOS_CLIENT_ID);
 }
 export async function smoke(env: Env, factory: () => Api | Promise<Api>) {
   const result = { runId: randomUUID(), code: 'GUARD_REFUSED', cleanup: 'not_needed', sessions: 'not_attempted' };
@@ -49,7 +50,7 @@ export async function smoke(env: Env, factory: () => Api | Promise<Api>) {
         const seen = new Set<string>();
         for (let page = 0; page < 3; page++) {
           const sessions = await api.listSessions(userId, { limit: 10, after });
-          if (sessions.data.length > 10 || sessions.data.some(s => !s.id || (s.userId !== undefined && s.userId !== userId))) throw Error();
+          if (sessions.data.length > 10 || sessions.data.some(s => !s.id || s.userId !== userId)) throw Error();
           for (const session of sessions.data) await api.revokeSession({ sessionId: session.id });
           const next = sessions.listMetadata.after;
           if (!next) { complete = true; break; }

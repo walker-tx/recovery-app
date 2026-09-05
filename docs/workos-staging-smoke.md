@@ -15,30 +15,36 @@ email delivery per local-auth setup. A digest pin is **continuity checking,
 not server-side proof of staging**. Prefixes are not evidence. An attacker
 who can replace both credentials and pins is outside this protection.
 
-Commands below run from the repository root containing the authoritative
-`mise.local.toml`. For the current isolated worktree:
+The CLI supports **run only**: it never reads or writes credential files and
+has no enrollment command. Establish both pins through existing Mise config
+only after code review and explicit owner verification of the pair. Run these
+operator-only commands from the verified authoritative repository root, not
+from a worktree with different config. Do not enable shell tracing or tee/log
+the pipes. The producers contain no literal credentials; their output goes
+straight to Mise stdin, never the terminal. No raw secret command arguments
+are used. This is deliberate trust enrollment, not automatic detection.
 
 ```sh
-# DANGEROUS LOCAL TRUST ENROLLMENT: only after code review and explicit owner
-# verification of the current pair. No network; writes two pins into [env].
-mise exec -- node .worktrees/workos-staging-test-users/packages/backend/scripts/workos-staging-cli.ts enroll --confirm-owner-verified-staging-pair
+# Separately enroll SHA-256 of the exact key and the exact client ID.
+mise exec -- node -e 'const k=process.env.WORKOS_API_KEY;if(!k?.trim())process.exit(1);process.stdout.write(require("node:crypto").createHash("sha256").update(k).digest("hex"))' | mise set --file mise.local.toml --stdin WORKOS_STAGING_KEY_SHA256
+mise exec -- node -e 'const c=process.env.WORKOS_CLIENT_ID;if(!c?.trim())process.exit(1);process.stdout.write(c)' | mise set --file mise.local.toml --stdin WORKOS_STAGING_CLIENT_ID
 
-# LIVE operation: creates/authenticates/revokes/deletes one disposable user.
-# A fresh Mise invocation loads the enrolled pins.
+# LIVE: only after both enrollment commands succeed; fresh Mise loads pins.
 mise exec -- node .worktrees/workos-staging-test-users/packages/backend/scripts/workos-staging-cli.ts run
 ```
 
-After integration remove `.worktrees/workos-staging-test-users/` from paths.
-Enrollment refuses existing pin names. Rotation requires renewed owner
-verification and explicit editing of `WORKOS_STAGING_KEY_SHA256` (SHA-256 hex
-of the exact key) and `WORKOS_STAGING_CLIENT_ID` in the gitignored Mise config;
-never auto-enroll a rotated pair. Do not put credentials in command arguments,
-.env files, stdout, or test artifacts. Enrollment prints only a fixed code.
-The existing config must have a conventional `[env]` section with no existing
-pins; unsupported config forms fail closed rather than being migrated.
+Use a shell with `set -o pipefail` and stop on either enrollment failure.
+Missing, blank, partial, or mismatched pins fail closed. Never auto-enroll a
+rotated pair; rotation requires renewed owner verification and deliberate
+Mise updates. After integration remove `.worktrees/workos-staging-test-users/`
+from the run path. Do not put credentials in .env files or test artifacts.
 
-Run refuses missing/mismatched pins, non-staging mode, production NODE_ENV,
-any deployment key, and any configured Convex deployment not `local:`.
+Run refuses non-staging mode, production NODE_ENV, any deployment key, and
+configured Convex deployments except strictly formed `local:<identifier>` or
+`anonymous:<identifier>` (nonempty ASCII letters, digits, underscores, hyphens).
+Cloud/dev/prod and malformed identifiers are refused. Whitespace-only keys
+and client IDs are refused even if pins match. Prefixes never establish
+whether a WorkOS credential is staging.
 Convex may be unset because no Convex network/data operation occurs. Mailpit
 is not required because the verified fixture neither sends nor consumes an
 email. Any future integration must separately gate local Convex and Mailpit.
@@ -57,7 +63,7 @@ The SDK's installed transport supports `timeout: 10000` milliseconds and
 
 Only a returned user matching all run ownership fields becomes a deletion
 target. Session listing is user-scoped, at most three pages of ten sessions;
-foreign user IDs, repeated cursors, and excess pages fail cleanup. Revocation
+missing or foreign session user IDs, repeated cursors, and excess pages fail cleanup. Revocation
 and deletion execute in `finally`, including after authentication failure.
 Deletion is still attempted if listing/revocation fails. Each request has a
 10-second SDK timeout; the worst-case sequence is bounded but can take minutes.
