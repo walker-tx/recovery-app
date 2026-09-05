@@ -16,7 +16,8 @@
 ## Expo and secrets
 
 - Routes and layouts live under `apps/mobile/src/app`.
-- Local development credentials and environment values are managed through the gitignored `mise.local.toml`. Run local commands through `mise exec -- ...` so those values are loaded. `.env*` files are forbidden, including examples; never create them or copy values from `mise.local.toml` into them.
+- Local development credentials and environment values are managed through the gitignored `mise.local.toml`. Run local commands through `mise exec -- ...` so those values are loaded. Do not maintain `.env*` files, including examples, or copy values from `mise.local.toml` into them.
+- Narrow Convex bootstrap exception (approved in #28): the Convex CLI may temporarily generate `packages/backend/.env.local` during local bootstrap. Use the existing `scripts/zero.sh` workflow to validate and migrate only `CONVEX_DEPLOYMENT`, `CONVEX_URL`, and `CONVEX_SITE_URL` into `mise.local.toml` through `scripts/migrate-convex-dotenv.sh`, then remove the generated file and pass `scripts/check-no-dotenv.sh`. Only local/anonymous deployments and loopback URLs are permitted; unsupported content must fail closed. Never add application secrets, hand-author this file, commit it, or use it as an ongoing configuration source. Mise remains authoritative.
 - `EXPO_PUBLIC_*` values are bundled into the app and must never contain secrets.
 - Convex Auth tokens on mobile must remain in `expo-secure-store`.
 
