@@ -81,11 +81,11 @@ function CountDetailContent({ id, disabled, onDelete }: { id: Id<'counts'>; disa
       <CountReading count={count} now={now} size="detail" />
     </View>
     <Pressable disabled={disabled} accessibilityRole="button" accessibilityLabel={`Units, ${count.unit}`} onPress={() => router.push({ pathname: '/(app)/counts/[id]/units', params: { id } })} className="min-h-touch flex-row items-center justify-between border-y border-line py-md">
-      <Typography variant="overline">UNITS</Typography><Typography className="text-blueprint">{count.unit[0].toUpperCase() + count.unit.slice(1)} ›</Typography>
+      <Typography variant="overline" className="text-ink-muted" style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.54, lineHeight: undefined }}>UNITS</Typography><Typography className="text-blueprint">{count.unit[0].toUpperCase() + count.unit.slice(1)} ›</Typography>
     </Pressable>
     <View style={{ gap: 11 }}>
-      {milestone ? <View className="flex-row items-center justify-between gap-sm"><Typography variant="overline">LATEST MILESTONE</Typography><MilestoneBadge milestone={milestone} /></View> : null}
-      <View style={{ gap: 3 }}><Typography variant="overline">STARTED</Typography><Typography>{formatStarted(count.startAt, true)}</Typography></View>
+      {milestone ? <View className="flex-row items-center justify-between gap-sm"><Typography variant="overline" className="text-ink-muted" style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1.6, lineHeight: undefined }}>LATEST MILESTONE</Typography><MilestoneBadge milestone={milestone} /></View> : null}
+      <View style={{ gap: 3 }}><Typography variant="overline" className="text-ink-muted" style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1.6, lineHeight: undefined }}>STARTED</Typography><Typography style={{ fontSize: 14, lineHeight: 21.7 }}>{formatStarted(count.startAt, true)}</Typography></View>
     </View>
     <View style={{ flexGrow: 1 }} /><Button variant="secondary" disabled={disabled} onPress={edit}>Edit</Button>
   </View>;

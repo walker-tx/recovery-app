@@ -11,6 +11,15 @@ test('detail notice policy distinguishes loading, cached offline, and reconnecte
   }
 });
 
+// Artifact HTML 927–931: font shorthand resets label line-height to normal.
+test('detail metadata uses condensed muted labels and a 14px started date', async () => {
+  const source = await readFile(new URL('./count-detail-screen.tsx', import.meta.url), 'utf8');
+  for (const [label, size, tracking] of [['UNITS', 11, 1.54], ['LATEST MILESTONE', 10, 1.6], ['STARTED', 10, 1.6]]) {
+    assert.ok(source.includes(`<Typography variant="overline" className="text-ink-muted" style={{ fontSize: ${size}, fontWeight: '600', letterSpacing: ${tracking}, lineHeight: undefined }}>${label}</Typography>`), String(label));
+  }
+  assert.ok(source.includes('<Typography style={{ fontSize: 14, lineHeight: 21.7 }}>{formatStarted(count.startAt, true)}</Typography>'));
+});
+
 // Source contract only: the native component is not mounted by this Node suite.
 test('detail source subscribes before loading return and adds notice alongside cached reading', async () => {
   const source = await readFile(new URL('./count-detail-screen.tsx', import.meta.url), 'utf8');
