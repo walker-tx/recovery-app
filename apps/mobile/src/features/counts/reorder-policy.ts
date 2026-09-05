@@ -36,3 +36,8 @@ export function dragTarget(rows: RowFrame[], y: number): number {
 export function edgeScroll(y: number, top: number, height: number): number {
   return y < top + 56 ? -12 : y > top + height - 56 ? 12 : 0;
 }
+
+// A retry must restore the previously loaded window before reconciling membership.
+export function restoringLoadedCounts(status: string, count: number, extent: number): boolean {
+  return status !== 'Exhausted' && count < extent;
+}

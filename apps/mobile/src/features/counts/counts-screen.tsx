@@ -6,7 +6,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Alert, BackHandler, findNodeHandle, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/button';
-import { changedPositions, proposedOrder, reorderReducer } from './reorder-policy';
+import { changedPositions, proposedOrder, reorderReducer, restoringLoadedCounts } from './reorder-policy';
 import { ReorderRows, type ScrollMetrics } from './reorder-rows';
 import { Typography } from '@/components/ui/text';
 import { useCountNow } from './count-clock';
@@ -24,6 +24,7 @@ function CountsOwner() {
   const [draft, dispatch] = useReducer(reorderReducer, null);
   const submitting = useRef(false);
   const dirty = useRef(false);
+  const loadedExtent = useRef(25);
   function cancel() { if (!submitting.current) dispatch({type:'cancel'}); }
   function requestLeave(leave:()=>void) {
     if (submitting.current) return;
@@ -40,11 +41,11 @@ function CountsOwner() {
     return () => subscription.remove();
   }, [draft]));
   return <SafeAreaView className="flex-1 bg-canvas" style={{paddingHorizontal:20}}>
-    <CountQueryBoundary message="Counts couldn’t be loaded. Try again."><CountsContent draft={draft} dispatch={dispatch} submitting={submitting} dirty={dirty} /></CountQueryBoundary>
+    <CountQueryBoundary message="Counts couldn’t be loaded. Try again."><CountsContent draft={draft} dispatch={dispatch} submitting={submitting} dirty={dirty} loadedExtent={loadedExtent} /></CountQueryBoundary>
   </SafeAreaView>;
 }
 
-function CountsContent({draft, dispatch, submitting, dirty}: {draft: ReturnType<typeof reorderReducer>; dispatch: React.Dispatch<Parameters<typeof reorderReducer>[1]>; submitting: React.RefObject<boolean>; dirty: React.RefObject<boolean>}) {
+function CountsContent({draft, dispatch, submitting, dirty, loadedExtent}: {draft: ReturnType<typeof reorderReducer>; dispatch: React.Dispatch<Parameters<typeof reorderReducer>[1]>; submitting: React.RefObject<boolean>; dirty: React.RefObject<boolean>; loadedExtent: React.RefObject<number>}) {
   const router = useRouter();
   const now = useCountNow();
   const convex = useConvex();
@@ -53,14 +54,22 @@ function CountsContent({draft, dispatch, submitting, dirty}: {draft: ReturnType<
   const wasReordering = useRef(false);
   const scroll = useRef<ScrollView>(null);
   const metrics = useRef<ScrollMetrics>({offset:0, height:0, contentHeight:0});
-  const { results, status, loadMore } = usePaginatedQuery(api.counts.list, {}, { initialNumItems: 25 });
+  // Snapshot the owner’s loaded window on mount; retries must not shrink it.
+  const restoreExtent = useRef(loadedExtent.current);
+  const { results, status, loadMore } = usePaginatedQuery(api.counts.list, {}, { initialNumItems: Math.min(25, restoreExtent.current) });
+  const restoring = restoringLoadedCounts(status, results.length, restoreExtent.current);
+  useEffect(() => {
+    loadedExtent.current = Math.max(loadedExtent.current, results.length);
+    // Convex may return a short page. Fetch only the remaining prior window.
+    if (restoring && status === 'CanLoadMore') loadMore(Math.min(25, restoreExtent.current - results.length));
+  }, [results.length, status, restoring, loadMore, loadedExtent]);
   const connection = useConvexConnectionState();
   const offlineNotice = countsOfflineNotice(status, connection.isWebSocketConnected);
-  const view = countsView(status, results.length);
+  const view = countsView(restoring ? 'LoadingFirstPage' : status, results.length);
   const serverIds = results.map(count => count._id);
   const orderedIds = draft ? proposedOrder(serverIds as string[], draft.ids) : serverIds;
   const changed = changedPositions(serverIds as string[], orderedIds);
-  useEffect(() => { dirty.current = changed.length > 0; }, [changed.length, dirty]);
+  useEffect(() => { if (!restoring) dirty.current = changed.length > 0; }, [changed.length, dirty, restoring]);
   const byId = new Map(results.map(count => [count._id as string, count]));
   const ordered = orderedIds.flatMap(id => { const count = byId.get(id); return count ? [count] : []; });
   const pending = draft?.pending ?? false;
@@ -77,13 +86,13 @@ function CountsContent({draft, dispatch, submitting, dirty}: {draft: ReturnType<
   }, [draft !== null]);
   function cancel() { if (!submitting.current) dispatch({type:'cancel'}); }
   function move(id:string, to:number) {
-    if (!draft || submitting.current || orderedIds.indexOf(id) === to) return;
+    if (!draft || submitting.current || restoring || orderedIds.indexOf(id) === to) return;
     // Incorporate current membership before moving, without ever copying records.
     dispatch({type:'enter', ids:orderedIds});
     dispatch({type:'move', id, to});
   }
   async function save() {
-    if (!draft || submitting.current) return;
+    if (!draft || submitting.current || restoring) return;
     if (!convex.connectionState().isWebSocketConnected) return;
     submitting.current = true;
     dispatch({type:'save'});

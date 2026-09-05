@@ -44,7 +44,7 @@ test('Done submits full displayed order, unchanged and above 256, retaining fail
   const marker = '  async function save() {';
   const body = source.slice(source.indexOf(marker) + marker.length, source.indexOf("  if (view === 'loading')"));
   const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
-  const save = new AsyncFunction('draft', 'submitting', 'changed', 'orderedIds', 'convex', 'dispatch', 'reorder', 'AccessibilityInfo', 'cancel', body.trim().slice(0, -1).replace(/ as typeof serverIds/g, ''));
+  const save = new AsyncFunction('draft', 'submitting', 'changed', 'orderedIds', 'convex', 'dispatch', 'reorder', 'AccessibilityInfo', 'cancel', 'restoring = false', body.trim().slice(0, -1).replace(/ as typeof serverIds/g, ''));
   const baseline = ['a','b','c','d'];
   const desired = ['b','a','c','d'];
   assert.deepEqual(proposedOrder(['c','a','b','d'], changedPositions(baseline, desired)), ['c','b','a','d']);
