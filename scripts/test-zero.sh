@@ -115,6 +115,7 @@ new_fixture() {
   fixture=$TMP/$1
   mkdir -p "$fixture/scripts" "$fixture/packages/backend/convex" "$fixture/fake-bin" "$fixture/state/env"
   cp "$ZERO" "$DOTENV_CHECK" "$DOTENV_MIGRATE" "$fixture/scripts/"
+  [ ! -f "$ROOT/scripts/convex-metadata.cjs" ] || cp "$ROOT/scripts/convex-metadata.cjs" "$fixture/scripts/"
   : > "$fixture/mise.toml"
   : > "$fixture/state/commands"
 
@@ -203,7 +204,19 @@ case ${1:-} in
   start)
     case "$*" in
       'start mailpit backend')
-        [ -f packages/backend/.env.local ] || [ -f "$ZERO_TEST_STATE/env/CONVEX_DEPLOYMENT" ] || printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'CONVEX_URL=http://127.0.0.1:3210' 'CONVEX_SITE_URL=http://127.0.0.1:3211' > packages/backend/.env.local
+        if [ ! -f packages/backend/.env.local ] && [ ! -f "$ZERO_TEST_STATE/env/CONVEX_DEPLOYMENT" ]; then
+          case ${ZERO_TEST_METADATA:-canonical} in
+            timeout) printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' > packages/backend/.env.local ;;
+            delayed|partial)
+              (sleep 1
+               printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' > packages/backend/.env.local
+               sleep 1
+               printf '%s\n' 'VITE_CONVEX_URL=http://127.0.0.1:3210' 'VITE_CONVEX_SITE_URL=http://127.0.0.1:3211' >> packages/backend/.env.local) >/dev/null 2>&1 &
+              if [ "$ZERO_TEST_METADATA" = partial ]; then printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' > packages/backend/.env.local; fi ;;
+            *) printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'CONVEX_URL=http://127.0.0.1:3210' 'CONVEX_SITE_URL=http://127.0.0.1:3211' > packages/backend/.env.local ;;
+          esac
+        fi
+        touch "$ZERO_TEST_STATE/started"
         ;;
       'start mobile') ;;
       *) exit 64 ;;
@@ -213,10 +226,11 @@ case ${1:-} in
     ;;
   status)
     case "$*" in
-      'status mailpit'|'status backend'|'status mobile') echo "pitchfork $*" >> "$ZERO_TEST_STATE/commands"; echo "${2}: running" ;;
+      'status mailpit'|'status backend'|'status mobile') echo "pitchfork $*" >> "$ZERO_TEST_STATE/commands"; if [ -f "$ZERO_TEST_STATE/started" ] || [ "${ZERO_TEST_EXISTING:-0}" = 1 ]; then echo "${2}: running"; else echo "${2}: stopped"; fi ;;
       *) exit 64 ;;
     esac
     ;;
+  stop) echo "pitchfork $*" >> "$ZERO_TEST_STATE/commands" ;;
   mcp) echo 'pitchfork mcp' >> "$ZERO_TEST_STATE/commands" ;;
   *) exit 64 ;;
 esac
@@ -233,6 +247,39 @@ run_zero() {
     -u WORKOS_MODE -u AUTH_EMAIL_DELIVERY_URL -u EXPO_PUBLIC_CONVEX_URL \
     ZERO_TEST_STATE="$fixture/state" PATH="$fixture/fake-bin:$PATH" "$@" bash scripts/zero.sh)
 }
+
+# Simulated CLI-generated metadata only.
+for mode in delayed partial; do
+  f=$(new_fixture "$mode")
+  run_zero "$f" ZERO_TEST_METADATA="$mode" >/dev/null
+  [ ! -e "$f/packages/backend/.env.local" ] || fail "$mode metadata retained"
+  assert_log "$f" 'mise set stdin CONVEX_URL'
+  refute_log "$f" 'mise set stdin VITE_CONVEX_URL'
+done
+for mode in duplicate mixed duplicate-site mixed-site duplicate-deployment unsupported remote; do
+  f=$(new_fixture "invalid-$mode")
+  printf '%s\n' 'CONVEX_DEPLOYMENT=anonymous:fixture-local' 'VITE_CONVEX_URL=http://127.0.0.1:3210' 'VITE_CONVEX_SITE_URL=http://127.0.0.1:3211' > "$f/packages/backend/.env.local"
+  case $mode in
+    duplicate) line='VITE_CONVEX_URL=http://127.0.0.1:3210' ;;
+    mixed) line='CONVEX_URL=http://127.0.0.1:3210' ;;
+    duplicate-site) line='VITE_CONVEX_SITE_URL=http://127.0.0.1:3211' ;;
+    mixed-site) line='CONVEX_SITE_URL=http://127.0.0.1:3211' ;;
+    duplicate-deployment) line='CONVEX_DEPLOYMENT=anonymous:fixture-local' ;;
+    unsupported) line='UNSUPPORTED_SECRET=synthetic-not-a-real-secret' ;;
+    remote) sed -i.bak 's@127.0.0.1:3211@remote.invalid:3211@' "$f/packages/backend/.env.local"; rm "$f/packages/backend/.env.local.bak"; line='' ;;
+  esac
+  printf '%s\n' "$line" >> "$f/packages/backend/.env.local"
+  if run_zero "$f" >"$f/state/output" 2>&1; then fail "$mode accepted"; fi
+  [ ! -s "$f/state/commands" ] || fail "$mode wrote configuration"
+  [ -f "$f/packages/backend/.env.local" ] || fail "$mode removed diagnostics"
+  ! grep -q synthetic-not-a-real-secret "$f/state/output" || fail 'secret fixture logged'
+done
+for existing_service in 0 1; do
+  f=$(new_fixture "timeout-$existing_service")
+  if run_zero "$f" ZERO_TEST_METADATA=timeout ZERO_TEST_EXISTING="$existing_service" RECOVERY_METADATA_TIMEOUT_SECONDS=1 >/dev/null 2>&1; then fail 'timeout accepted'; fi
+  [ -f "$f/packages/backend/.env.local" ] || fail 'timeout removed diagnostics'
+  if [ "$existing_service" = 0 ]; then assert_log "$f" 'pitchfork stop backend'; assert_log "$f" 'pitchfork stop mailpit'; else refute_log "$f" 'pitchfork stop backend'; refute_log "$f" 'pitchfork stop mailpit'; fi
+done
 
 root_fixture=$(new_fixture root)
 impostor=$TMP/impostor
