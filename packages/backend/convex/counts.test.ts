@@ -368,3 +368,35 @@ test("transaction write exhaustion rolls back the entire reorder", async () => {
   await expect(a.mutation(api.counts.reorder, { ids })).rejects.toThrow(/Wrote too many documents/);
   expect(await t.run(async ctx => Promise.all(ids.map(id => ctx.db.get(id))))).toEqual(before);
 });
+
+test.each([false, true])("reorder accepts empty/singleton ids (singleton: %s) without collateral changes", async (singleton) => {
+  const { t, a, b } = setup();
+  const id = await a.mutation(api.counts.create, draft);
+  await a.mutation(api.counts.create, { ...draft, name: "Unsubmitted" });
+  await b.mutation(api.counts.create, draft);
+  const before = await t.run(ctx => ctx.db.query("counts").collect());
+  expect(await a.mutation(api.counts.reorder, { ids: singleton ? [id] : [] })).toBeNull();
+  expect(await t.run(ctx => ctx.db.query("counts").collect())).toEqual(before);
+});
+
+test("reorder validators reject malformed and wrong-table ids without collateral changes", async () => {
+  const { t, a, b } = setup();
+  const id = await a.mutation(api.counts.create, draft);
+  await b.mutation(api.counts.create, draft);
+  const profileId = await t.run(ctx => ctx.db.insert("profiles", {
+    ownerSubject: "a", displayName: "A", onboardingComplete: false,
+  }));
+  const before = await t.run(async ctx => ({
+    counts: await ctx.db.query("counts").collect(),
+    profile: await ctx.db.get(profileId),
+  }));
+  for (const invalidId of ["not-an-id", profileId]) {
+    await expect(a.mutation(api.counts.reorder, {
+      ids: [id, invalidId as Id<"counts">],
+    })).rejects.toThrow(/Validator error: Expected ID for table "counts"/);
+    expect(await t.run(async ctx => ({
+      counts: await ctx.db.query("counts").collect(),
+      profile: await ctx.db.get(profileId),
+    }))).toEqual(before);
+  }
+});
