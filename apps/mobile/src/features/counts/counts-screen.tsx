@@ -15,21 +15,42 @@ import { countsView, countsOfflineNotice } from './count-form-policy';
 import { CountQueryBoundary } from './count-query-boundary';
 
 export function CountsScreen() {
+  // The protected app navigator unmounts this owner on sign-out/account changes.
+  return <CountsOwner />;
+}
+
+function CountsOwner() {
+  const navigation = useNavigation();
+  const [draft, dispatch] = useReducer(reorderReducer, null);
+  const submitting = useRef(false);
+  const dirty = useRef(false);
+  function cancel() { if (!submitting.current) dispatch({type:'cancel'}); }
+  function requestLeave(leave:()=>void) {
+    if (submitting.current) return;
+    if (!dirty.current) {cancel(); leave(); return;}
+    Alert.alert('Discard changes?', 'Your changes haven’t been saved.', [
+      {text:'Keep editing', style:'cancel'},
+      {text:'Discard', style:'destructive', onPress:() => {cancel(); leave();}},
+    ]);
+  }
+  usePreventRemove(draft !== null, ({data}) => requestLeave(() => navigation.dispatch(data.action)));
+  useFocusEffect(useCallback(() => {
+    if (!draft) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {requestLeave(() => {}); return true;});
+    return () => subscription.remove();
+  }, [draft]));
   return <SafeAreaView className="flex-1 bg-canvas" style={{paddingHorizontal:20}}>
-    <CountQueryBoundary message="Counts couldn’t be loaded. Try again."><CountsContent /></CountQueryBoundary>
+    <CountQueryBoundary message="Counts couldn’t be loaded. Try again."><CountsContent draft={draft} dispatch={dispatch} submitting={submitting} dirty={dirty} /></CountQueryBoundary>
   </SafeAreaView>;
 }
 
-function CountsContent() {
+function CountsContent({draft, dispatch, submitting, dirty}: {draft: ReturnType<typeof reorderReducer>; dispatch: React.Dispatch<Parameters<typeof reorderReducer>[1]>; submitting: React.RefObject<boolean>; dirty: React.RefObject<boolean>}) {
   const router = useRouter();
   const now = useCountNow();
-  const navigation = useNavigation();
   const convex = useConvex();
   const reorder = useMutation(api.counts.reorder);
-  const [draft, dispatch] = useReducer(reorderReducer, null);
   const modeControl = useRef<View>(null);
   const wasReordering = useRef(false);
-  const submitting = useRef(false);
   const scroll = useRef<ScrollView>(null);
   const metrics = useRef<ScrollMetrics>({offset:0, height:0, contentHeight:0});
   const { results, status, loadMore } = usePaginatedQuery(api.counts.list, {}, { initialNumItems: 25 });
@@ -39,6 +60,7 @@ function CountsContent() {
   const serverIds = results.map(count => count._id);
   const orderedIds = draft ? proposedOrder(serverIds as string[], draft.ids) : serverIds;
   const changed = changedPositions(serverIds as string[], orderedIds);
+  useEffect(() => { dirty.current = changed.length > 0; }, [changed.length, dirty]);
   const byId = new Map(results.map(count => [count._id as string, count]));
   const ordered = orderedIds.flatMap(id => { const count = byId.get(id); return count ? [count] : []; });
   const pending = draft?.pending ?? false;
@@ -54,20 +76,6 @@ function CountsContent() {
     }
   }, [draft !== null]);
   function cancel() { if (!submitting.current) dispatch({type:'cancel'}); }
-  function requestLeave(leave:()=>void) {
-    if (submitting.current) return;
-    if (!changed.length) { cancel(); leave(); return; }
-    Alert.alert('Discard changes?', 'Your changes haven’t been saved.', [
-      {text:'Keep editing', style:'cancel'},
-      {text:'Discard', style:'destructive', onPress:() => {cancel(); leave();}},
-    ]);
-  }
-  usePreventRemove(draft !== null, ({data}) => requestLeave(() => navigation.dispatch(data.action)));
-  useFocusEffect(useCallback(() => {
-    if (!draft) return;
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {requestLeave(() => {}); return true;});
-    return () => subscription.remove();
-  }, [draft, changed.length]));
   function move(id:string, to:number) {
     if (!draft || submitting.current || orderedIds.indexOf(id) === to) return;
     // Incorporate current membership before moving, without ever copying records.
