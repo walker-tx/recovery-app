@@ -53,11 +53,11 @@ These checks cannot independently detect mislabeled production credentials.
 ## Lifecycle and failure handling
 
 Each run uses a cryptographically random UUID in
-`recovery-smoke+<runId>@example.com`, external ID `recovery-smoke:<runId>`,
+`recovery-smoke+<runId>@example.org`, external ID `recovery-smoke:<runId>`,
 and metadata `recoverySmokeRun`. Passwords and authentication tokens stay in
-process memory. Reserved example.com addresses follow the WorkOS testing
-recommendation; see [WorkOS testing](https://workos.com/docs/authkit/testing)
-and [user management API](https://workos.com/docs/reference/user-management).
+process memory. The owner approved trying the reserved `example.org` domain
+after `example.com` fixtures returned `SSO_REQUIRED`. This does not alter provider
+policy or guarantee that password authentication is permitted for this domain.
 The SDK's installed transport supports `timeout: 10000` milliseconds and
 `maxRetries: 0`; creation is never blindly retried.
 

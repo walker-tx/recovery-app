@@ -24,7 +24,7 @@ export async function smoke(env: Env, factory: () => Api | Promise<Api>) {
   if (!stagingGuard(env)) return result;
   let api: Api;
   try { api = await factory(); } catch { result.code = 'SDK_INIT_FAILED'; return result; }
-  const email = `recovery-smoke+${result.runId}@example.com`;
+  const email = `recovery-smoke+${result.runId}@example.org`;
   const externalId = `recovery-smoke:${result.runId}`;
   const password = randomBytes(32).toString('base64url') + 'aA1!';
   let userId: string | undefined;

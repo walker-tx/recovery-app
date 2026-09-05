@@ -25,7 +25,7 @@ for (const failure of ['', 'create', 'auth', 'revoke', 'delete', 'foreign']) {
     assert.equal(result.code === 'OK', failure === '');
     assert.equal(result.cleanup, failure === 'create' ? 'unknown' : failure === 'delete' ? 'failed' : 'deleted');
     assert.equal(f.calls.includes('delete'), failure !== 'create');
-    if (failure !== 'create') { assert.equal(f.user().email, `recovery-smoke+${result.runId}@example.com`); assert.equal(f.user().externalId, `recovery-smoke:${result.runId}`); assert.deepEqual(f.user().metadata, { recoverySmokeRun: result.runId }); assert.equal(f.user().emailVerified, true); }
+    if (failure !== 'create') { assert.equal(f.user().email, `recovery-smoke+${result.runId}@example.org`); assert.equal(f.user().externalId, `recovery-smoke:${result.runId}`); assert.deepEqual(f.user().metadata, { recoverySmokeRun: result.runId }); assert.equal(f.user().emailVerified, true); }
     if (failure === 'foreign') assert.equal(f.calls.includes('revoke'), false);
   });
 }
