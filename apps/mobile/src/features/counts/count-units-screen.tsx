@@ -1,5 +1,6 @@
+import type { FunctionReturnType } from 'convex/server';
 import { api } from '@recovery/backend/convex/_generated/api';
-import type { Doc, Id } from '@recovery/backend/convex/_generated/dataModel';
+import type { Id } from '@recovery/backend/convex/_generated/dataModel';
 import { useConvex, useConvexConnectionState, useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
@@ -23,7 +24,7 @@ function UnitsContent({ id }: { id: Id<'counts'> }) {
   if (count === undefined) return <><Button variant="ghost" onPress={() => router.back()}>Cancel</Button><ActivityIndicator accessibilityLabel="Loading units" /></>;
   return <UnitsForm key={id} count={count} />;
 }
-function UnitsForm({ count }: { count: Doc<'counts'> }) {
+function UnitsForm({ count }: { count: FunctionReturnType<typeof api.counts.get> }) {
   const [selected, setSelected] = useState<LargestUnit>(count.unit);
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
