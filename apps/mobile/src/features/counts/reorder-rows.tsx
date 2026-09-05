@@ -51,7 +51,11 @@ export function ReorderRows(props:Props) {
     timer.current = null; drag.current = null; setActive(null);
   }
   useEffect(() => () => { generation.current++; if (timer.current) clearInterval(timer.current); }, []);
-  useEffect(() => { if (props.pending || (active && !props.counts.some(c => c._id === active.id))) end(); }, [props.pending, props.counts, active?.id]);
+  useEffect(() => {
+    const rows = drag.current?.rows;
+    // Position-only reorders keep the frozen slots; membership changes invalidate them.
+    if (props.pending || (rows && (rows.length !== props.counts.length || rows.some(row => !props.counts.some(c => c._id === row.id))))) end();
+  }, [props.pending, props.counts, active?.id]);
   function update(y:number) {
     const d = drag.current;
     if (!d || latest.current.pending) return;
@@ -92,6 +96,10 @@ export function ReorderRows(props:Props) {
         const next = {id:count._id, ...event.nativeEvent.layout};
         const previous = frames.current.get(count._id);
         frames.current.set(count._id, next);
+        if (drag.current && previous && previous.height !== next.height) {
+          end();
+          return;
+        }
         // A stationary pointer still needs a new transform after the held slot moves.
         if (previous?.y !== next.y || previous?.height !== next.height) {
           setActive(current => current?.id === count._id ? {...current} : current);

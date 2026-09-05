@@ -8,7 +8,8 @@ import * as policy from './reorder-policy.ts';
 // Drive the real component's callbacks with deterministic hooks and layout frames.
 function fixture(heights: number[]) {
   const slots: any[] = [];
-  let cursor = 0, dirty = true, tick = () => {};
+  let cursor = 0, dirty = true, tick = () => {}, running = false;
+  let effects: (() => void)[] = [];
   const jsx = (type: any, props: any) => ({type, props});
   const react = {
     useRef(value: any) { const i = cursor++; return slots[i] ??= {current:value}; },
@@ -19,7 +20,11 @@ function fixture(heights: number[]) {
         if (result !== slots[i]) { slots[i] = result; dirty = true; }
       }];
     },
-    useEffect() {}, useMemo: (fn: any) => fn(),
+    useEffect(fn: () => void, deps: any[]) {
+      const i = cursor++, previous = slots[i];
+      if (!previous || deps.some((value, j) => value !== previous[j])) effects.push(fn);
+      slots[i] = deps;
+    }, useMemo: (fn: any) => fn(),
   };
   const exports: any = {};
   const source = ts.transpileModule(readFileSync(new URL('./reorder-rows.tsx', import.meta.url), 'utf8'), {
@@ -31,7 +36,7 @@ function fixture(heights: number[]) {
     if (name === './reorder-policy') return policy;
     if (name === 'react-native-reanimated') return {default:{View:'row'}, LinearTransition:{duration:()=>({reduceMotion:()=>null})}, ReduceMotion:{System:0}};
     return {View:'view', colors:{}, Typography:'text', CountRow:'count'};
-  }, setInterval: (fn: any) => {tick = fn; return 1;}, clearInterval() {}});
+  }, setInterval: (fn: any) => {tick = fn; running = true; return 1;}, clearInterval() {running = false; tick = () => {};}});
   const props: any = {
     counts: heights.map((height, i) => ({_id:String(i), name:String(i), height})), now:0, pending:false,
     metrics:{current:{offset:0, height:500, contentHeight:500}},
@@ -44,7 +49,7 @@ function fixture(heights: number[]) {
   };
   let tree: any;
   function render() {
-    if (dirty) { cursor=0; dirty=false; tree=exports.ReorderRows(props); tree.props.ref.current={measureInWindow:(fn:any)=>fn(0,0)}; }
+    while (dirty) { cursor=0; dirty=false; effects=[]; tree=exports.ReorderRows(props); tree.props.ref.current={measureInWindow:(fn:any)=>fn(0,0)}; effects.forEach(fn=>fn()); }
   }
   function layout() {
     render(); let y=0;
@@ -56,10 +61,13 @@ function fixture(heights: number[]) {
   }
   layout();
   return {
-    start(id:string, y:number) { tree.props.children[Number(id)].props.children[1].props.start(y); render(); },
+    start(id:string, y:number) { tree.props.children[props.counts.findIndex((c:any)=>c._id===id)].props.children[1].props.start(y); render(); },
     move(y:number) { tree.props.children[0].props.children[1].props.move(y); render(); },
     frame() { layout(); tick(); render(); return props.counts.map((c:any)=>c._id); },
     layout,
+    replace(rows: {id:string; height:number}[]) { props.counts=rows.map(({id,height})=>({_id:id,name:id,height})); dirty=true; layout(); },
+    running() { return running; },
+    accessibleMove(id:string, to:number) { tree.props.children[props.counts.findIndex((c:any)=>c._id===id)].props.children[1].props.accessibleMove(to); render(); },
     translation(id:string) { return tree.props.children[props.counts.findIndex((c:any)=>c._id===id)].props.style.transform[0].translateY; },
   };
 }
@@ -84,4 +92,31 @@ test('stable slots still allow reversing direction and dragging a tall row downw
   for (let i=0;i<3;i++) assert.deepEqual(short.frame(), ['0','1']);
   const tall=fixture([200,50]); tall.start('0',100); tall.move(225);
   for (let i=0;i<3;i++) assert.deepEqual(tall.frame(), ['1','0']);
+});
+
+for (const change of ['insert', 'delete', 'height'] as const) {
+  test(`${change} cancels an active drag without discarding proposed order`, () => {
+    const f=fixture([200,50]); f.start('1',225); f.move(190); f.layout();
+    assert.equal(f.running(), true);
+    const rows = change === 'insert' ? [{id:'1',height:50},{id:'0',height:200},{id:'2',height:100}]
+      : change === 'delete' ? [{id:'1',height:50}]
+      : [{id:'1',height:50},{id:'0',height:50}];
+    f.replace(rows);
+    assert.equal(f.running(), false);
+    assert.equal(f.translation('1'), 0);
+    f.move(500);
+    assert.deepEqual(f.frame(), rows.map(row=>row.id));
+    if (change !== 'delete') {
+      f.accessibleMove('1',1);
+      assert.equal(f.frame()[1], '1');
+    }
+  });
+}
+
+test('position-only layout keeps the drag and timer active', () => {
+  const f=fixture([200,50]); f.start('1',225); f.move(190); f.layout();
+  assert.equal(f.running(), true);
+  assert.notEqual(f.translation('1'), 0);
+  f.move(225);
+  assert.deepEqual(f.frame(), ['0','1']);
 });
