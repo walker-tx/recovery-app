@@ -7,7 +7,7 @@ The user approved the consolidated product design on 2026-09-05 and subsequently
 Sources:
 - Original epic and five draft stories: session `s-1788119991167-7214-1`, including generation 87.
 - Design artifact: https://claude.ai/code/artifact/b4d70f61-e317-44d3-8127-d88b9733440a
-- Discussion and reconciliation record: `docs/counts-product-discovery-handoff.md`.
+- Executable scope and dependencies: [Counts issue hierarchy #10](https://github.com/walker-tx/recovery-app/issues/10).
 
 The approved reconciliation recorded here supersedes conflicting story or artifact text. Otherwise the artifact is the newer design baseline and compatible original requirements remain. Repository instructions and `docs/architecture.md` govern implementation architecture. The artifact was freshly retrieved successfully during reconciliation; inspect it again for implementation and visual verification rather than relying on prose or temporary captures.
 
