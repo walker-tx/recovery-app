@@ -13,9 +13,9 @@ export function CountReading({ count, now, size = 'row' }: { count: FunctionRetu
     {parts ? parts.map((part, index) => <Typography key={part.unit} className={index === 0 ? 'text-blueprint' : 'text-ink-muted'} style={{ fontSize: index === 0 ? (size === 'row' ? 24 : 40) : (size === 'row' ? 15 : 20), fontVariant: ['tabular-nums'] }}>{formatPart(part)}</Typography>) : <Typography>Reading unavailable.</Typography>}
   </View>;
 }
-export function CountRow({ count, now, onPress }: { count: FunctionReturnType<typeof api.counts.get>; now: number; onPress: () => void }) {
+export function CountRow({ count, now, onPress }: { count: FunctionReturnType<typeof api.counts.get>; now: number; onPress?: () => void }) {
   const milestone = latestMilestone(count.startAt, now);
-  return <Pressable accessibilityRole="button" onPress={onPress} className="flex-row items-center border-t border-line active:opacity-70" style={{ gap: 14, paddingVertical: 15 }}>
+  return <Pressable accessibilityRole={onPress ? "button" : undefined} disabled={!onPress} onPress={onPress} className="flex-row items-center border-t border-line active:opacity-70" style={{ gap: 14, paddingVertical: 15 }}>
     <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
       <View className="flex-row items-center" style={{ gap: 8 }}>
         <Typography numberOfLines={1} ellipsizeMode="tail" style={{ flexShrink: 1, fontSize: 15, fontWeight: '500' }}>{count.name}</Typography>
@@ -24,6 +24,6 @@ export function CountRow({ count, now, onPress }: { count: FunctionReturnType<ty
       <CountReading count={count} now={now} />
       <Typography variant="caption" style={{ fontSize: 11 }}>since {formatStarted(count.startAt)}</Typography>
     </View>
-    <Typography accessibilityElementsHidden importantForAccessibility="no">›</Typography>
+    {onPress ? <Typography accessibilityElementsHidden importantForAccessibility="no">›</Typography> : null}
   </Pressable>;
 }
