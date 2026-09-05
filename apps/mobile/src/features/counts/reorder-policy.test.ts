@@ -37,12 +37,32 @@ test('drag hit testing and autoscroll use measured variable-height rows', () => 
   assert.equal(edgeScroll(250, 0, 500), 0);
 });
 
-test('selected-position payload reproduces draft without sending unchanged membership', () => {
-  const server = ['new','a','b','c','d','more'];
-  const wanted = ['new','c','b','d','a','more'];
-  const payload = changedPositions(server, wanted);
-  assert.deepEqual(payload, ['c','d','a']);
-  assert.deepEqual(proposedOrder(server, payload), wanted);
-  // A new record arriving after submission stays at the top, and deletion wins.
-  assert.deepEqual(proposedOrder(['newer','new','a','b','c','more'], payload), ['newer','new','c','b','a','more']);
+// Execute the actual screen save handler with captured dependencies; no native mount.
+test('Done submits full displayed order, unchanged and above 256, retaining failed drafts', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('./counts-screen.tsx', import.meta.url), 'utf8');
+  const marker = '  async function save() {';
+  const body = source.slice(source.indexOf(marker) + marker.length, source.indexOf("  if (view === 'loading')"));
+  const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+  const save = new AsyncFunction('draft', 'submitting', 'changed', 'orderedIds', 'convex', 'dispatch', 'reorder', 'AccessibilityInfo', 'cancel', body.trim().slice(0, -1).replace(/ as typeof serverIds/g, ''));
+  const baseline = ['a','b','c','d'];
+  const desired = ['b','a','c','d'];
+  assert.deepEqual(proposedOrder(['c','a','b','d'], changedPositions(baseline, desired)), ['c','b','a','d']);
+  for (const ids of [desired, baseline, Array.from({length:600}, (_,i) => String(i))]) {
+    const events: {type:string}[] = [];
+    let payload: string[] | undefined;
+    await save({ids}, {current:false}, changedPositions(baseline, ids), ids, {connectionState:() => ({isWebSocketConnected:true})}, (event: {type:string}) => events.push(event), async ({ids}: {ids:string[]}) => {payload = ids;}, {announceForAccessibility:() => {}}, () => {});
+    assert.deepEqual(payload, ids);
+    assert.deepEqual(events, [{type:'save'}, {type:'success'}]);
+    if (ids === desired) assert.deepEqual(proposedOrder(['c','a','b','d'], payload!), desired);
+  }
+  for (const [pending, connected] of [[true, true], [false, false]]) {
+    await save({ids:desired}, {current:pending}, ['b','a'], desired, {connectionState:() => ({isWebSocketConnected:connected})}, () => assert.fail('guard must not dispatch'), () => assert.fail('guard must not write'), {}, () => {});
+  }
+  let state = {ids:desired, pending:false, error:false};
+  const submitting = {current:false};
+  await save(state, submitting, ['b','a'], desired, {connectionState:() => ({isWebSocketConnected:true})}, (event: Parameters<typeof reorderReducer>[1]) => {state = reorderReducer(state, event)!;}, async () => {throw new Error('save failed');}, {}, () => {});
+  assert.deepEqual(state, {ids:desired, pending:false, error:true});
+  assert.equal(submitting.current, false);
+  assert.doesNotMatch(source, /256|ids:changed/);
 });

@@ -75,7 +75,7 @@ Keep editing preserves the form. Discard returns to Counts from Create or detail
 
 ## Reorder and delete
 
-Reorder enters an explicit Done/Cancel mode. Show drag handles, hide Add, and disable opening detail. Support drag plus accessible Move up/Move down actions. Rows shift smoothly, respecting Reduce Motion. Done saves and exits; Cancel abandons changes. Back asks for discard confirmation if the order changed. Prevent further moves and repeat submissions during saving. Failure retains the proposed order with Retry and Cancel. New Counts still start at the top.
+Reorder enters an explicit Done/Cancel mode. Show drag handles, hide Add, and disable opening detail. Support drag plus accessible Move up/Move down actions. Rows shift smoothly, respecting Reduce Motion. Done saves the full displayed, live proposed order once and exits, even when locally unchanged; it does not submit only changed positions. There is no product-imposed reorder-selection limit. Cancel abandons changes. Back asks for discard confirmation if the order changed. Prevent further moves and repeat submissions during saving. Failure retains the proposed order with Retry and Cancel. New Counts still start at the top.
 
 Delete uses a native alert:
 - Title: `Delete Count?`
@@ -90,11 +90,11 @@ First load shows a loading indicator, not an empty list. Only a successful respo
 
 After connection loss, retain already-loaded list/detail with `Offline. Showing last synced Counts.` Elapsed readings continue locally. Preserve Create/Edit drafts and proposed orders. Explain that saving requires reconnection; do not begin saves, deletes, unit changes, or reorder submissions while known offline. There is no promise of offline syncing or persistent cached data after app restart.
 
-On reconnection, refresh automatically without overwriting local unsaved drafts/orders. Competing edits, reorder saves, and unit selections use last successful server write wins, not device timestamps. No stale-edit rejection, conflict-review UI, or merge workflow. Writes remain operation-scoped: editing name/date cannot overwrite units or order.
+On reconnection, refresh automatically without overwriting local unsaved drafts/orders. Competing edits, reorder saves, and unit selections use last successful server write wins, not device timestamps. No stale-edit rejection, conflict-review UI, or merge workflow. For reorder, the later successful save establishes the relative order of all surviving submitted IDs atomically. Deleted Counts stay deleted; unsubmitted Counts (including new or unloaded records) retain their server positions, so the submitted order need not be contiguous across the whole collection. Writes remain operation-scoped: editing name/date cannot overwrite units or order.
 
 ## Architectural and verification constraints
 
-Follow the existing mobile-only Expo/Convex architecture; no web app or new general-purpose state/service layer is authorized. Routes compose Counts capability UI. Server data is authoritative for saved Counts; forms and reorder mode own their unsaved drafts. Derive readings and milestone recognition from start instant and current time rather than introducing milestone history.
+Follow the existing mobile-only Expo/Convex architecture; no web app or new general-purpose state/service layer is authorized. Routes compose Counts capability UI. Server data is authoritative for saved Counts; forms and reorder mode own their unsaved drafts. Reorder uses one atomic mutation, not independently committed batches. Convex argument, read/write, document, and execution limits still apply: resource exhaustion fails the entire save without partial order writes and retains the draft for Retry or Cancel; this is not unlimited atomic capacity or a new UI selection restriction. Derive readings and milestone recognition from start instant and current time rather than introducing milestone history.
 
 Backend public boundaries require explicit argument/return validators, server-derived identity, per-resource ownership, and indexed bounded access. Mobile route protection does not replace authorization. Preserve the existing auth and token-storage contracts and never hand-edit generated Convex code. Specific module choices and executable work decomposition belong to subsequent issue-backed planning.
 

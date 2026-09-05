@@ -75,13 +75,12 @@ function CountsContent() {
     dispatch({type:'move', id, to});
   }
   async function save() {
-    if (!draft || submitting.current || changed.length > 256) return;
-    if (!changed.length) {cancel(); return;}
+    if (!draft || submitting.current) return;
     if (!convex.connectionState().isWebSocketConnected) return;
     submitting.current = true;
     dispatch({type:'save'});
     try {
-      await reorder({ids:changed as typeof serverIds});
+      await reorder({ids:orderedIds as typeof serverIds});
       dispatch({type:'success'});
       AccessibilityInfo.announceForAccessibility('Count order saved.');
     } catch { dispatch({type:'failure'}); }
@@ -107,7 +106,7 @@ function CountsContent() {
       <View><Typography variant="overline">RECOVERY</Typography><Typography accessibilityRole="header" variant="display">Counts</Typography></View>
       <View className="flex-row">{draft ? <>
         <Pressable ref={modeControl} accessibilityRole="button" accessibilityState={{disabled:pending}} disabled={pending} onPress={cancel} className="min-h-touch justify-center px-md"><Typography className="text-blueprint">Cancel</Typography></Pressable>
-        <Button variant="ghost" disabled={pending || changed.length > 256 || (changed.length > 0 && !connection.isWebSocketConnected)} onPress={save}>{pending ? 'Saving…' : draft.error ? 'Retry' : 'Done'}</Button>
+        <Button variant="ghost" disabled={pending || !connection.isWebSocketConnected} onPress={save}>{pending ? 'Saving…' : draft.error ? 'Retry' : 'Done'}</Button>
       </> : <>
         <Pressable ref={modeControl} accessibilityRole="button" className="min-h-touch justify-center px-md" onPress={() => {dispatch({type:'enter', ids:serverIds}); AccessibilityInfo.announceForAccessibility('Reorder mode. Use the handles to move Counts.');}}><Typography className="text-blueprint">Reorder</Typography></Pressable>
         <Button variant="ghost" accessibilityLabel="Add Count" onPress={() => router.push('/(app)/counts/new')}>＋</Button>
@@ -115,7 +114,6 @@ function CountsContent() {
     </View>
     {draft ? <>
       <Typography variant="caption">Reorder loaded Counts. Load more to include more Counts.</Typography>
-      {changed.length > 256 ? <Typography accessibilityRole="alert">This order changes more than 256 positions, the save limit. Move fewer Counts or Cancel; your full draft is still here.</Typography> : null}
       {!connection.isWebSocketConnected ? <Typography accessibilityRole="alert">Reconnect to save your order.</Typography> : null}
       {draft.error ? <Typography accessibilityRole="alert">Your order couldn’t be saved. Your changes are still here. Retry or Cancel.</Typography> : null}
       <ReorderRows counts={ordered} now={now} pending={pending} onMove={move} scroll={scroll} metrics={metrics} />

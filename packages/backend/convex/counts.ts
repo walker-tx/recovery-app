@@ -131,14 +131,15 @@ export const remove = mutation({
     return null;
   },
 });
-// Bounded permutation of selected positions, not replacement of collection membership.
-// Clients can reorder any subset; omitted/new Counts stay in their current positions.
+// Atomic permutation of submitted positions, not replacement of collection membership.
+// Submit the full displayed order: later saves win among surviving submitted IDs.
+// Omitted/new Counts keep their positions. Convex resource limits fail the whole mutation.
 export const reorder = mutation({
   args: { ids: v.array(v.id("counts")) },
   returns: v.null(),
   handler: async (ctx, { ids }) => {
     const { subject } = await requireWorkOSIdentity(ctx);
-    if (ids.length > 256 || new Set(ids).size !== ids.length)
+    if (new Set(ids).size !== ids.length)
       throw new ConvexError({ code: "INVALID_ORDER" });
     const counts = [];
     for (const id of ids) {

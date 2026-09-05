@@ -2,6 +2,7 @@ import type { FunctionReturnType } from "convex/server";
 import { convexTest } from "convex-test";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
 const clientId = "client_01ABC123";
@@ -14,8 +15,8 @@ afterAll(() => {
   if (previous === undefined) delete process.env.WORKOS_CLIENT_ID;
   else process.env.WORKOS_CLIENT_ID = previous;
 });
-function setup() {
-  const t = convexTest(schema, modules);
+function setup(transactionLimits: boolean | { documentsWritten: number } = true) {
+  const t = convexTest({ schema, modules, transactionLimits });
   const user = (subject: string) =>
     t.withIdentity({
       subject,
@@ -222,10 +223,12 @@ test("case-insensitive matching includes Unicode case-fold expansions and final 
   }
 });
 
+// Default convex-test transaction budgets are enabled; this is not a deployed load test.
+// The 600-ID case proves no application cap/truncation, not unlimited transaction capacity.
 test("collection exceeds a page; request bounds do not impose a collection limit", async () => {
   const { a, b } = setup();
-  const ids = [];
-  for (let i = 0; i < 257; i++)
+  const ids: Id<"counts">[] = [];
+  for (let i = 0; i < 600; i++)
     ids.push(
       await a.mutation(api.counts.create, { ...draft, name: `Count ${i}` }),
     );
@@ -241,20 +244,29 @@ test("collection exceeds a page; request bounds do not impose a collection limit
     cursor = page.continueCursor;
   }
   expect(all.map((x) => x._id)).toEqual([...ids].reverse());
-  await a.mutation(api.counts.reorder, { ids: [ids[0], ids[256]] });
+  await a.mutation(api.counts.reorder, { ids: [ids[0], ids[599]] });
   expect((await a.query(api.counts.list, { paginationOpts })).page[0]._id).toBe(
     ids[0],
   );
   const foreign = await b.mutation(api.counts.create, draft);
   const before = await a.query(api.counts.get, { id: ids[0] });
   await expect(
-    a.mutation(api.counts.reorder, { ids: [ids[256], ids[0], foreign] }),
+    a.mutation(api.counts.reorder, { ids: [ids[599], ids[0], foreign] }),
   ).rejects.toThrow();
   expect(await a.query(api.counts.get, { id: ids[0] })).toEqual(before);
   await expect(
     b.query(api.counts.findDuplicate, { name: draft.name, excludeId: ids[0] }),
   ).rejects.toThrow();
-  await expect(a.mutation(api.counts.reorder, { ids })).rejects.toThrow();
+  await a.mutation(api.counts.reorder, { ids });
+  const saved = [];
+  cursor = null;
+  for (;;) {
+    const page: FunctionReturnType<typeof api.counts.list> = await a.query(api.counts.list, { paginationOpts: { numItems: 100, cursor } });
+    saved.push(...page.page.map((count) => count._id));
+    if (page.isDone) break;
+    cursor = page.continueCursor;
+  }
+  expect(saved).toEqual(ids);
   for (const numItems of [0, -1, 101, 1.5])
     await expect(
       a.query(api.counts.list, { paginationOpts: { numItems, cursor: null } }),
@@ -318,4 +330,41 @@ test("large valid names hit the server byte budget despite client overrides", as
   expect(page.page.length).toBeLessThan(20);
   expect(page.pageStatus).toBe("SplitRequired");
   expect(page.splitCursor).toEqual(expect.any(String));
+});
+
+test("full displayed saves win over overlapping drafts, including locally unchanged Done", async () => {
+  const { a, t } = setup();
+  const ids: Id<"counts">[] = [];
+  for (const name of ["A", "B", "C", "D"])
+    ids.push(await a.mutation(api.counts.create, { ...draft, name }));
+  const [A, B, C, D] = ids;
+  const order = async () => (await a.query(api.counts.list, { paginationOpts: { numItems:100, cursor:null } })).page.map(count => count._id);
+  await a.mutation(api.counts.reorder, { ids });
+  await a.mutation(api.counts.reorder, { ids: [C, A, B, D] });
+  await a.mutation(api.counts.reorder, { ids: [B, A, C, D] });
+  expect(await order()).toEqual([B, A, C, D]);
+  // Another device saves after the last subscription; unchanged Done still writes.
+  await a.mutation(api.counts.reorder, { ids });
+  expect(await order()).toEqual(ids);
+  const newest = await a.mutation(api.counts.create, draft);
+  const newestBefore = await t.run(ctx => ctx.db.get(newest));
+  await a.mutation(api.counts.remove, { id: C });
+  await a.mutation(api.counts.reorder, { ids: [D, C, B, A] });
+  expect(await order()).toEqual([newest, D, B, A]);
+  expect(await t.run(ctx => ctx.db.get(newest))).toEqual(newestBefore);
+  const before = await order();
+  await expect(a.mutation(api.counts.reorder, {ids:[A,A,D]})).rejects.toThrow();
+  expect(await order()).toEqual(before);
+});
+
+test("transaction write exhaustion rolls back the entire reorder", async () => {
+  // Supported convex-test budget override: force failure after two patches.
+  // This verifies rollback, not production argument/CPU limits or native retry UI.
+  const { a, t } = setup({ documentsWritten: 2 });
+  const ids: Id<"counts">[] = [];
+  for (const name of ["A", "B", "C"])
+    ids.push(await a.mutation(api.counts.create, { ...draft, name }));
+  const before = await t.run(async ctx => Promise.all(ids.map(id => ctx.db.get(id))));
+  await expect(a.mutation(api.counts.reorder, { ids })).rejects.toThrow(/Wrote too many documents/);
+  expect(await t.run(async ctx => Promise.all(ids.map(id => ctx.db.get(id))))).toEqual(before);
 });
