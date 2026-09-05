@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "convex dev",
     "codegen": "convex codegen",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test:staging": "node --test scripts/workos-staging.test.ts"
   },
   "dependencies": {
     "@workos-inc/node": "10.11.0",
