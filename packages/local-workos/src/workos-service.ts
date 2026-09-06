@@ -4,12 +4,14 @@ import { randomUUID, randomBytes, randomInt, scrypt, timingSafeEqual } from "nod
 import { promisify } from "node:util";
 import { SignJWT } from "jose";
 import { ConfigService, SigningIdentity } from "./config.ts";
+import { sealReplay, openReplay } from "./replay-crypto.ts";
 import {
   RequestRejected,
   VerificationRequired,
   type RequestFailure,
   UserId,
   UserSchema,
+  AuthenticationSchema, RevokeSessionRequestSchema,
   EmailVerificationSchema,
   type EmailVerification,
   IdentitiesSchema,
@@ -57,6 +59,7 @@ export class WorkOSService extends Context.Service<
     ) => Effect.Effect<UserList, RequestFailure>;
     readonly createPasswordReset: (body: Record<string, unknown>) => Effect.Effect<PasswordReset, RequestFailure>;
     readonly resetPassword: (body: Record<string, unknown>) => Effect.Effect<{ user: User }, RequestFailure>;
+    readonly revokeSession: (body: Record<string, unknown>) => Effect.Effect<void, RequestFailure>;
     readonly getUser: (id: string) => Effect.Effect<User, RequestFailure>;
     readonly getEmailVerification: (id: string) => Effect.Effect<EmailVerification, RequestFailure>;
     readonly getIdentities: (
@@ -75,7 +78,7 @@ export const workosLayer = Layer.effect(
     const sql = yield* SqlClient.SqlClient;
     const { apiKey, lifetimes } = yield* ConfigService;
     const {
-      key,
+      key, replayKey,
       jwks: publicJwks,
       clientId,
       issuer,
@@ -86,10 +89,11 @@ export const workosLayer = Layer.effect(
       sql<Row>`SELECT * FROM users WHERE id=${id}`.pipe(
         Effect.map((rows) => rows[0]),
       );
-    const issueSession = (user: User, now: number) => Effect.gen(function* () {
+    const issueSession = (user: User, now: number, existing?: { id: string; expires_at: number }) => Effect.gen(function* () {
         const sid = yield* Schema.decodeUnknownEffect(SessionId)(
-          `session_${randomUUID()}`,
+          existing?.id ?? `session_${randomUUID()}`,
         ).pipe(Effect.orDie);
+        const expires = existing?.expires_at ?? now + lifetimes.sessionSeconds * 1000;
         const refresh = randomBytes(32).toString("base64url");
         const access = yield* Effect.tryPromise({
           try: () =>
@@ -99,11 +103,12 @@ export const workosLayer = Layer.effect(
               .setAudience(clientId)
               .setSubject(user.id)
               .setIssuedAt(Math.floor(now / 1000))
-              .setExpirationTime(Math.floor(now / 1000) + lifetimes.accessTokenSeconds)
+              .setExpirationTime(Math.min(Math.floor(expires / 1000), Math.floor(now / 1000) + lifetimes.accessTokenSeconds))
               .sign(key),
           catch: (error) => error,
         });
-        yield* sql`INSERT INTO sessions VALUES(${sid},${user.id},${digest(refresh)},${now + lifetimes.sessionSeconds * 1000})`;
+        if (existing) yield* sql`UPDATE sessions SET refresh_hash=${digest(refresh)} WHERE id=${sid}`;
+        else yield* sql`INSERT INTO sessions VALUES(${sid},${user.id},${digest(refresh)},${expires})`;
         return {
           user,
           access_token: access,
@@ -123,6 +128,39 @@ export const workosLayer = Layer.effect(
           return yield* Effect.fail(
             new RequestRejected({ reason: "invalid_client" }),
           );
+        if (body.grant_type === "refresh_token") {
+          if (typeof body.refresh_token !== "string" || body.refresh_token.length > 128)
+            return yield* Effect.fail(new RequestRejected({ reason: "invalid_grant" }));
+          const hash = digest(body.refresh_token);
+          const result = yield* sql.withTransaction(Effect.gen(function* () {
+            const now = yield* Clock.currentTimeMillis;
+            yield* sql`DELETE FROM refresh_replays WHERE expires_at<=${now} OR session_id IN (SELECT id FROM sessions WHERE expires_at<=${now})`;
+            const [replay] = yield* sql<{ session_id: string; expires_at: number; encrypted_result: string }>`SELECT r.session_id,r.expires_at,r.encrypted_result FROM refresh_replays r JOIN sessions s ON s.id=r.session_id WHERE r.old_hash=${hash} AND s.expires_at>${now}`;
+            if (replay) {
+              const plaintext = yield* openReplay(replayKey, replay.encrypted_result, JSON.stringify([hash, replay.session_id, replay.expires_at]));
+              return yield* Schema.decodeUnknownEffect(AuthenticationSchema)(JSON.parse(plaintext)).pipe(Effect.orDie);
+            }
+            const [session] = yield* sql<{ id: string; user_id: string; expires_at: number }>`SELECT id,user_id,expires_at FROM sessions WHERE refresh_hash=${hash}`;
+            if (!session) return null;
+            if (session.expires_at <= now) {
+              yield* sql`DELETE FROM sessions WHERE id=${session.id}`;
+              return null;
+            }
+            const [count] = yield* sql<{ n: number }>`SELECT COUNT(*) AS n FROM refresh_replays`;
+            // Local capacity policy: preserve all promised grace results, reject
+            // new rotations at capacity instead of evicting usable credentials.
+            if (count.n >= 256) return yield* Effect.fail(new RequestRejected({ reason: "rate_limited" }));
+            const row = yield* getUser(session.user_id);
+            if (!row) return null;
+            const user = yield* Schema.decodeUnknownEffect(UserSchema)(JSON.parse(row.body)).pipe(Effect.orDie);
+            const pair = yield* issueSession(user, now, session);
+            const expires = Math.min(now + 30000, session.expires_at);
+            const encrypted = yield* sealReplay(replayKey, JSON.stringify(pair), JSON.stringify([hash, session.id, expires]));
+            yield* sql`INSERT INTO refresh_replays VALUES(${hash},${session.id},${expires},${encrypted})`;
+            return pair;
+          }));
+          return result ?? (yield* Effect.fail(new RequestRejected({ reason: "invalid_grant" })));
+        }
         if (body.grant_type === "urn:workos:oauth:grant-type:email-verification:code") {
           if (typeof body.pending_authentication_token !== "string" || body.pending_authentication_token.length > 128)
             return yield* Effect.fail(new RequestRejected({ reason: "invalid_grant" }));
@@ -371,6 +409,18 @@ export const workosLayer = Layer.effect(
       authenticate,
       createUser,
       createPasswordReset, resetPassword,
+      revokeSession: (body) => Effect.gen(function* () {
+        const payload = yield* Schema.decodeUnknownEffect(RevokeSessionRequestSchema)(body).pipe(
+          Effect.mapError(() => new RequestRejected({ reason: "not_found" })),
+        );
+        yield* sql.withTransaction(Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis;
+          const [session] = yield* sql`SELECT id FROM sessions WHERE id=${payload.session_id} AND expires_at>${now}`;
+          if (!session) return yield* Effect.fail(new RequestRejected({ reason: "not_found" }));
+          yield* sql`DELETE FROM sessions WHERE id=${payload.session_id}`;
+        }));
+      }).pipe(Effect.catch(operationFailure)),
+
       listUsers,
       getEmailVerification: (id) => Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;

@@ -28,6 +28,7 @@ import {
   UserSchema,
   AuthenticationSchema,
   UserListSchema,
+  RevokeSessionRequestSchema,
   CreatePasswordResetRequestSchema, ResetPasswordRequestSchema, PasswordResetSchema, ResetPasswordResponseSchema,
   EmailVerificationSchema,
   IdentitiesSchema,
@@ -64,6 +65,7 @@ function domainResponse(error: RequestFailure) {
     unsupported_operation: 404,
     invalid_client: 401,
     invalid_reset_token: 400,
+    rate_limited: 429,
     unsupported_grant_type: 400,
     invalid_user: 422,
     email_exists: 409,
@@ -140,6 +142,9 @@ const api = HttpApi.make("localWorkOS").add(
     HttpApiEndpoint.post("resetPassword", "/user_management/password_reset/confirm", {
       payload: ResetPasswordRequestSchema, success: ResetPasswordResponseSchema,
     }),
+    HttpApiEndpoint.post("revokeSession", "/user_management/sessions/revoke", {
+      payload: RevokeSessionRequestSchema, success: Schema.Void,
+    }),
     HttpApiEndpoint.get("listUsers", "/user_management/users", {
       success: UserListSchema,
     }),
@@ -215,7 +220,7 @@ export function makeHttpApp(scope: Scope.Scope) {
       instanceInfo,
       authenticate,
       createUser,
-      createPasswordReset, resetPassword,
+      createPasswordReset, resetPassword, revokeSession,
       listUsers,
       getUser,
       getIdentities,
@@ -254,6 +259,9 @@ export function makeHttpApp(scope: Scope.Scope) {
         )
         .handleRaw("resetPassword", ({ endpoint }) =>
           workosResponse(apiKey, resetPassword, { access: "bearer", path: endpoint.path }),
+        )
+        .handleRaw("revokeSession", ({ endpoint }) =>
+          workosResponse(apiKey, body => revokeSession(body).pipe(Effect.as(Response.empty({ status: 204 }))), { access: "bearer", path: endpoint.path }),
         )
         .handleRaw("listUsers", ({ endpoint }) =>
           workosResponse(apiKey, (_, request) => listUsers(request.url), {

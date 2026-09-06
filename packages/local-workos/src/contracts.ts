@@ -11,6 +11,7 @@ export type RejectionReason =
   | "unsupported_grant_type"
   | "invalid_grant"
   | "invalid_reset_token"
+  | "rate_limited"
   | "invalid_user"
   | "email_exists"
   | "unsupported_pagination"
@@ -55,8 +56,13 @@ export const VerificationAuthenticationRequestSchema = Schema.Struct({
   pending_authentication_token: Schema.String.check(Schema.isMaxLength(128)),
   code: Schema.String,
 });
+export const RefreshAuthenticationRequestSchema = Schema.Struct({
+  client_id: Schema.String, client_secret: Schema.String,
+  grant_type: Schema.Literal("refresh_token"), refresh_token: Schema.String.check(Schema.isMaxLength(128)),
+});
+export const RevokeSessionRequestSchema = Schema.Struct({ session_id: SessionId });
 export const AuthenticationRequestSchema = Schema.Union([
-  PasswordAuthenticationRequestSchema, VerificationAuthenticationRequestSchema,
+  PasswordAuthenticationRequestSchema, VerificationAuthenticationRequestSchema, RefreshAuthenticationRequestSchema,
 ]);
 export const EmailSchema = Schema.String.check(
     Schema.makeFilter((value) => {

@@ -110,6 +110,7 @@ export class SigningIdentity extends Context.Service<
   SigningIdentity,
   {
     readonly key: Awaited<ReturnType<typeof importJWK>>;
+    readonly replayKey: Redacted.Redacted<Uint8Array>;
     readonly jwks: Jwks;
     readonly clientId: typeof ClientId.Type;
     readonly providerGeneration: typeof ProviderGeneration.Type;

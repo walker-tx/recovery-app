@@ -24,6 +24,7 @@ import {
 } from "effect";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { makeHttpApp } from "./http.ts";
+import { deriveReplayKey } from "./replay-crypto.ts";
 import { type User, type Jwks, UserId } from "./contracts.ts";
 import {
   ConfigService,
@@ -140,6 +141,17 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
     yield* sql`CREATE INDEX IF NOT EXISTS challenges_pending_hash ON challenges(pending_hash)`;
   }));
   yield* sql`CREATE TABLE IF NOT EXISTS password_resets (challenge_id TEXT PRIMARY KEY REFERENCES challenges(id) ON DELETE CASCADE)`;
+  yield* sql`CREATE TABLE IF NOT EXISTS refresh_replays (old_hash TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL,encrypted_result TEXT NOT NULL)`;
+  yield* sql`CREATE INDEX IF NOT EXISTS sessions_refresh_hash ON sessions(refresh_hash)`;
+  const pruneReplays = Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    yield* sql`DELETE FROM refresh_replays WHERE expires_at<=${now} OR session_id IN (SELECT id FROM sessions WHERE expires_at<=${now})`;
+  });
+  yield* pruneReplays;
+  yield* Effect.forkScoped(Effect.forever(Effect.sleep(1000).pipe(
+    Effect.andThen(pruneReplays),
+    Effect.catch(() => Effect.logWarning("Local refresh replay cleanup failed")),
+  )));
   let [saved] = yield* sql<{
     body: string;
   }>`SELECT body FROM instance WHERE id=1`;
@@ -266,6 +278,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
         Layer.provide(
           Layer.succeed(SigningIdentity, {
             key,
+            replayKey: deriveReplayKey(identity.privateKey.d!, identity.generation),
             jwks,
             clientId,
             providerGeneration,
