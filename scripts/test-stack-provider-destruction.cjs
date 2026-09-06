@@ -184,6 +184,13 @@ test("later unlink failure reports partial outcome and retains retirement and li
     f.lifecycle.start(f.worktree, () => []),
     /locked/,
   );
+  // Fixture-only restart simulation: durable retirement must stand alone.
+  await fs.rmdir(path.join(f.worktree, ".recovery-stack-lifecycle.lock"));
+  await assert.rejects(
+    f.lifecycle.start(f.worktree, () => []),
+    /retired/,
+  );
+  assert.equal(f.calls(), 0);
 });
 test("original file replacement after durable intent is not deleted", async (t) => {
   const f = await fixture(t),
@@ -213,6 +220,7 @@ test("original file replacement after durable intent is not deleted", async (t) 
   );
 });
 for (const failure of [
+  "open",
   "write",
   "file-sync",
   "directory-sync",
@@ -221,7 +229,18 @@ for (const failure of [
   test(`${failure} failure prevents every unlink and retains exclusion`, async (t) => {
     const f = await fixture(t),
       open = fs.open;
+    let unlinks = 0;
+    t.mock.method(fs, "unlink", async () => {
+      unlinks++;
+      throw Error("unexpected unlink");
+    });
     t.mock.method(fs, "open", async (file, ...args) => {
+      if (
+        failure === "open" &&
+        file === path.join(f.root, "provider-retirement.json")
+      ) {
+        throw Error("private-open-canary");
+      }
       const handle = await open(file, ...args);
       if (file === path.join(f.root, "provider-retirement.json")) {
         return {
@@ -265,10 +284,51 @@ for (const failure of [
     assert.ok(
       Object.values(result.storage).every((state) => state === "not-attempted"),
     );
+    assert.equal(unlinks, 0);
+    assert.ok(!JSON.stringify(result).includes("private-open-canary"));
     await fs.lstat(path.join(f.provider, "state.sqlite"));
     await assert.rejects(
       f.lifecycle.start(f.worktree, () => []),
       /locked/,
     );
+    if (failure === "open") {
+      await assert.rejects(
+        fs.lstat(path.join(f.root, "provider-retirement.json")),
+        { code: "ENOENT" },
+      );
+    } else {
+      await fs.lstat(path.join(f.root, "provider-retirement.json"));
+      // Only this disposable fixture loses its transient lock; never repair real locks here.
+      await fs.rmdir(path.join(f.worktree, ".recovery-stack-lifecycle.lock"));
+      await assert.rejects(
+        f.lifecycle.start(f.worktree, () => []),
+        /retired/,
+      );
+      assert.equal(f.calls(), 0);
+    }
   });
 }
+
+test("owned rollback journal is retired and deleted with provider storage", async (t) => {
+  const f = await fixture(t);
+  await fs.writeFile(
+    path.join(f.provider, "state.sqlite-journal"),
+    "synthetic-journal",
+    { mode: 0o600 },
+  );
+  const result = await f.lifecycle.destroyProvider(f.worktree, f.confirmation);
+  assert.equal(result.state, "complete");
+  assert.equal(result.storage["state.sqlite-journal"], "removed");
+  await fs.access(path.join(f.root, "provider-retirement.json"));
+  assert.deepEqual(await fs.readdir(f.provider), [
+    ".recovery-stack-owner.json",
+  ]);
+  assert.equal(
+    (await f.registry.readOwned(f.worktree, f.record.stackId)).stackId,
+    f.record.stackId,
+  );
+  assert.equal(
+    await fs.readFile(path.join(f.root, "mailpit.sqlite"), "utf8"),
+    "preserve-inbox",
+  );
+});

@@ -104,6 +104,8 @@ function buildStackConfiguration({
       "CONVEX_DEPLOY_KEY",
       "CONVEX_DEPLOYMENT",
       "CONVEX_SELF_HOSTED_ADMIN_KEY",
+      "CONVEX_SELF_HOSTED_URL",
+      "CONVEX_ADMIN_KEY",
       "WORKOS_ADMIN_API_KEY",
     ]) {
       if (key in source) {

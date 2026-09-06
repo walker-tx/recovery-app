@@ -562,3 +562,17 @@ for (const changed of ["generation", "process", "routes"]) {
     assert.deepEqual(snapshot(f.root), before);
   });
 }
+
+for (const processes of [[], "", 1, true]) {
+  test(`malformed process map ${JSON.stringify(processes)} fails registry validation`, async (t) => {
+    const f = fixture(t);
+    f.record.processes = processes;
+    f.save();
+    const result = await preflightDestruction(f.options);
+    assert.ok(
+      result.blockers.some((blocker) => blocker.code === "target-mismatch"),
+    );
+    assert.equal(result.destructionImplemented, false);
+    assert.equal(result.reservationReleaseAllowed, false);
+  });
+}

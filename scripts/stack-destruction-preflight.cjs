@@ -117,6 +117,8 @@ async function preflightDestruction({
       record.worktree !== worktree ||
       record.owner !== `${st.dev}:${st.ino}` ||
       !record.processes ||
+      typeof record.processes !== "object" ||
+      Array.isArray(record.processes) ||
       !record.ports ||
       Object.keys(record.ports).length !== names.length ||
       !names.every(

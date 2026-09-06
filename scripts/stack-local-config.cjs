@@ -30,7 +30,9 @@ function validateSeed(seed) {
   if (
     !seed ||
     Object.keys(seed).length !== seedKeys.length ||
-    !seedKeys.every((k) => typeof seed[k] === "string") ||
+    !seedKeys.every(
+      (k) => Object.hasOwn(seed, k) && typeof seed[k] === "string",
+    ) ||
     !uuid(seed.RECOVERY_STACK_ID) ||
     !uuid(seed.RECOVERY_PROVIDER_GENERATION) ||
     seed.RECOVERY_STACK_ID === seed.RECOVERY_PROVIDER_GENERATION ||
@@ -322,6 +324,8 @@ function checkForbidden(file, run) {
     "CONVEX_DEPLOY_KEY",
     "CONVEX_DEPLOYMENT",
     "CONVEX_SELF_HOSTED_ADMIN_KEY",
+    "CONVEX_SELF_HOSTED_URL",
+    "CONVEX_ADMIN_KEY",
     "WORKOS_ADMIN_API_KEY",
   ]) {
     if (readScalar(file, key, run, true) !== null) {

@@ -62,8 +62,9 @@ test("real Mise scalar reads are raw strings; missing is nonzero", (t) => {
     missing.status === 1 &&
       !missing.error &&
       missing.stdout === "" &&
-      missing.stderr ===
-        "mise ERROR Key not found: env.MISSING in ~/mise.local.toml\nmise ERROR Version: 2026.8.8 macos-arm64 (2026-08-17)\nmise ERROR Run with --verbose or MISE_VERBOSE=1 for more information\n",
+      /^mise ERROR Key not found: env\.MISSING in ~\/mise\.local\.toml\nmise ERROR Version: [^\r\n]+\nmise ERROR Run with --verbose or MISE_VERBOSE=1 for more information\n$/.test(
+        missing.stderr,
+      ),
   );
 });
 test("new private config then matching update preserves unrelated comments", (t) => {
@@ -168,6 +169,8 @@ for (const key of [
   "CONVEX_DEPLOY_KEY",
   "CONVEX_DEPLOYMENT",
   "CONVEX_SELF_HOSTED_ADMIN_KEY",
+  "CONVEX_SELF_HOSTED_URL",
+  "CONVEX_ADMIN_KEY",
   "WORKOS_ADMIN_API_KEY",
 ]) {
   test(`rejects existing quoted ${key} before temporary mutation`, (t) => {
@@ -256,3 +259,28 @@ for (const existing of [false, true]) {
     assert.deepEqual(fs.readdirSync(dir), existing ? ["mise.local.toml"] : []);
   });
 }
+
+test("seed rejects inherited required values even with matching own-key count", () => {
+  const { validateSeed } = require("./stack-local-config.cjs");
+  const seed = {
+    RECOVERY_STACK_ID: stackId,
+    RECOVERY_PROVIDER_GENERATION: providerGeneration,
+    LOCAL_WORKOS_API_KEY: `sk_test_local_${"a".repeat(64)}`,
+    LOCAL_CONVEX_INSTANCE_NAME: "recovery_" + stackId.replaceAll("-", ""),
+    LOCAL_CONVEX_INSTANCE_SECRET: "a".repeat(64),
+    LOCAL_CONVEX_ADMIN_KEY: "synthetic-admin",
+    WORKOS_EMAIL_HMAC_KEY: Buffer.alloc(32, 1).toString("base64"),
+    WORKOS_INTENT_ENCRYPTION_KEY: Buffer.alloc(32, 2).toString("base64"),
+  };
+  assert.deepEqual(validateSeed(seed), seed);
+  const inherited = Object.assign(
+    Object.create(seed),
+    Object.fromEntries(
+      Object.keys(seed).map((key) => [`unrelated_${key}`, "synthetic"]),
+    ),
+  );
+  assert.throws(
+    () => validateSeed(inherited),
+    /^Error: Local stack config persistence rejected$/,
+  );
+});
