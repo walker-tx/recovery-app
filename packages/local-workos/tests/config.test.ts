@@ -1,5 +1,6 @@
+import { UserId, SessionId } from "../src/contracts.ts";
 import { it } from "@effect/vitest";
-import { ConfigProvider, Effect, Exit, Redacted } from "effect";
+import { ConfigProvider, Effect, Exit, Redacted, Schema } from "effect";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,8 +8,11 @@ import { join } from "node:path";
 import { startProvider } from "../src/provider.ts";
 import {
   bootstrapApiKey,
-  consumeBootstrapApiKey,
-  httpClientId,
+  LocalWorkOSApiKey,
+  ProviderGeneration,
+  ClientId,
+  ConfigService,
+  decodeProviderConfig,
 } from "../src/config.ts";
 
 const key = `sk_test_local_${"a".repeat(64)}`;
@@ -38,58 +42,61 @@ for (const [description, value] of [
   ["non-local key format", "sk_test_other"],
   ["uppercase key", key.toUpperCase()],
 ] as const) {
-  it.effect(
-    `rejects ${description}`,
-    () =>
-      Effect.gen(function* () {
-        const exit = yield* Effect.exit(
-          bootstrapApiKey.pipe(
-            provide(value === undefined ? {} : { LOCAL_WORKOS_API_KEY: value }),
-          ),
-        );
-        assert.ok(Exit.isFailure(exit));
-        assert.ok(!JSON.stringify(exit).includes(key));
-      }),
+  it.effect(`rejects ${description}`, () =>
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        bootstrapApiKey.pipe(
+          provide(value === undefined ? {} : { LOCAL_WORKOS_API_KEY: value }),
+        ),
+      );
+      assert.ok(Exit.isFailure(exit));
+      assert.ok(!JSON.stringify(exit).includes(key));
+    }),
   );
 }
 
-it.effect(
-  "consumes only the environment credential and erases it on success and failure",
-  () =>
-    Effect.gen(function* () {
-      const original = process.env.LOCAL_WORKOS_API_KEY;
-      try {
-        process.env.LOCAL_WORKOS_API_KEY = key;
-        const value = yield* consumeBootstrapApiKey.pipe(
-          provide({ LOCAL_WORKOS_API_KEY: "ambient-injection" }),
-        );
-        assert.equal(Redacted.value(value), key);
-        assert.equal(process.env.LOCAL_WORKOS_API_KEY, undefined);
-        process.env.LOCAL_WORKOS_API_KEY = "invalid";
-        assert.ok(Exit.isFailure(yield* Effect.exit(consumeBootstrapApiKey)));
-        assert.equal(process.env.LOCAL_WORKOS_API_KEY, undefined);
-      } finally {
-        if (original === undefined) delete process.env.LOCAL_WORKOS_API_KEY;
-        else process.env.LOCAL_WORKOS_API_KEY = original;
-      }
-    }),
+it.effect("rejects invalid branded identifiers and credentials", () =>
+  Effect.gen(function* () {
+    for (const [schema, value] of [
+      [LocalWorkOSApiKey, "sk_test_short"],
+      [ProviderGeneration, "00000000-0000-1000-8000-000000000000"],
+      [ClientId, "client_other"],
+      [UserId, "user_00000000-0000-1000-8000-000000000000"],
+      [SessionId, "session_00000000-0000-4000-0000-000000000000"],
+      [UserId, "user_00000000-0000-4000-8000-000000000000\n"],
+    ] as const) {
+      assert.ok(
+        Exit.isFailure(
+          yield* Effect.exit(Schema.decodeUnknownEffect(schema)(value)),
+        ),
+      );
+    }
+  }),
 );
-
 it.effect(
-  "isolates concurrent persisted client identities without outer fallback",
+  "isolates app-scoped configuration without ambient environment handoff",
   () =>
     Effect.gen(function* () {
+      const configs = yield* Effect.all(
+        ["a", "b"].map((letter) =>
+          decodeProviderConfig({
+            database: "/tmp/synthetic.sqlite",
+            apiKey: `sk_test_local_${letter.repeat(64)}`,
+          }),
+        ),
+      );
       const values = yield* Effect.all(
-        ["client_first", "client_second"].map((clientId) =>
-          httpClientId.pipe(provide({ clientId })),
+        configs.map((config) =>
+          Effect.gen(function* () {
+            return Redacted.value((yield* ConfigService).apiKey);
+          }).pipe(Effect.provideService(ConfigService, config)),
         ),
         { concurrency: "unbounded" },
-      ).pipe(provide({ clientId: "ambient" }));
-      assert.deepEqual(values, ["client_first", "client_second"]);
-      const missing = yield* Effect.exit(
-        httpClientId.pipe(provide({}), provide({ clientId: "ambient" })),
       );
-      assert.ok(Exit.isFailure(missing));
+      assert.deepEqual(
+        values,
+        configs.map((config) => Redacted.value(config.apiKey)),
+      );
     }),
 );
 

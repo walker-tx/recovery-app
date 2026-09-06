@@ -16,7 +16,7 @@ it.live(
           Effect.promise(() => rm(directory, { recursive: true, force: true })),
       );
       const database = join(directory, "state.sqlite");
-      const apiKey = "sk_test_response_contract";
+      const apiKey = `sk_test_local_${"01".repeat(32)}`;
       const provider = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider({ database, apiKey })),
         (provider) => Effect.promise(() => provider.close()),

@@ -1,20 +1,42 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { Schema } from "effect";
-const digest = (s: string) => createHash("sha256").update(s).digest("hex");
+import { Schema, Data, Redacted } from "effect";
+export const digest = (s: string) =>
+  createHash("sha256").update(s).digest("hex");
 export const equal = (a: string, b: string) =>
   timingSafeEqual(Buffer.from(digest(a)), Buffer.from(digest(b)));
-export class HttpError extends Error {
-  readonly status: number;
-  readonly body: object;
-  constructor(status: number, body: object) {
-    super("Provider request rejected");
-    this.status = status;
-    this.body = body;
-  }
-}
-export const reject = (status: number, code: string): never => {
-  throw new HttpError(status, { code, message: code });
-};
+export type RejectionReason =
+  | "unauthorized"
+  | "unsupported_operation"
+  | "invalid_client"
+  | "unsupported_grant_type"
+  | "invalid_grant"
+  | "invalid_user"
+  | "email_exists"
+  | "unsupported_pagination"
+  | "invalid_cursor"
+  | "invalid_limit"
+  | "not_found"
+  | "invalid_request";
+export class RequestRejected extends Data.TaggedError("RequestRejected")<{
+  readonly reason: RejectionReason;
+}> {}
+export class VerificationRequired extends Data.TaggedError(
+  "VerificationRequired",
+)<{
+  readonly id: string;
+  readonly pending: Redacted.Redacted<string>;
+}> {}
+export type RequestFailure = RequestRejected | VerificationRequired;
+const uuid =
+  "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+export const UserId = Schema.String.check(
+  Schema.isPattern(new RegExp(`^user_${uuid}$`)),
+  Schema.isLengthBetween(41, 41),
+).pipe(Schema.brand("UserId"));
+export const SessionId = Schema.String.check(
+  Schema.isPattern(new RegExp(`^session_${uuid}$`)),
+  Schema.isLengthBetween(44, 44),
+).pipe(Schema.brand("SessionId"));
 
 // Only the local password flow is supported. Extra SDK fields remain ignored.
 // Raw transport values are decoded after the WorkOS security/error guards.
@@ -46,7 +68,7 @@ export type PasswordAuthenticationRequest =
 export type CreateUserRequest = typeof CreateUserRequestSchema.Type;
 
 export const UserSchema = Schema.Struct({
-  id: Schema.String,
+  id: UserId,
   email: Schema.String,
   email_verified: Schema.Boolean,
   first_name: Schema.NullOr(Schema.String),

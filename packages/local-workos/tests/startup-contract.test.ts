@@ -18,7 +18,7 @@ it.live(
       const generation = randomUUID();
       const options = {
         database: join(dir, "state.sqlite"),
-        apiKey: "sk_test_startup",
+        apiKey: `sk_test_local_${"02".repeat(32)}`,
         providerGeneration: generation,
       };
       let provider = yield* Effect.acquireRelease(
@@ -77,7 +77,7 @@ it.live("invalid explicit startup generation and ports are rejected", () =>
     );
     const options = {
       database: join(dir, "state.sqlite"),
-      apiKey: "sk_test_startup",
+      apiKey: `sk_test_local_${"02".repeat(32)}`,
     };
     for (const port of [-1, 65536, 0.5, NaN]) {
       yield* Effect.promise(() =>
