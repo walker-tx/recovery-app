@@ -20,8 +20,11 @@ diagnostics or credential values. Router matching is case-sensitive and does not
 normalize trailing/duplicate slashes or encoded static path segments. Successful
 responses use concrete schemas and Effect's native response encoding; malformed
 stored response data produces a generic 500, and undeclared user fields are
-omitted. `src/http.ts` owns HTTP contracts and routing; `src/provider.ts` owns
-SQLite, signing, domain operations, and server lifecycle.
+omitted. `src/contracts.ts` defines supported request/response shapes;
+`src/http.ts` owns routing and error envelopes. An Effect `WorkOSService` Layer
+in `src/workos-service.ts` owns the operations; `src/provider.ts` owns SQLite,
+signing-key acquisition, and server lifecycle. The HTTP app can be tested with
+an injected service Layer without opening a database.
 
 Tests use the matching `@effect/vitest` release. `it.live` retains real HTTP, SDK,
 SQLite, and subprocess behavior, with scoped cleanup for provider instances and
