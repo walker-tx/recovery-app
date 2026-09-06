@@ -3,6 +3,7 @@ const path = require("node:path");
 const os = require("node:os");
 const fs = require("node:fs/promises");
 const { constants } = require("node:fs");
+const { preflightDestruction } = require("./stack-destruction-preflight.cjs");
 const { createReadiness } = require("./stack-readiness.cjs");
 const { prepareBootstrapSeed } = require("./stack-bootstrap-seed.cjs");
 const {
@@ -15,7 +16,7 @@ const { persistLocalConfig } = require("./stack-local-config.cjs");
 const { createProcessInspector } = require("./stack-process-inspector.cjs");
 const { createPitchforkIdentity } = require("./stack-pitchfork-identity.cjs");
 const { createPitchforkRunner } = require("./stack-adapters.cjs");
-const { createRegistry } = require("./stack-registry.cjs");
+const { createRegistry, portAvailable: observePort } = require("./stack-registry.cjs");
 const { createLifecycle, processName } = require("./stack-lifecycle.cjs");
 const uuid = (value) =>
   typeof value === "string" &&
@@ -34,7 +35,7 @@ async function createRuntime({
   inspector,
   identity,
   run,
-  portAvailable,
+  portAvailable = observePort,
   backendBinary,
   fetchImpl = globalThis.fetch,
   connect,
@@ -182,6 +183,13 @@ async function createRuntime({
       return status;
     }
     return {
+      // No transaction, lock acquisition, state preparation, or route inference.
+      // Production route evidence is intentionally unavailable until #49.
+      destructionPreflight: (target) => preflightDestruction({
+        worktree, registryPath, target,
+        inspectProcess: identity.inspectProcess,
+        portAvailable,
+      }),
       reserve: () => registry.reserve(worktree),
       status: async (stackId) => {
         const status = await check(stackId);
