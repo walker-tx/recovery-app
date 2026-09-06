@@ -10,6 +10,9 @@
 
 - Tool versions are owned by `mise.toml`. Run commands through `mise exec -- ...` unless mise is already activated.
 - Use pnpm only. Add a dependency to the workspace package that consumes it.
+- Oxfmt and Oxlint own code style. Run `mise run format` after edits, `mise run lint` for fast feedback, and `mise run check` before delivery. For a small edit, run `mise exec -- pnpm exec oxlint <paths>` and `mise exec -- pnpm exec oxfmt --check <paths>` first; full checks remain required.
+- Use braces for every control-flow body, strict equality, `const` where possible, explicit type-only imports, and no explicit `any`. Keep blank lines between logical steps; the formatter preserves separation but cannot infer intent.
+- Fix lint findings rather than weakening configuration or adding blanket disables. Any necessary suppression must be narrow and explain why; unused suppressions fail checks. Do not format generated code or vendored skills.
 - Preserve Expo's SDK-compatible React and React Native versions. Add Expo/native packages with `pnpm --filter @recovery/mobile exec expo install <package>`.
 - Do not run `expo prebuild` unless a native/config plugin change requires it.
 

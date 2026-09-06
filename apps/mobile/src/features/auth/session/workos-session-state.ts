@@ -1,8 +1,13 @@
-import type { SessionCredentials, WorkOSSessionStorage } from "./workos-session-storage.ts";
+import type {
+  SessionCredentials,
+  WorkOSSessionStorage,
+} from "./workos-session-storage.ts";
 
 export type { SessionCredentials } from "./workos-session-storage.ts";
 
-export type WorkOSSessionRetry = { operation: "restore" | "refresh" | "signOut" } | null;
+export type WorkOSSessionRetry = {
+  operation: "restore" | "refresh" | "signOut";
+} | null;
 
 export type WorkOSSessionSnapshot = {
   isLoading: boolean;
@@ -17,8 +22,14 @@ type RefreshResult =
   | { status: "invalid" };
 
 export type WorkOSSessionActions = {
-  signIn(input: { email: string; password: string }): Promise<SessionCredentials>;
-  completeSignup(input: { intentId: string; code: string }): Promise<SessionCredentials>;
+  signIn(input: {
+    email: string;
+    password: string;
+  }): Promise<SessionCredentials>;
+  completeSignup(input: {
+    intentId: string;
+    code: string;
+  }): Promise<SessionCredentials>;
   refreshSession(input: { refreshToken: string }): Promise<RefreshResult>;
   signOutSession(input: { refreshToken: string }): Promise<{ revoked: true }>;
 };
@@ -32,7 +43,9 @@ export type WorkOSSessionOwner = {
   completeSignup(input: { intentId: string; code: string }): Promise<void>;
   refresh(): Promise<string | null>;
   signOut(): Promise<void>;
-  fetchAccessToken(input: { forceRefreshToken: boolean }): Promise<string | null>;
+  fetchAccessToken(input: {
+    forceRefreshToken: boolean;
+  }): Promise<string | null>;
 };
 
 const initialSnapshot: WorkOSSessionSnapshot = {
@@ -102,7 +115,9 @@ export function createWorkOSSessionOwner(dependencies: {
 
   const publish = (next: WorkOSSessionSnapshot) => {
     snapshot = next;
-    for (const listener of listeners) listener();
+    for (const listener of listeners) {
+      listener();
+    }
   };
   const transition = (event: WorkOSSessionEvent) => {
     publish(workOSSessionReducer(snapshot, event));
@@ -114,13 +129,21 @@ export function createWorkOSSessionOwner(dependencies: {
     transition({ type: "sessionEstablished" });
   };
 
-  const runRefresh = (mode: "restore" | "authenticated"): Promise<string | null> => {
-    if (refreshPromise !== null) return refreshPromise;
-    if (session === null || snapshot.isSigningOut) return Promise.resolve(null);
+  const runRefresh = (
+    mode: "restore" | "authenticated",
+  ): Promise<string | null> => {
+    if (refreshPromise !== null) {
+      return refreshPromise;
+    }
+    if (session === null || snapshot.isSigningOut) {
+      return Promise.resolve(null);
+    }
 
     const refreshToken = session.refreshToken;
     const operation = (async () => {
-      transition({ type: mode === "restore" ? "restoreStarted" : "refreshStarted" });
+      transition({
+        type: mode === "restore" ? "restoreStarted" : "refreshStarted",
+      });
       try {
         const result = await actions.refreshSession({ refreshToken });
         if (result.status === "invalid") {
@@ -138,7 +161,9 @@ export function createWorkOSSessionOwner(dependencies: {
         transition({ type: "sessionEstablished" });
         return credentials.accessToken;
       } catch (error) {
-        transition({ type: mode === "restore" ? "restoreFailed" : "refreshFailed" });
+        transition({
+          type: mode === "restore" ? "restoreFailed" : "refreshFailed",
+        });
         throw error;
       } finally {
         refreshPromise = null;
@@ -158,7 +183,9 @@ export function createWorkOSSessionOwner(dependencies: {
       }
       await runRefresh("restore");
     } catch (error) {
-      if (snapshot.retry?.operation !== "restore") transition({ type: "restoreFailed" });
+      if (snapshot.retry?.operation !== "restore") {
+        transition({ type: "restoreFailed" });
+      }
       throw error;
     }
   };
@@ -177,7 +204,8 @@ export function createWorkOSSessionOwner(dependencies: {
   const completeSignup = async (input: { intentId: string; code: string }) => {
     await establish(await actions.completeSignup(input));
   };
-  const refresh = () => runRefresh(snapshot.isLoading ? "restore" : "authenticated");
+  const refresh = () =>
+    runRefresh(snapshot.isLoading ? "restore" : "authenticated");
 
   const signOut = async () => {
     if (refreshPromise !== null) {
@@ -187,7 +215,9 @@ export function createWorkOSSessionOwner(dependencies: {
         // Revoke the last persisted token even when refresh failed.
       }
     }
-    if (session === null) return;
+    if (session === null) {
+      return;
+    }
     transition({ type: "signOutStarted" });
     try {
       await actions.signOutSession({ refreshToken: session.refreshToken });
@@ -200,9 +230,17 @@ export function createWorkOSSessionOwner(dependencies: {
     }
   };
 
-  const fetchAccessToken = ({ forceRefreshToken }: { forceRefreshToken: boolean }) => {
-    if (forceRefreshToken) return refresh();
-    return Promise.resolve(snapshot.isAuthenticated ? session?.accessToken ?? null : null);
+  const fetchAccessToken = ({
+    forceRefreshToken,
+  }: {
+    forceRefreshToken: boolean;
+  }) => {
+    if (forceRefreshToken) {
+      return refresh();
+    }
+    return Promise.resolve(
+      snapshot.isAuthenticated ? (session?.accessToken ?? null) : null,
+    );
   };
 
   return {

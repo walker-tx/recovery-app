@@ -13,7 +13,12 @@ type WorkOSRoutingSession = {
 
 type ProfileSummary = { onboardingComplete: boolean } | null | undefined;
 
-export type WorkOSRouteDestination = "loading" | "retry" | "auth" | "onboarding" | "app";
+export type WorkOSRouteDestination =
+  | "loading"
+  | "retry"
+  | "auth"
+  | "onboarding"
+  | "app";
 
 export function getWorkOSSignInValidation(
   email: string,
@@ -21,14 +26,24 @@ export function getWorkOSSignInValidation(
 ): WorkOSSignInValidation {
   const errors: WorkOSSignInValidation = {};
   const emailError = getEmailError(email);
-  if (emailError !== undefined) errors.email = emailError;
-  if (password.length === 0) errors.password = "Enter your password.";
+  if (emailError !== undefined) {
+    errors.email = emailError;
+  }
+  if (password.length === 0) {
+    errors.password = "Enter your password.";
+  }
   return errors;
 }
 
-export function getFirstInvalidWorkOSSignInField(errors: WorkOSSignInValidation) {
-  if (errors.email !== undefined) return "email" as const;
-  if (errors.password !== undefined) return "password" as const;
+export function getFirstInvalidWorkOSSignInField(
+  errors: WorkOSSignInValidation,
+) {
+  if (errors.email !== undefined) {
+    return "email" as const;
+  }
+  if (errors.password !== undefined) {
+    return "password" as const;
+  }
   return null;
 }
 
@@ -40,11 +55,20 @@ export function getWorkOSRouteDestination(
   session: WorkOSRoutingSession,
   profile: ProfileSummary,
 ): WorkOSRouteDestination {
-  if (session.retry?.operation === "restore" || session.retry?.operation === "refresh") {
+  if (
+    session.retry?.operation === "restore" ||
+    session.retry?.operation === "refresh"
+  ) {
     return "retry";
   }
-  if (session.isLoading) return "loading";
-  if (!session.isAuthenticated) return "auth";
-  if (profile === undefined) return "loading";
+  if (session.isLoading) {
+    return "loading";
+  }
+  if (!session.isAuthenticated) {
+    return "auth";
+  }
+  if (profile === undefined) {
+    return "loading";
+  }
   return profile?.onboardingComplete === true ? "app" : "onboarding";
 }

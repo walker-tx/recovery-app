@@ -38,14 +38,17 @@ export type RenderedPrivateGuidance = {
 };
 
 const privateGuidanceByCategory: Record<PrivateGuidanceCategory, string> = {
-  passwordSignInOrRecovery: "Sign in with your password or recover the account.",
+  passwordSignInOrRecovery:
+    "Sign in with your password or recover the account.",
   googleSignIn: "Sign in with Google to continue.",
   appleSignIn: "Sign in with Apple to continue.",
 };
 
 export const maskEmail = (email: string): string => {
   const separator = email.lastIndexOf("@");
-  if (separator <= 0 || separator === email.length - 1) return "***";
+  if (separator <= 0 || separator === email.length - 1) {
+    return "***";
+  }
 
   return `${email.slice(0, 1)}***@${email.slice(separator + 1)}`;
 };

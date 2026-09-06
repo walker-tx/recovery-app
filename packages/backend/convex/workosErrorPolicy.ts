@@ -40,12 +40,19 @@ export function categorizeWorkOSError(
 ): WorkOSErrorCategory {
   const providerError = asProviderError(error);
 
-  if (providerError?.status === 429 || providerError?.name === "RateLimitExceededException") {
+  if (
+    providerError?.status === 429 ||
+    providerError?.name === "RateLimitExceededException"
+  ) {
     return "rateLimited";
   }
 
-  if (isRetryableProviderFailure(error, providerError)) return "providerUnavailable";
-  if (!isConfirmedProviderRejection(providerError)) return "providerUnavailable";
+  if (isRetryableProviderFailure(error, providerError)) {
+    return "providerUnavailable";
+  }
+  if (!isConfirmedProviderRejection(providerError)) {
+    return "providerUnavailable";
+  }
 
   if (operation === "authenticatePassword") {
     return providerError?.code === "email_verification_required"
@@ -53,11 +60,17 @@ export function categorizeWorkOSError(
       : "invalidCredentials";
   }
 
-  if (operation === "getEmailVerification" || operation === "completeEmailVerification") {
+  if (
+    operation === "getEmailVerification" ||
+    operation === "completeEmailVerification"
+  ) {
     return "invalidVerification";
   }
 
-  if (operation === "createPasswordReset" || operation === "completePasswordReset") {
+  if (
+    operation === "createPasswordReset" ||
+    operation === "completePasswordReset"
+  ) {
     return "invalidReset";
   }
 
@@ -84,13 +97,27 @@ function isRetryableProviderFailure(
   error: unknown,
   providerError: ProviderErrorShape | undefined,
 ): boolean {
-  if (error instanceof TypeError || providerError?.name === "AbortError") return true;
-  if (providerError?.status === 408) return true;
-  if (typeof providerError?.status === "number" && providerError.status >= 500) return true;
-  return typeof providerError?.code === "string" && retryableErrorCodes.has(providerError.code);
+  if (error instanceof TypeError || providerError?.name === "AbortError") {
+    return true;
+  }
+  if (providerError?.status === 408) {
+    return true;
+  }
+  if (
+    typeof providerError?.status === "number" &&
+    providerError.status >= 500
+  ) {
+    return true;
+  }
+  return (
+    typeof providerError?.code === "string" &&
+    retryableErrorCodes.has(providerError.code)
+  );
 }
 
-function isConfirmedProviderRejection(providerError: ProviderErrorShape | undefined): boolean {
+function isConfirmedProviderRejection(
+  providerError: ProviderErrorShape | undefined,
+): boolean {
   if (
     typeof providerError?.status === "number" &&
     providerError.status >= 400 &&
@@ -99,6 +126,7 @@ function isConfirmedProviderRejection(providerError: ProviderErrorShape | undefi
     return true;
   }
   return (
-    typeof providerError?.name === "string" && confirmedRejectionNames.has(providerError.name)
+    typeof providerError?.name === "string" &&
+    confirmedRejectionNames.has(providerError.name)
   );
 }

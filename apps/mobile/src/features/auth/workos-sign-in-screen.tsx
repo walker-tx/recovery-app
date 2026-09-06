@@ -12,7 +12,10 @@ import {
   getWorkOSSignInValidation,
   toSafeWorkOSSignInError,
 } from "./workos-auth-policy.ts";
-import { initialWorkOSSignInState, reduceWorkOSSignInState } from "./workos-sign-in-state.ts";
+import {
+  initialWorkOSSignInState,
+  reduceWorkOSSignInState,
+} from "./workos-sign-in-state.ts";
 import { useWorkOSSession } from "./session/workos-session-provider.tsx";
 
 type WorkOSSignInScreenProps = {
@@ -44,8 +47,11 @@ export function WorkOSSignInScreen({
     dispatch({ type: "submissionStarted" });
     const firstInvalidField = getFirstInvalidWorkOSSignInField(errors);
     if (firstInvalidField !== null) {
-      if (firstInvalidField === "email") emailInput.current?.focus();
-      else passwordInput.current?.focus();
+      if (firstInvalidField === "email") {
+        emailInput.current?.focus();
+      } else {
+        passwordInput.current?.focus();
+      }
       return;
     }
 
@@ -57,7 +63,10 @@ export function WorkOSSignInScreen({
           password: submittedValues.password,
         });
       } catch (error) {
-        dispatch({ type: "authenticationFailed", message: toSafeWorkOSSignInError(error) });
+        dispatch({
+          type: "authenticationFailed",
+          message: toSafeWorkOSSignInError(error),
+        });
       } finally {
         setIsPending(false);
       }
@@ -83,7 +92,10 @@ export function WorkOSSignInScreen({
         </Pressable>
         <View className="gap-sm">
           <Typography variant="overline">WELCOME BACK</Typography>
-          <Typography accessibilityRole="header" variant="display">
+          <Typography
+            accessibilityRole="header"
+            variant="display"
+          >
             Sign in
           </Typography>
         </View>
@@ -117,14 +129,19 @@ export function WorkOSSignInScreen({
           editable={!isPending}
           endAdornment={
             <Pressable
-              accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
+              accessibilityLabel={
+                isPasswordVisible ? "Hide password" : "Show password"
+              }
               accessibilityRole="button"
               accessibilityState={{ disabled: isPending }}
               className="min-h-touch min-w-touch items-center justify-center px-md"
               disabled={isPending}
               onPress={() => setIsPasswordVisible((current) => !current)}
             >
-              <Typography className="text-blueprint-pressed" variant="overline">
+              <Typography
+                className="text-blueprint-pressed"
+                variant="overline"
+              >
                 {isPasswordVisible ? "HIDE" : "SHOW"}
               </Typography>
             </Pressable>
@@ -161,7 +178,14 @@ export function WorkOSSignInScreen({
         >
           {isPending ? "Signing in" : "Sign in"}
         </Button>
-        <Button accessibilityRole="link" disabled={isPending} onPress={onForgotPassword} variant="ghost">Forgot your password?</Button>
+        <Button
+          accessibilityRole="link"
+          disabled={isPending}
+          onPress={onForgotPassword}
+          variant="ghost"
+        >
+          Forgot your password?
+        </Button>
       </View>
     </Screen>
   );

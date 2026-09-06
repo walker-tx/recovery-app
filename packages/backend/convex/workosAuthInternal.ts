@@ -40,7 +40,9 @@ export const admitInitiationRequest = internalMutation({
       )
       .take(INITIATION_RATE_LIMIT);
 
-    if (recent.length >= INITIATION_RATE_LIMIT) return { admitted: false };
+    if (recent.length >= INITIATION_RATE_LIMIT) {
+      return { admitted: false };
+    }
 
     await ctx.db.insert("authInitiationRequests", {
       emailFingerprint: args.emailFingerprint,
@@ -66,7 +68,9 @@ export const createSignupIntent = internalMutation({
       .query("signupIntents")
       .withIndex("by_public_id", (query) => query.eq("publicId", args.publicId))
       .unique();
-    if (existing !== null) throw invalidSignupIntent();
+    if (existing !== null) {
+      throw invalidSignupIntent();
+    }
 
     await ctx.db.insert("signupIntents", {
       publicId: args.publicId,
@@ -107,7 +111,9 @@ export const acquireSignupIntent = internalMutation({
         (intent.state === "inFlight" &&
           intent.leaseExpiresAt !== undefined &&
           intent.leaseExpiresAt <= args.now));
-    if (!canAcquire || intent === null) throw invalidSignupIntent();
+    if (!canAcquire || intent === null) {
+      throw invalidSignupIntent();
+    }
 
     await ctx.db.patch(intent._id, {
       state: "inFlight",
@@ -139,7 +145,10 @@ export const releaseSignupIntentLease = internalMutation({
       throw invalidSignupIntent();
     }
 
-    await ctx.db.patch(intent._id, { state: "pending", leaseExpiresAt: undefined });
+    await ctx.db.patch(intent._id, {
+      state: "pending",
+      leaseExpiresAt: undefined,
+    });
     return null;
   },
 });
@@ -176,9 +185,13 @@ export const cleanupExpiredAuthData = internalMutation({
     const now = args.now ?? Date.now();
     const consumedIntents = await ctx.db
       .query("signupIntents")
-      .withIndex("by_state_and_lease_expiry", (query) => query.eq("state", "consumed"))
+      .withIndex("by_state_and_lease_expiry", (query) =>
+        query.eq("state", "consumed"),
+      )
       .take(AUTH_CLEANUP_BATCH_SIZE);
-    for (const intent of consumedIntents) await ctx.db.delete(intent._id);
+    for (const intent of consumedIntents) {
+      await ctx.db.delete(intent._id);
+    }
 
     const afterConsumed = AUTH_CLEANUP_BATCH_SIZE - consumedIntents.length;
     const expiredIntents =
@@ -188,7 +201,9 @@ export const cleanupExpiredAuthData = internalMutation({
             .query("signupIntents")
             .withIndex("by_expiry", (query) => query.lte("expiresAt", now))
             .take(afterConsumed);
-    for (const intent of expiredIntents) await ctx.db.delete(intent._id);
+    for (const intent of expiredIntents) {
+      await ctx.db.delete(intent._id);
+    }
 
     const afterIntents = afterConsumed - expiredIntents.length;
     const expiredRequests =
@@ -198,10 +213,13 @@ export const cleanupExpiredAuthData = internalMutation({
             .query("authInitiationRequests")
             .withIndex("by_expiry", (query) => query.lte("expiresAt", now))
             .take(afterIntents);
-    for (const request of expiredRequests) await ctx.db.delete(request._id);
+    for (const request of expiredRequests) {
+      await ctx.db.delete(request._id);
+    }
 
     return {
-      deleted: consumedIntents.length + expiredIntents.length + expiredRequests.length,
+      deleted:
+        consumedIntents.length + expiredIntents.length + expiredRequests.length,
     };
   },
 });

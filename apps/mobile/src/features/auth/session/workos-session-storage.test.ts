@@ -25,7 +25,9 @@ function fakeSecureStore(initial: string | null = null) {
         deletes.push(key);
       },
     },
-    get value() { return value; },
+    get value() {
+      return value;
+    },
     writes,
     deletes,
   };
@@ -35,13 +37,20 @@ test("missing, malformed, unknown-version, and partial records restore as unauth
   const values = [
     null,
     "not json",
-    JSON.stringify({ version: 2, accessToken: "access", refreshToken: "refresh" }),
+    JSON.stringify({
+      version: 2,
+      accessToken: "access",
+      refreshToken: "refresh",
+    }),
     JSON.stringify({ version: 1, accessToken: "access" }),
     JSON.stringify({ version: 1, accessToken: "", refreshToken: "refresh" }),
   ];
   for (const value of values) {
     const secureStore = fakeSecureStore(value);
-    assert.equal(await createWorkOSSessionStorage(secureStore.store).read(), null);
+    assert.equal(
+      await createWorkOSSessionStorage(secureStore.store).read(),
+      null,
+    );
     assert.equal(secureStore.value, value);
   }
 });
@@ -57,11 +66,19 @@ test("write stores one versioned JSON record and replace overwrites that record"
     accessToken: "access-2",
     refreshToken: "refresh-2",
   });
-  assert.ok(secureStore.writes.every(({ key }) => key === WORKOS_SESSION_STORAGE_KEY));
+  assert.ok(
+    secureStore.writes.every(({ key }) => key === WORKOS_SESSION_STORAGE_KEY),
+  );
 });
 
 test("clear deletes the one namespaced record", async () => {
-  const secureStore = fakeSecureStore(JSON.stringify({ version: 1, accessToken: "access", refreshToken: "refresh" }));
+  const secureStore = fakeSecureStore(
+    JSON.stringify({
+      version: 1,
+      accessToken: "access",
+      refreshToken: "refresh",
+    }),
+  );
   await createWorkOSSessionStorage(secureStore.store).clear();
   assert.equal(secureStore.value, null);
   assert.deepEqual(secureStore.deletes, [WORKOS_SESSION_STORAGE_KEY]);

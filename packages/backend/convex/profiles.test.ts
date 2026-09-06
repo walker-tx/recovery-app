@@ -19,8 +19,11 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  if (previousClientId === undefined) delete process.env.WORKOS_CLIENT_ID;
-  else process.env.WORKOS_CLIENT_ID = previousClientId;
+  if (previousClientId === undefined) {
+    delete process.env.WORKOS_CLIENT_ID;
+  } else {
+    process.env.WORKOS_CLIENT_ID = previousClientId;
+  }
 });
 
 describe("WorkOS-owned profiles", () => {
@@ -77,12 +80,16 @@ describe("WorkOS-owned profiles", () => {
       onboardingComplete: true,
     });
 
-    const storedProfiles = await t.run(async (ctx) => await ctx.db.query("profiles").collect());
+    const storedProfiles = await t.run(
+      async (ctx) => await ctx.db.query("profiles").collect(),
+    );
     expect(storedProfiles).toHaveLength(2);
     expect(storedProfiles.map(({ ownerSubject }) => ownerSubject)).toEqual(
       expect.arrayContaining(["user_first", "user_second"]),
     );
-    expect(storedProfiles.every((profile) => !("ownerId" in profile))).toBe(true);
+    expect(storedProfiles.every((profile) => !("ownerId" in profile))).toBe(
+      true,
+    );
   });
 
   test("rejects mismatched and missing WorkOS client identities", async () => {
@@ -92,12 +99,19 @@ describe("WorkOS-owned profiles", () => {
       issuer,
       client_id: "client_other",
     });
-    const missingClient = t.withIdentity({ subject: "user_missing_client", issuer });
+    const missingClient = t.withIdentity({
+      subject: "user_missing_client",
+      issuer,
+    });
 
-    await expect(wrongClient.query(api.profiles.getMine, {})).rejects.toMatchObject({
+    await expect(
+      wrongClient.query(api.profiles.getMine, {}),
+    ).rejects.toMatchObject({
       data: { code: "UNAUTHENTICATED" },
     });
-    await expect(missingClient.query(api.profiles.getMine, {})).rejects.toMatchObject({
+    await expect(
+      missingClient.query(api.profiles.getMine, {}),
+    ).rejects.toMatchObject({
       data: { code: "UNAUTHENTICATED" },
     });
   });
