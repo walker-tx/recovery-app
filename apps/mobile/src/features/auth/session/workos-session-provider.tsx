@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { getWorkOSSessionScope, type WorkOSAuthConfig } from "./workos-auth-config.ts";
+
 import { createWorkOSSessionActions } from "./workos-session-actions.ts";
 import {
   createWorkOSSessionOwner,
@@ -19,12 +21,6 @@ import {
   createWorkOSSessionStorage,
   type WorkOSSessionStorage,
 } from "./workos-session-storage.ts";
-
-const secureStoreSessionStorage = createWorkOSSessionStorage({
-  getItemAsync: SecureStore.getItemAsync,
-  setItemAsync: SecureStore.setItemAsync,
-  deleteItemAsync: SecureStore.deleteItemAsync,
-});
 
 type WorkOSSessionContextValue = {
   isLoading: boolean;
@@ -45,22 +41,28 @@ const WorkOSSessionContext = createContext<WorkOSSessionContextValue | null>(nul
 export function WorkOSSessionProvider({
   children,
   client,
-  storage = secureStoreSessionStorage,
+  config,
+  storage: suppliedStorage,
 }: {
   children?: ReactNode;
   client: ConvexReactClient;
+  config: WorkOSAuthConfig;
   storage?: WorkOSSessionStorage;
 }) {
+  const scope = getWorkOSSessionScope(config);
+  const secureStorage = useMemo(() => createWorkOSSessionStorage(SecureStore, config.environmentId), [config.environmentId]);
+  const storage = suppliedStorage ?? secureStorage;
   const owner = useMemo(
     () => createWorkOSSessionOwner({
       storage,
       actions: createWorkOSSessionActions(client),
     }),
-    [client, storage],
+    [client, storage, scope],
   );
 
   useEffect(() => {
-    void owner.restore().catch(() => undefined);
+    void owner.activate().catch(() => undefined);
+    return () => owner.dispose();
   }, [owner]);
 
   const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);

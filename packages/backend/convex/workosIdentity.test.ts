@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { UserIdentity } from "convex/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { requireWorkOSIdentity } from "./workosIdentity";
 import {
@@ -33,6 +33,7 @@ function identity(overrides: Partial<UserIdentity> = {}): UserIdentity {
 }
 
 describe("requireWorkOSIdentity", () => {
+  beforeEach(() => vi.stubEnv("WORKOS_MODE", "staging"));
   afterEach(() => vi.unstubAllEnvs());
 
   it("returns only the validated subject", async () => {
@@ -140,5 +141,26 @@ describe("WorkOS identity source-contract detection", () => {
     } finally {
       rmSync(rootDirectory, { recursive: true, force: true });
     }
+  });
+});
+
+describe('local identity binding', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const generation = '12345678-1234-4234-8234-123456789abc';
+  const localClient = `client_local${generation.replaceAll('-', '')}`;
+  const localIssuer = `https://local-workos.invalid/instances/${generation}`;
+  it.each([{}, { issuer: issuer }, { client_id: clientId }, { subject: ' ' }])('validates local claims %j', async (overrides) => {
+    const env = {
+      WORKOS_MODE: 'local', WORKOS_CLIENT_ID: localClient,
+      LOCAL_AUTH_STACK_ID: '87654321-1234-4234-8234-123456789abc',
+      LOCAL_AUTH_PROVIDER_GENERATION: generation,
+      WORKOS_ISSUER: localIssuer, WORKOS_AUDIENCE: localClient,
+      WORKOS_JWKS_URL: 'http://127.0.0.1:6100/jwks', WORKOS_API_URL: 'http://127.0.0.1:6100',
+      CONVEX_URL: 'http://127.0.0.1:6101', CONVEX_SITE_URL: 'http://127.0.0.1:6102', CONVEX_DEPLOY_KEY: '',
+    };
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const result = requireWorkOSIdentity(contextWith(identity({ issuer: localIssuer, client_id: localClient, ...overrides })));
+    if (Object.keys(overrides).length === 0) await expect(result).resolves.toEqual({ subject: 'user_123' });
+    else await expect(result).rejects.toMatchObject({ data: { code: 'UNAUTHENTICATED' } });
   });
 });

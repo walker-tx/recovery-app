@@ -1,6 +1,7 @@
 "use node";
 
 import { WorkOS } from "@workos-inc/node";
+import { resolveWorkOSApiKey, resolveWorkOSExpectations, workOSEnvironment } from "./workosAuthConfig";
 
 import type {
   WorkOSEmailVerification,
@@ -12,8 +13,6 @@ import type {
   WorkOSUserClassification,
 } from "./workosGateway.ts";
 import { categorizeWorkOSError, WorkOSGatewayError } from "./workosErrorPolicy.ts";
-
-let workos: WorkOS | undefined;
 
 export const workosGateway: WorkOSGateway = {
   async lookupUserByEmail(email) {
@@ -215,16 +214,15 @@ export function parseStagingVerificationRequiredChallenge(error: unknown) {
 }
 
 function getWorkOS(): WorkOS {
-  workos ??= new WorkOS({
-    apiKey: requiredEnvironmentValue("WORKOS_API_KEY"),
-    clientId: requiredEnvironmentValue("WORKOS_CLIENT_ID"),
+  const env = workOSEnvironment();
+  const trust = resolveWorkOSExpectations(env);
+  const apiKey = resolveWorkOSApiKey(env);
+  // Resolve per invocation so changed local destinations or credentials cannot
+  // retain a previously paired SDK client. Construction performs no request.
+  return new WorkOS({
+    ...trust.sdkOptions,
+    apiKey,
+    clientId: trust.clientId,
     maxRetries: 0,
   });
-  return workos;
-}
-
-function requiredEnvironmentValue(name: "WORKOS_API_KEY" | "WORKOS_CLIENT_ID"): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required server environment variable: ${name}`);
-  return value;
 }

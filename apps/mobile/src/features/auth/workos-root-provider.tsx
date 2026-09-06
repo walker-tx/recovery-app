@@ -15,15 +15,18 @@ import {
 } from "./session/workos-session-provider.tsx";
 import { getWorkOSRouteDestination } from "./workos-auth-policy.ts";
 
+import { getWorkOSSessionScope, type WorkOSAuthConfig } from "./session/workos-auth-config.ts";
+
 type WorkOSRootProviderProps = {
   client: ConvexReactClient | null;
+  config: WorkOSAuthConfig | null;
 };
 
-export function WorkOSRootProvider({ client }: WorkOSRootProviderProps) {
-  if (client === null) return <WorkOSMissingConfiguration />;
+export function WorkOSRootProvider({ client, config }: WorkOSRootProviderProps) {
+  if (client === null || config === null || client.url !== config.backendUrl) return <WorkOSMissingConfiguration />;
 
   return (
-    <WorkOSSessionProvider client={client}>
+    <WorkOSSessionProvider key={getWorkOSSessionScope(config)} client={client} config={config}>
       <ConvexProviderWithAuth client={client} useAuth={useWorkOSConvexAuth}>
         <SignupFlowProvider>
           <StatusBar style="dark" />
@@ -101,9 +104,9 @@ function WorkOSMissingConfiguration() {
       <Screen contentClassName="w-full max-w-[520px] self-center">
         <View className="gap-md">
           <Typography variant="overline">RECOVERY</Typography>
-          <Typography accessibilityRole="header" variant="display">Connect your backend.</Typography>
+          <Typography accessibilityRole="header" variant="display">Authentication configuration required.</Typography>
           <Typography className="text-ink-muted">
-            Run mise run zero from the repository root to configure and start the backend.
+            Configure EXPO_PUBLIC_AUTH_ENVIRONMENT_ID and its paired EXPO_PUBLIC_CONVEX_URL through bootstrap, then restart Expo.
           </Typography>
         </View>
       </Screen>

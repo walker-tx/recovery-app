@@ -9,17 +9,19 @@ import { Button } from "@/components/ui/button";
 import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
 import { migrateLegacyConvexAuthStorage } from "@/features/auth/session/legacy-convex-auth-storage-migration";
+import { getWorkOSAuthConfig } from "@/features/auth/session/workos-auth-config";
 import { WorkOSRootProvider } from "@/features/auth/workos-root-provider";
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
-const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
+const config = getWorkOSAuthConfig(process.env.EXPO_PUBLIC_AUTH_ENVIRONMENT_ID, convexUrl);
+const convex = config ? new ConvexReactClient(config.backendUrl) : null;
 
 export default function RootLayout() {
-  if (convexUrl === undefined) return <WorkOSRootProvider client={null} />;
+  if (config === null) return <WorkOSRootProvider client={null} config={null} />;
 
   return (
-    <LegacyConvexAuthMigrationGate convexUrl={convexUrl}>
-      <WorkOSRootProvider client={convex} />
+    <LegacyConvexAuthMigrationGate key={JSON.stringify(config)} convexUrl={config.backendUrl}>
+      <WorkOSRootProvider client={convex} config={config} />
     </LegacyConvexAuthMigrationGate>
   );
 }
