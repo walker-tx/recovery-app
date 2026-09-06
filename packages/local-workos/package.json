@@ -5,16 +5,18 @@
     "jose": "6.2.10"
   },
   "devDependencies": {
+    "@effect/vitest": "4.0.0-rc.112",
     "@types/node": "~24.10.15",
     "@workos-inc/node": "10.11.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "4.1.11"
   },
   "name": "@recovery/local-workos",
   "private": true,
   "scripts": {
     "check": "tsc --noEmit",
     "start": "node --experimental-strip-types src/cli.ts",
-    "test": "node --experimental-strip-types --test tests/*.test.ts"
+    "test": "vitest run"
   },
   "type": "module",
   "version": "0.0.0"
