@@ -96,6 +96,23 @@ and previews are not managed by these commands.
 This remains a development checkpoint: fake-I/O tests do not establish successful
 native startup, complete authentication, or the reset/refresh lifecycle.
 
+### Local provider bulk-clear capability
+
+The acquired provider API exposes `clearData(confirmation)` as a scoped Effect;
+`startProvider` exposes it through its existing Promise boundary. This is a local
+lifecycle API, not an HTTP endpoint or a `stack:stop` side effect. No clear command
+is enabled in the CLI. Execution against actual state requires separate approval.
+
+Confirmation explicitly names `operation: "clear-provider-data"`, the exact
+configured absolute `database`, the acquired `providerGeneration`, and all three
+`affectedDomains`: `users`, `sessions`, `challenges`. The operation rechecks the
+opened database identity and persisted signing identity, then atomically clears
+those tables using the already-acquired SQL service. Failed transactions roll back;
+identity, signing keys, credentials and other data domains are not cleared.
+Already-issued access tokens remain valid until expiry; recreated users receive
+new subjects. This covers the current provider schema, not unimplemented #48
+refresh/reset operations or whole-stack destruction/reservation release.
+
 ## Checks
 
 - `mise run bootstrap-test` — test the secure bootstrap and documentation contract
