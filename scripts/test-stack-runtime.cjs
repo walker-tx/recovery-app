@@ -5,7 +5,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { createRuntime, runCli } = require("./stack-runtime.cjs");
-async function fixture(t) {
+async function fixture(t, overrides = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "stack-runtime-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const worktree = path.join(root, "worktree");
@@ -26,6 +26,15 @@ async function fixture(t) {
       calls.push(args);
     },
     portAvailable: async () => true,
+    inherited: new Proxy({}, { get() { throw Error("Environment read"); } }),
+    fetchImpl: async () => { throw Error("Unexpected HTTP probe"); },
+    connect: () => { throw Error("Unexpected transport probe"); },
+    startup: {
+      prepareSeed: () => { throw Error("Unexpected credential read"); },
+      bootstrap: () => { throw Error("Unexpected bootstrap"); },
+      persist: () => { throw Error("Unexpected configuration write"); },
+    },
+    ...overrides,
   });
   return { runtime, worktree, calls, closed: () => closed };
 }
@@ -42,6 +51,39 @@ test("runtime reserves, checks explicit ownership and stops only selected stack"
   assert.deepEqual(f.calls, []);
   await f.runtime.close();
   assert.equal(f.closed(), true);
+});
+test("status exposes configured URLs, unchecked readiness and scoped log references only", async (t) => {
+  const f = await fixture(t);
+  const record = await f.runtime.reserve();
+  const status = await f.runtime.status(record.stackId);
+  assert.equal(status.worktree, await fs.realpath(f.worktree));
+  for (const [service, port] of Object.entries(record.ports)) {
+    assert.equal(status.urls[service], `${service === "mailpitSmtp" ? "smtp" : "http"}://127.0.0.1:${port}`);
+    assert.deepEqual(status.readiness[service], { state: "unknown", reason: "not-probed" });
+    assert.equal(status.services[service], "stopped");
+  }
+  assert.deepEqual(status.logs, Object.fromEntries(
+    ["mailpitHttp", "provider", "convexCloud", "metro"].map(service => [service, {
+      manager: "pitchfork", name: `recovery-local/recovery-${record.stackId}-${service}`,
+    }]),
+  ));
+  const output = [];
+  assert.equal(await runCli(["status", record.stackId], {
+    open: async () => f.runtime, write: line => output.push(line),
+  }), 0);
+  assert.deepEqual(JSON.parse(output[0]), status);
+  assert.deepEqual(f.calls, []);
+});
+test("occupied listeners remain conflicts, never readiness evidence", async (t) => {
+  let available = true;
+  const f = await fixture(t, { portAvailable: async () => available });
+  const record = await f.runtime.reserve();
+  available = false;
+  const status = await f.runtime.status(record.stackId);
+  assert.equal(status.state, "conflict");
+  assert.ok(Object.values(status.services).every(state => state === "occupied"));
+  assert.ok(Object.values(status.readiness).every(value => value.state === "unknown"));
+  assert.deepEqual(f.calls, []);
 });
 test("start refuses before registry or service effects", async (t) => {
   const f = await fixture(t);
@@ -139,6 +181,9 @@ test("composed stop verifies owned PID and sends only the exact stack daemon ID"
     (await runtime.status(record.stackId)).services.provider,
     "running",
   );
+  assert.deepEqual((await runtime.status(record.stackId)).readiness.provider, {
+    state: "unknown", reason: "not-probed",
+  });
   await runtime.stop(record.stackId);
   assert.deepEqual(calls, [
     [

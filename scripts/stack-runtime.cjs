@@ -16,7 +16,7 @@ const { createProcessInspector } = require("./stack-process-inspector.cjs");
 const { createPitchforkIdentity } = require("./stack-pitchfork-identity.cjs");
 const { createPitchforkRunner } = require("./stack-adapters.cjs");
 const { createRegistry } = require("./stack-registry.cjs");
-const { createLifecycle } = require("./stack-lifecycle.cjs");
+const { createLifecycle, processName } = require("./stack-lifecycle.cjs");
 const uuid = (value) =>
   typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
@@ -183,7 +183,24 @@ async function createRuntime({
     }
     return {
       reserve: () => registry.reserve(worktree),
-      status: check,
+      status: async (stackId) => {
+        const status = await check(stackId);
+        // Registry observations prove neither listener nor HTTP health for an
+        // owned process. URLs are configured destinations, not reachability.
+        return {
+          ...status,
+          urls: Object.fromEntries(Object.entries(status.ports).map(([service, port]) => [
+            service, `${service === "mailpitSmtp" ? "smtp" : "http"}://127.0.0.1:${port}`,
+          ])),
+          readiness: Object.fromEntries(Object.keys(status.ports).map(service => [
+            service, { state: "unknown", reason: "not-probed" },
+          ])),
+          // Paired endpoints share one daemon; do not invent filesystem log paths.
+          logs: Object.fromEntries(["mailpitHttp", "provider", "convexCloud", "metro"].map(service => [
+            service, { manager: "pitchfork", name: processName(status, service) },
+          ])),
+        };
+      },
       stop: async (stackId) => {
         await check(stackId);
         return lifecycle.stop(worktree, stackId);
@@ -296,6 +313,12 @@ async function runCli(
         state: result.state ?? "reserved",
         ports: result.ports,
         services: result.services,
+        ...(command === "status" ? {
+          worktree: result.worktree,
+          urls: result.urls,
+          readiness: result.readiness,
+          logs: result.logs,
+        } : {}),
       }),
     );
     return 0;
