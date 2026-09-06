@@ -68,6 +68,14 @@ Third-party skill payloads under this directory are committed so repository agen
   - `expo-ui`
   - `expo-upgrade`
 
+## Effect-TS skills
+
+- Upstream: `https://github.com/Effect-TS/skills`
+- Pinned commit: `2309e6f27d9955b434c0e3f394b945c136e89fd2`
+- License: MIT; copy at `licenses/effect-ts-skills-LICENSE`
+- Included complete, unmodified directory: `effect-ts` from upstream `skills/effect-ts` (only `SKILL.md` at this revision).
+- Mirrored into `apps/mobile/.agents/skills/effect-ts` for mobile-root sessions.
+
 ## Updating vendored skills
 
 1. Review upstream changes and licenses before selecting a new commit.
