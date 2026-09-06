@@ -1,9 +1,9 @@
 import { isAbsolute } from "node:path";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Cause, Effect, Exit, Redacted, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
-import { consumeBootstrapApiKey } from "./config.ts";
-import { startProvider } from "./provider.ts";
+import { loadProviderConfig, ConfigService } from "./config.ts";
+import { acquireConfiguredProvider } from "./provider.ts";
 
 const command = Command.make(
   "local-workos",
@@ -27,7 +27,7 @@ const command = Command.make(
   },
   (options) =>
     Effect.gen(function* () {
-      const apiKey = yield* consumeBootstrapApiKey;
+      const config = yield* loadProviderConfig(options);
       // NodeRuntime owns interruption. This watchdog also bounds an in-flight
       // uninterruptible acquisition or a Promise finalizer that never settles.
       yield* Effect.acquireRelease(
@@ -46,11 +46,8 @@ const command = Command.make(
         }),
         (cleanup) => Effect.sync(cleanup),
       );
-      const provider = yield* Effect.acquireRelease(
-        Effect.tryPromise(() =>
-          startProvider({ ...options, apiKey: Redacted.value(apiKey) }),
-        ),
-        (provider) => Effect.promise(() => provider.close()),
+      const provider = yield* acquireConfiguredProvider.pipe(
+        Effect.provideService(ConfigService, config),
       );
       yield* Effect.sync(() =>
         process.stdout.write(

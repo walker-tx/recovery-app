@@ -94,7 +94,11 @@ async function retryReadiness<T>(
       return await start(port);
     } catch (error) {
       // Only initial readiness is retryable, and only with fresh collision evidence.
-      if (attempt === 3 || (await available(port))) throw error;
+      if (attempt === 3) throw error;
+      const isAvailable = await available(port).catch(() => {
+        throw error;
+      });
+      if (isAvailable) throw error;
     }
   }
 }
@@ -308,4 +312,26 @@ it.live("readiness probes a forced occupied port before retrying", () =>
     assert.deepEqual(attempts, [occupied, port]);
     assert.notEqual(port, occupied);
   }),
+);
+
+it.live(
+  "readiness retry preserves startup failure when collision probe rejects",
+  () =>
+    Effect.gen(function* () {
+      const original = new Error("original startup failure");
+      yield* Effect.promise(() =>
+        assert.rejects(
+          retryReadiness(
+            async () => {
+              throw original;
+            },
+            async () => 43210,
+            async () => {
+              throw new Error("probe failure");
+            },
+          ),
+          (error) => error === original,
+        ),
+      );
+    }),
 );

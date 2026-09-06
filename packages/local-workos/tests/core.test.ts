@@ -19,7 +19,7 @@ it.live(
       );
       const options = {
         database: join(dir, "state.sqlite"),
-        apiKey: "sk_test_synthetic",
+        apiKey: `sk_test_local_${"03".repeat(32)}`,
       };
       let provider = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider(options)),

@@ -15,7 +15,7 @@ const fixture = Effect.gen(function* () {
     Effect.promise(() => mkdtemp(join(tmpdir(), "workos-request-"))),
     (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
   );
-  const apiKey = "sk_test_SENTINEL_KEY";
+  const apiKey = `sk_test_local_${"04".repeat(32)}`;
   const provider = yield* Effect.acquireRelease(
     Effect.promise(() =>
       startProvider({ database: join(dir, "state.sqlite"), apiKey }),
@@ -35,7 +35,7 @@ it.live("request validation preserves ordering and never echoes secrets", () =>
     const password = "SENTINEL_PASSWORD_12345";
     const auth = {
       client_id: provider.clientId,
-      client_secret: "sk_test_SENTINEL_KEY",
+      client_secret: `sk_test_local_${"04".repeat(32)}`,
       grant_type: "password",
       email: "request@example.test",
       password,
@@ -133,7 +133,7 @@ it.live("request validation preserves ordering and never echoes secrets", () =>
       const result = JSON.parse(text);
       assert.equal(result.code ?? result.error, test.code);
       assert.ok(!text.includes(password));
-      assert.ok(!text.includes("sk_test_SENTINEL_KEY"));
+      assert.ok(!text.includes(`sk_test_local_${"04".repeat(32)}`));
     }
   }),
 );

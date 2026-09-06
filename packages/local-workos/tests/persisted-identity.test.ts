@@ -6,10 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Exit, Cause } from "effect";
 import { exportJWK, generateKeyPair } from "jose";
 import { WorkOS } from "@workos-inc/node";
-import { startProvider } from "../src/provider.ts";
+import { acquireProvider, startProvider } from "../src/provider.ts";
 const directory = Effect.acquireRelease(
   Effect.promise(() => mkdtemp(join(tmpdir(), "persisted-identity-"))),
   (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
@@ -35,13 +35,17 @@ it.live("rejects malformed stored identities without replacing state", () =>
     );
     const address = blocker.address();
     assert.ok(address && typeof address !== "string");
-    yield* Effect.promise(async () => {
-      const pair = await generateKeyPair("RS256", { extractable: true });
-      const other = await generateKeyPair("RS256", { extractable: true });
+    yield* Effect.gen(function* () {
+      const pair = yield* Effect.promise(() =>
+        generateKeyPair("RS256", { extractable: true }),
+      );
+      const other = yield* Effect.promise(() =>
+        generateKeyPair("RS256", { extractable: true }),
+      );
       const identity = {
         generation: randomUUID(),
-        privateKey: await exportJWK(pair.privateKey),
-        publicKey: await exportJWK(pair.publicKey),
+        privateKey: yield* Effect.promise(() => exportJWK(pair.privateKey)),
+        publicKey: yield* Effect.promise(() => exportJWK(pair.publicKey)),
       };
       const invalid = [
         ...[
@@ -51,7 +55,10 @@ it.live("rejects malformed stored identities without replacing state", () =>
           "550e8400-e29b-41d4-7716-446655440000",
           "550E8400-E29B-41D4-A716-446655440000",
         ].map((generation) => ({ ...identity, generation })),
-        { ...identity, publicKey: await exportJWK(other.publicKey) },
+        {
+          ...identity,
+          publicKey: yield* Effect.promise(() => exportJWK(other.publicKey)),
+        },
         { ...identity, publicKey: { ...identity.publicKey, e: "Aw" } },
         {
           ...identity,
@@ -66,24 +73,31 @@ it.live("rejects malformed stored identities without replacing state", () =>
       for (const [index, body] of invalid.entries()) {
         const database = join(dir, `${index}.sqlite`);
         const db = new DatabaseSync(database);
-        await chmod(database, 0o600);
+        yield* Effect.promise(() => chmod(database, 0o600));
         try {
           db.exec(
             "CREATE TABLE instance (id INTEGER PRIMARY KEY, body TEXT NOT NULL)",
           );
           const saved = body === "malformed-json" ? "{" : JSON.stringify(body);
           db.prepare("INSERT INTO instance VALUES(1,?)").run(saved);
-          await assert.rejects(
-            async () => {
-              const unexpected = await startProvider({
+          const exit: Exit.Exit<unknown, unknown> = yield* Effect.exit(
+            Effect.scoped(
+              acquireProvider({
                 database,
-                apiKey: "sk_test_synthetic",
+                apiKey: `sk_test_local_${"03".repeat(32)}`,
                 port: address.port,
-              });
-              await unexpected.close();
-            },
-            { message: "Invalid persisted signing identity" },
+              }),
+            ),
           );
+          assert.ok(
+            Exit.isFailure(exit),
+            `invalid persisted case ${index} unexpectedly started`,
+          );
+          if (Exit.isFailure(exit)) {
+            const error: unknown = Cause.squash(exit.cause);
+            assert.ok(error instanceof Error);
+            assert.equal(error.message, "Invalid persisted signing identity");
+          }
           assert.equal(
             db.prepare("SELECT body FROM instance").get()?.body,
             saved,
@@ -102,7 +116,7 @@ it.live(
       const dir = yield* directory;
       const options = {
         database: join(dir, "state.sqlite"),
-        apiKey: "sk_test_synthetic",
+        apiKey: `sk_test_local_${"03".repeat(32)}`,
       };
       const provider = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider(options)),
@@ -126,19 +140,21 @@ it.live(
         }),
       );
       for (const email of [" FIXTURE@example.test ", "sdk@example.test"]) {
-        yield* Effect.promise(() =>
-          assert.rejects(
-            () =>
+        const exit = yield* Effect.exit(
+          Effect.tryPromise({
+            try: () =>
               provider.createIdentityFixture({ email, provider: "AppleOAuth" }),
-            (error) => {
-              assert.ok(error instanceof Error);
-              assert.equal(error.message, "Unable to create identity fixture");
-              assert.deepEqual(Object.keys(error), []);
-              assert.equal(error.cause, undefined);
-              return true;
-            },
-          ),
+            catch: (error) => error,
+          }),
         );
+        assert.ok(Exit.isFailure(exit));
+        if (Exit.isFailure(exit)) {
+          const error: unknown = Cause.squash(exit.cause);
+          assert.ok(error instanceof Error);
+          assert.equal(error.message, "Unable to create identity fixture");
+          assert.deepEqual(Object.keys(error), []);
+          assert.equal(error.cause, undefined);
+        }
       }
       const users = yield* Effect.promise(() => sdk.userManagement.listUsers());
       assert.equal(users.data.length, 2);
@@ -146,22 +162,24 @@ it.live(
       const competing = new DatabaseSync(options.database);
       try {
         competing.exec("BEGIN IMMEDIATE");
-        yield* Effect.promise(() =>
-          assert.rejects(
-            () =>
+        const exit = yield* Effect.exit(
+          Effect.tryPromise({
+            try: () =>
               provider.createIdentityFixture({
                 email: "new-subject@example.test",
                 provider: "GoogleOAuth",
               }),
-            (error) => {
-              assert.ok(error instanceof Error);
-              assert.equal(error.message, "Unable to create identity fixture");
-              assert.deepEqual(Object.keys(error), []);
-              assert.equal(error.cause, undefined);
-              return true;
-            },
-          ),
+            catch: (error) => error,
+          }),
         );
+        assert.ok(Exit.isFailure(exit));
+        if (Exit.isFailure(exit)) {
+          const error: unknown = Cause.squash(exit.cause);
+          assert.ok(error instanceof Error);
+          assert.equal(error.message, "Unable to create identity fixture");
+          assert.deepEqual(Object.keys(error), []);
+          assert.equal(error.cause, undefined);
+        }
       } finally {
         competing.close();
       }
@@ -174,7 +192,7 @@ it.live(
       const dir = yield* directory;
       const options = {
         database: join(dir, "state.sqlite"),
-        apiKey: "sk_test_synthetic",
+        apiKey: `sk_test_local_${"03".repeat(32)}`,
       };
       const first = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider(options)),
