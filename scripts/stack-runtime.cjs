@@ -17,7 +17,7 @@ const { createProcessInspector } = require("./stack-process-inspector.cjs");
 const { createPitchforkIdentity } = require("./stack-pitchfork-identity.cjs");
 const { createPitchforkRunner } = require("./stack-adapters.cjs");
 const { createRegistry, portAvailable: observePort } = require("./stack-registry.cjs");
-const { createLifecycle, processName } = require("./stack-lifecycle.cjs");
+const { createLifecycle, processName, StopFailure } = require("./stack-lifecycle.cjs");
 const uuid = (value) =>
   typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
@@ -321,6 +321,7 @@ async function runCli(
         state: result.state ?? "reserved",
         ports: result.ports,
         services: result.services,
+        ...(command === "stop" && result.stopReport ? { stopReport: result.stopReport } : {}),
         ...(command === "status" ? {
           worktree: result.worktree,
           urls: result.urls,
@@ -330,7 +331,11 @@ async function runCli(
       }),
     );
     return 0;
-  } catch {
+  } catch (error) {
+    if (error instanceof StopFailure) {
+      write(JSON.stringify(error.stopReport));
+      return 1;
+    }
     write(
       "Local stack operation refused: verify provider source, executable/dependencies, stack UUID, registry ownership/locks, free reserved ports, and Pitchfork 2.22.0/process inspector availability. No automatic repair attempted.",
     );

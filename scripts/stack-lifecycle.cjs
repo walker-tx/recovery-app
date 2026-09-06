@@ -14,6 +14,13 @@ const groups = [
 const names = groups.flat();
 const processName = (record, service) =>
   `recovery-local/recovery-${record.stackId}-${service}`;
+class StopFailure extends Error {
+  constructor(report, ambiguous) {
+    super("Stack stop ownership mismatch/conflict or command failure; reservation retained");
+    this.stopReport = report;
+    this.ambiguous = ambiguous;
+  }
+}
 function localConfiguration(record, bootstrap) {
   if (
     !bootstrap ||
@@ -263,41 +270,60 @@ function createLifecycle({
       }),
     stop: (worktree, stackId) =>
       locked(worktree, async (canonical) => {
-        let current = await status(canonical);
-        if (current.stackId !== stackId)
-          throw Error("Stack ownership mismatch");
-        if (current.state === "conflict")
-          throw Error("Stack ownership conflict; no processes stopped");
-        for (const group of [...groups].reverse()) {
-          const service = group[0];
-          current = await status(canonical);
-          if (current.state === "conflict")
-            throw Error("Stack ownership conflict; stopping halted");
-          if (current.services[service] === "running") {
-            const record = await bounded("ownership", () =>
-              registry.reserve(canonical),
-            );
-            const actual = await bounded("identity", (signal) =>
-              identify(processName(current, service), { signal }),
-            );
-            if (!isDeepStrictEqual(actual, record.processes[service]))
-              throw Error(
-                "Pitchfork process ownership mismatch; stopping halted",
-              );
-            await bounded("stop", (signal) =>
-              run("pitchfork", ["stop", processName(current, service)], {
-                cwd: canonical,
-                signal,
-                timeoutMs,
-              }),
-            );
+        const report = { operation: "stop-stack-processes", stackId, state: "incomplete",
+          reservationRetained: true,
+          processDomains: { metro: "not-attempted", convex: "not-attempted", provider: "not-attempted", inbox: "not-attempted" } };
+        let domain;
+        try {
+          let current = await status(canonical);
+          if (current.stackId !== stackId) throw Error("Stack ownership mismatch");
+          const target = { stackId, providerGeneration: current.providerGeneration,
+            worktree: canonical, ports: structuredClone(current.ports) };
+          report.providerGeneration = target.providerGeneration;
+          const verify = (record) => {
+            if (!record || !isDeepStrictEqual({ stackId: record.stackId,
+              providerGeneration: record.providerGeneration, worktree: record.worktree,
+              ports: record.ports }, target) || record.state === "conflict")
+              throw Error("Stack ownership mismatch");
+          };
+          verify(current);
+          for (const group of [...groups].reverse()) {
+            const service = group[0];
+            domain = { metro: "metro", convexCloud: "convex", provider: "provider", mailpitHttp: "inbox" }[service];
+            current = await status(canonical);
+            verify(current);
+            if (group.every(name => current.services[name] === "stopped")) {
+              report.processDomains[domain] = "already-stopped";
+              continue;
+            }
+            if (current.services[service] !== "running") throw Error("Unknown process state");
+            const actual = await bounded("identity", signal => identify(processName(current, service), { signal }));
+            const record = await bounded("ownership", () => registry.readOwned(canonical, stackId));
+            verify(record);
+            if (!isDeepStrictEqual(actual, record.processes[service])) throw Error("Process ownership mismatch");
+            // The lifecycle lock spans every check and command. Revalidate the
+            // original generation/ports before each effect, never retarget midway.
+            verify(await status(canonical));
+            report.processDomains[domain] = "uncertain";
+            await bounded("stop", signal => run("pitchfork", ["stop", processName(current, service)], {
+              cwd: canonical, signal, timeoutMs,
+            }));
             const stopped = await status(canonical);
-            if (group.some((name) => stopped.services[name] !== "stopped"))
-              throw Error(`${service} did not stop; reservation retained`);
+            verify(stopped);
+            if (group.some(name => stopped.services[name] !== "stopped")) throw Error("Stop unconfirmed");
+            report.processDomains[domain] = "stopped";
           }
+          const final = await status(canonical);
+          verify(final);
+          return { ...final, stopReport: { ...report, state: "complete" } };
+        } catch (error) {
+          if (domain && report.processDomains[domain] === "not-attempted") report.processDomains[domain] = "blocked";
+          const ambiguous = error.ambiguousTimeout === true || error.ambiguous === true ||
+            (domain !== undefined && report.processDomains[domain] === "uncertain");
+          report.lifecycleLockRetained = ambiguous;
+          throw new StopFailure(report, ambiguous);
         }
-        return status(canonical);
       }),
   };
 }
-module.exports = { createLifecycle, localConfiguration, processName };
+module.exports = { createLifecycle, localConfiguration, processName, StopFailure };

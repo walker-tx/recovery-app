@@ -209,6 +209,11 @@ function createRegistry({
       throw Error("Stack ownership mismatch");
   }
   return {
+    readOwned: (worktree, stackId) => transact(worktree, async (_data, record) => {
+      owned(record, stackId);
+      if (!record) throw Error("Stack ownership missing");
+      return record;
+    }),
     reserve: (worktree) =>
       transact(worktree, async (data, record, canonical, owner) => {
         if (record) {
