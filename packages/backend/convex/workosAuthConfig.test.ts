@@ -86,6 +86,21 @@ describe("paired local trust", () => {
     ]);
   });
   it.each([
+    "12345678-1234-1234-8234-123456789abc",
+    "12345678-1234-4234-7234-123456789abc",
+  ])("rejects non-v4 provider generation %s", (providerGeneration) => {
+    const clientId = `client_local${providerGeneration.replaceAll("-", "")}`;
+    expect(() =>
+      buildWorkOSAuthConfig({
+        ...local,
+        providerGeneration,
+        issuer: `https://local-workos.invalid/instances/${providerGeneration}`,
+        workosClientId: clientId,
+        audience: clientId,
+      }),
+    ).toThrow();
+  });
+  it.each([
     "stackId",
     "providerGeneration",
     "issuer",
@@ -104,6 +119,8 @@ describe("paired local trust", () => {
     { audience: "other" },
     { workosClientId: "client_other" },
     { stackId: "not-a-uuid" },
+    { stackId: "12345678-1234-1234-8234-123456789abc" },
+    { stackId: "12345678-1234-4234-7234-123456789abc" },
     { apiUrl: "https://api.workos.com" },
     { jwks: "http://example.com/jwks" },
     { convexUrl: "https://example.convex.cloud" },

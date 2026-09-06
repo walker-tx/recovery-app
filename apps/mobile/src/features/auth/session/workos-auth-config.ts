@@ -9,10 +9,7 @@ export function getWorkOSAuthConfig(
   backendUrl: string | undefined,
 ): WorkOSAuthConfig | null {
   const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-  if (
-    !environmentId ||
-    !new RegExp(`^${uuid}:${uuid}$`, "i").test(environmentId)
-  ) {
+  if (!environmentId || !new RegExp(`^${uuid}:${uuid}$`).test(environmentId)) {
     return null;
   }
   if (!backendUrl || backendUrl.trim() !== backendUrl) {
@@ -23,14 +20,18 @@ export function getWorkOSAuthConfig(
     if (
       !["http:", "https:"].includes(url.protocol) ||
       url.username ||
-      url.password
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
     ) {
       return null;
     }
   } catch {
     return null;
   }
-  return { environmentId, backendUrl };
+  // Convex appends /api paths directly to this destination.
+  return { environmentId, backendUrl: backendUrl.replace(/\/$/, "") };
 }
 
 /** In-memory owner/subtree key only; persistence uses environmentId alone. */

@@ -26,6 +26,27 @@ test("requires explicit stable identity and backend as one public config pair", 
     backendUrl: "http://localhost:3210",
   });
 });
+test("rejects noncanonical identity and non-origin backend destinations", () => {
+  const canonical = id.replaceAll("11111111", "abcdefab");
+  assert.notEqual(
+    getWorkOSAuthConfig(canonical, "http://localhost:3210"),
+    null,
+  );
+  assert.equal(
+    getWorkOSAuthConfig(canonical.toUpperCase(), "http://localhost:3210"),
+    null,
+  );
+  assert.deepEqual(
+    getWorkOSAuthConfig(id, "http://localhost:3210/"),
+    getWorkOSAuthConfig(id, "http://localhost:3210"),
+  );
+  for (const suffix of ["/path", "?mode=local", "#fragment"]) {
+    assert.equal(
+      getWorkOSAuthConfig(id, `http://localhost:3210${suffix}`),
+      null,
+    );
+  }
+});
 test("scope includes supplied identity and destination without guessing identity", () => {
   const config = getWorkOSAuthConfig(id, "http://localhost:3210")!;
   assert.equal(
@@ -44,6 +65,8 @@ test("scope includes supplied identity and destination without guessing identity
     getWorkOSSessionScope(config),
   );
 });
+// These source-spelling checks intentionally guard native wiring without loading Expo.
+// Storage and owner behavior are exercised separately by storage/integration tests.
 test("real provider persists only identity and replaces the session subtree on pair change", () => {
   const root = readFileSync(
     new URL("../workos-root-provider.tsx", import.meta.url),
