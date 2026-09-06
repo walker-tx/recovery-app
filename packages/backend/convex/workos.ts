@@ -1,7 +1,11 @@
 "use node";
 
 import { WorkOS } from "@workos-inc/node";
-import { resolveWorkOSApiKey, resolveWorkOSExpectations, workOSEnvironment } from "./workosAuthConfig";
+import {
+  resolveWorkOSApiKey,
+  resolveWorkOSExpectations,
+  workOSEnvironment,
+} from "./workosAuthConfig";
 
 import type {
   WorkOSEmailVerification,
@@ -10,22 +14,36 @@ import type {
   WorkOSGatewaySession,
   WorkOSGatewayUser,
   WorkOSPasswordReset,
-  WorkOSUserClassification,
 } from "./workosGateway.ts";
-import { categorizeWorkOSError, WorkOSGatewayError } from "./workosErrorPolicy.ts";
+import {
+  categorizeWorkOSError,
+  WorkOSGatewayError,
+} from "./workosErrorPolicy.ts";
 
 export const workosGateway: WorkOSGateway = {
   async lookupUserByEmail(email) {
     return safely("lookupUserByEmail", async () => {
-      const users = await getWorkOS().userManagement.listUsers({ email, limit: 2 });
-      if (users.data.length === 0) return { kind: "new" };
+      const users = await getWorkOS().userManagement.listUsers({
+        email,
+        limit: 2,
+      });
+      if (users.data.length === 0) {
+        return { kind: "new" };
+      }
 
       const user = toGatewayUser(users.data[0]);
-      if (users.data.length !== 1) return { kind: "unknownRecovery", user };
+      if (users.data.length !== 1) {
+        return { kind: "unknownRecovery", user };
+      }
 
-      const identities = await getWorkOS().userManagement.getUserIdentities(user.id);
+      const identities = await getWorkOS().userManagement.getUserIdentities(
+        user.id,
+      );
       if (identities.length === 0) {
-        return { kind: user.emailVerified ? "password" : "unverifiedPassword", user };
+        return {
+          kind: user.emailVerified ? "password" : "unverifiedPassword",
+          user,
+        };
       }
       if (identities.length === 1 && identities[0].provider === "GoogleOAuth") {
         return { kind: "googleOnly", user };
@@ -59,15 +77,23 @@ export const workosGateway: WorkOSGateway = {
       );
     } catch (error) {
       const challenge = parseStagingVerificationRequiredChallenge(error);
-      if (challenge !== undefined) return challenge;
-      if (error instanceof WorkOSGatewayError) throw error;
-      throw new WorkOSGatewayError(categorizeWorkOSError("authenticatePassword", error));
+      if (challenge !== undefined) {
+        return challenge;
+      }
+      if (error instanceof WorkOSGatewayError) {
+        throw error;
+      }
+      throw new WorkOSGatewayError(
+        categorizeWorkOSError("authenticatePassword", error),
+      );
     }
   },
 
   async getEmailVerification(id) {
     return safely("getEmailVerification", async () =>
-      toEmailVerification(await getWorkOS().userManagement.getEmailVerification(id)),
+      toEmailVerification(
+        await getWorkOS().userManagement.getEmailVerification(id),
+      ),
     );
   },
 
@@ -84,15 +110,17 @@ export const workosGateway: WorkOSGateway = {
 
   async createPasswordReset(email) {
     return safely("createPasswordReset", async () =>
-      toPasswordReset(await getWorkOS().userManagement.createPasswordReset({ email })),
+      toPasswordReset(
+        await getWorkOS().userManagement.createPasswordReset({ email }),
+      ),
     );
   },
 
   async completePasswordReset(input) {
     return safely("completePasswordReset", async () =>
       toGatewayUser(
-        await getWorkOS().userManagement
-          .resetPassword(input)
+        await getWorkOS()
+          .userManagement.resetPassword(input)
           .then(({ user }) => user),
       ),
     );
@@ -101,13 +129,17 @@ export const workosGateway: WorkOSGateway = {
   async refreshSession(refreshToken) {
     return safely("refreshSession", async () =>
       toGatewaySession(
-        await getWorkOS().userManagement.authenticateWithRefreshToken({ refreshToken }),
+        await getWorkOS().userManagement.authenticateWithRefreshToken({
+          refreshToken,
+        }),
       ),
     );
   },
 
   async revokeSession(sessionId) {
-    return safely("revokeSession", () => getWorkOS().userManagement.revokeSession({ sessionId }));
+    return safely("revokeSession", () =>
+      getWorkOS().userManagement.revokeSession({ sessionId }),
+    );
   },
 
   async getUserById(userId) {
@@ -117,16 +149,25 @@ export const workosGateway: WorkOSGateway = {
   },
 };
 
-async function safely<T>(operation: WorkOSGatewayOperation, request: () => Promise<T>): Promise<T> {
+async function safely<T>(
+  operation: WorkOSGatewayOperation,
+  request: () => Promise<T>,
+): Promise<T> {
   try {
     return await request();
   } catch (error) {
-    if (error instanceof WorkOSGatewayError) throw error;
+    if (error instanceof WorkOSGatewayError) {
+      throw error;
+    }
     throw new WorkOSGatewayError(categorizeWorkOSError(operation, error));
   }
 }
 
-function toGatewayUser(user: { id: string; email: string; emailVerified: boolean }): WorkOSGatewayUser {
+function toGatewayUser(user: {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+}): WorkOSGatewayUser {
   return { id: user.id, email: user.email, emailVerified: user.emailVerified };
 }
 
@@ -174,10 +215,14 @@ function toPasswordReset(reset: {
 
 function sessionIdFromAccessToken(accessToken: string): string {
   try {
-    const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url").toString()) as {
+    const payload = JSON.parse(
+      Buffer.from(accessToken.split(".")[1], "base64url").toString(),
+    ) as {
       sid?: unknown;
     };
-    if (typeof payload.sid === "string" && payload.sid !== "") return payload.sid;
+    if (typeof payload.sid === "string" && payload.sid !== "") {
+      return payload.sid;
+    }
   } catch {
     // The safe gateway error below intentionally omits provider token details.
   }
@@ -190,13 +235,17 @@ function sessionIdFromAccessToken(accessToken: string): string {
  * verified that field and that it retrieves the matching verification object.
  */
 export function parseStagingVerificationRequiredChallenge(error: unknown) {
-  if (typeof error !== "object" || error === null) return undefined;
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
   const providerError = error as {
     code?: unknown;
     pendingAuthenticationToken?: unknown;
     rawData?: { email_verification_id?: unknown };
   };
-  if (providerError.code !== "email_verification_required") return undefined;
+  if (providerError.code !== "email_verification_required") {
+    return undefined;
+  }
   const emailVerificationId = providerError.rawData?.email_verification_id;
   if (
     typeof providerError.pendingAuthenticationToken !== "string" ||

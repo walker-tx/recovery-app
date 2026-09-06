@@ -52,30 +52,51 @@ describe("WorkOS intent cryptography", () => {
     expect(decryptPendingAuthenticationToken(encrypted, encryptionKey)).toBe(
       "pending-authentication-token",
     );
-    expect(JSON.stringify(encrypted)).not.toContain("pending-authentication-token");
+    expect(JSON.stringify(encrypted)).not.toContain(
+      "pending-authentication-token",
+    );
   });
 
   it("uses a fresh random nonce by default", () => {
-    const first = encryptPendingAuthenticationToken("same-token", encryptionKey);
-    const second = encryptPendingAuthenticationToken("same-token", encryptionKey);
+    const first = encryptPendingAuthenticationToken(
+      "same-token",
+      encryptionKey,
+    );
+    const second = encryptPendingAuthenticationToken(
+      "same-token",
+      encryptionKey,
+    );
 
     expect(first.nonce).not.toBe(second.nonce);
     expect(first.ciphertext).not.toBe(second.ciphertext);
   });
 
   it("fails authentication for tampered values and the wrong key", () => {
-    const encrypted = encryptPendingAuthenticationToken("secret", encryptionKey, nonce);
+    const encrypted = encryptPendingAuthenticationToken(
+      "secret",
+      encryptionKey,
+      nonce,
+    );
     const tamperedTag = {
       ...encrypted,
       authenticationTag: Buffer.alloc(16, 0xff).toString("base64"),
     };
     const ciphertext = Buffer.from(encrypted.ciphertext, "base64");
     ciphertext[0] ^= 0xff;
-    const tamperedCiphertext = { ...encrypted, ciphertext: ciphertext.toString("base64") };
+    const tamperedCiphertext = {
+      ...encrypted,
+      ciphertext: ciphertext.toString("base64"),
+    };
 
-    expect(() => decryptPendingAuthenticationToken(tamperedTag, encryptionKey)).toThrow();
-    expect(() => decryptPendingAuthenticationToken(tamperedCiphertext, encryptionKey)).toThrow();
-    expect(() => decryptPendingAuthenticationToken(encrypted, wrongEncryptionKey)).toThrow();
+    expect(() =>
+      decryptPendingAuthenticationToken(tamperedTag, encryptionKey),
+    ).toThrow();
+    expect(() =>
+      decryptPendingAuthenticationToken(tamperedCiphertext, encryptionKey),
+    ).toThrow();
+    expect(() =>
+      decryptPendingAuthenticationToken(encrypted, wrongEncryptionKey),
+    ).toThrow();
   });
 
   it("fails closed when the named environment keys are missing", () => {

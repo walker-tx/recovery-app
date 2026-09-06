@@ -8,7 +8,10 @@
     "scheme": "recovery",
     "userInterfaceStyle": "automatic",
     "platforms": ["ios", "android"],
-    "ios": { "supportsTablet": true, "bundleIdentifier": "com.example.recovery" },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.recovery"
+    },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",

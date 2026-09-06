@@ -11,7 +11,10 @@ async function route(path: string) {
 test("root activates the WorkOS provider behind legacy storage cleanup", async () => {
   const source = await route("_layout.tsx");
   assert.match(source, /migrateLegacyConvexAuthStorage/);
-  assert.match(source, /<WorkOSRootProvider client=\{convex\} \/>/);
+  assert.match(
+    source,
+    /<WorkOSRootProvider\s+client=\{convex\}\s+config=\{config\}\s*\/>/,
+  );
   assert.doesNotMatch(source, /ConvexAuthProvider|@convex-dev\/auth/);
 });
 

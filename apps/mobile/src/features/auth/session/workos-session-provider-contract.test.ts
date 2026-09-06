@@ -14,12 +14,18 @@ test("injected client action bindings call each generated public action with exa
     async action(reference: unknown, args: unknown) {
       const name = getFunctionName(reference as never);
       calls.push({ name, args });
-      if (name === "workosAuth:refreshSession") return { status: "invalid" };
-      if (name === "workosAuth:signOutSession") return { revoked: true };
+      if (name === "workosAuth:refreshSession") {
+        return { status: "invalid" };
+      }
+      if (name === "workosAuth:signOutSession") {
+        return { revoked: true };
+      }
       return { accessToken: "access", refreshToken: "refresh" };
     },
   };
-  const actions = createWorkOSSessionActions(client as unknown as ConvexReactClient);
+  const actions = createWorkOSSessionActions(
+    client as unknown as ConvexReactClient,
+  );
 
   await actions.signIn({ email: "person@example.com", password: "password" });
   await actions.completeSignup({ intentId: "intent", code: "123456" });
@@ -27,8 +33,14 @@ test("injected client action bindings call each generated public action with exa
   await actions.signOutSession({ refreshToken: "refresh" });
 
   assert.deepEqual(calls, [
-    { name: "workosAuth:signIn", args: { email: "person@example.com", password: "password" } },
-    { name: "workosAuth:completeSignup", args: { intentId: "intent", code: "123456" } },
+    {
+      name: "workosAuth:signIn",
+      args: { email: "person@example.com", password: "password" },
+    },
+    {
+      name: "workosAuth:completeSignup",
+      args: { intentId: "intent", code: "123456" },
+    },
     { name: "workosAuth:refreshSession", args: { refreshToken: "refresh" } },
     { name: "workosAuth:signOutSession", args: { refreshToken: "refresh" } },
   ]);

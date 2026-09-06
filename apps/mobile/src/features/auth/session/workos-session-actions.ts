@@ -8,8 +8,11 @@ export function createWorkOSSessionActions(
 ): WorkOSSessionActions {
   return {
     signIn: (input) => client.action(api.workosAuth.signIn, input),
-    completeSignup: (input) => client.action(api.workosAuth.completeSignup, input),
-    refreshSession: (input) => client.action(api.workosAuth.refreshSession, input),
-    signOutSession: (input) => client.action(api.workosAuth.signOutSession, input),
+    completeSignup: (input) =>
+      client.action(api.workosAuth.completeSignup, input),
+    refreshSession: (input) =>
+      client.action(api.workosAuth.refreshSession, input),
+    signOutSession: (input) =>
+      client.action(api.workosAuth.signOutSession, input),
   };
 }

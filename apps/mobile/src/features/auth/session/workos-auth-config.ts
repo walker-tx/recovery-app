@@ -8,12 +8,25 @@ export function getWorkOSAuthConfig(
   environmentId: string | undefined,
   backendUrl: string | undefined,
 ): WorkOSAuthConfig | null {
-  const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-  if (!environmentId || !new RegExp(`^${uuid}:${uuid}$`, 'i').test(environmentId)) return null;
-  if (!backendUrl || backendUrl.trim() !== backendUrl) return null;
+  const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  if (
+    !environmentId ||
+    !new RegExp(`^${uuid}:${uuid}$`, "i").test(environmentId)
+  ) {
+    return null;
+  }
+  if (!backendUrl || backendUrl.trim() !== backendUrl) {
+    return null;
+  }
   try {
     const url = new URL(backendUrl);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password
+    ) {
+      return null;
+    }
   } catch {
     return null;
   }

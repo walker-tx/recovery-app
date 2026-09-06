@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { getWorkOSSessionScope, type WorkOSAuthConfig } from "./workos-auth-config.ts";
+import type { WorkOSAuthConfig } from "./workos-auth-config.ts";
 
 import { createWorkOSSessionActions } from "./workos-session-actions.ts";
 import {
@@ -33,10 +33,14 @@ type WorkOSSessionContextValue = {
   completeSignup(input: { intentId: string; code: string }): Promise<void>;
   refresh(): Promise<string | null>;
   signOut(): Promise<void>;
-  fetchAccessToken(input: { forceRefreshToken: boolean }): Promise<string | null>;
+  fetchAccessToken(input: {
+    forceRefreshToken: boolean;
+  }): Promise<string | null>;
 };
 
-const WorkOSSessionContext = createContext<WorkOSSessionContextValue | null>(null);
+const WorkOSSessionContext = createContext<WorkOSSessionContextValue | null>(
+  null,
+);
 
 export function WorkOSSessionProvider({
   children,
@@ -49,15 +53,18 @@ export function WorkOSSessionProvider({
   config: WorkOSAuthConfig;
   storage?: WorkOSSessionStorage;
 }) {
-  const scope = getWorkOSSessionScope(config);
-  const secureStorage = useMemo(() => createWorkOSSessionStorage(SecureStore, config.environmentId), [config.environmentId]);
+  const secureStorage = useMemo(
+    () => createWorkOSSessionStorage(SecureStore, config.environmentId),
+    [config.environmentId],
+  );
   const storage = suppliedStorage ?? secureStorage;
   const owner = useMemo(
-    () => createWorkOSSessionOwner({
-      storage,
-      actions: createWorkOSSessionActions(client),
-    }),
-    [client, storage, scope],
+    () =>
+      createWorkOSSessionOwner({
+        storage,
+        actions: createWorkOSSessionActions(client),
+      }),
+    [client, storage],
   );
 
   useEffect(() => {
@@ -65,12 +72,12 @@ export function WorkOSSessionProvider({
     return () => owner.dispose();
   }, [owner]);
 
-  const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
-  const retryRestore = useCallback(owner.retryRestore, [owner]);
-  const signIn = useCallback(owner.signIn, [owner]);
-  const completeSignup = useCallback(owner.completeSignup, [owner]);
-  const refresh = useCallback(owner.refresh, [owner]);
-  const signOut = useCallback(owner.signOut, [owner]);
+  const snapshot = useSyncExternalStore(
+    owner.subscribe,
+    owner.getSnapshot,
+    owner.getSnapshot,
+  );
+  const { retryRestore, signIn, completeSignup, refresh, signOut } = owner;
   const fetchAccessToken = useCallback(
     ({ forceRefreshToken }: { forceRefreshToken: boolean }) =>
       owner.fetchAccessToken({ forceRefreshToken }),
@@ -86,15 +93,31 @@ export function WorkOSSessionProvider({
       signOut,
       fetchAccessToken,
     }),
-    [snapshot, retryRestore, signIn, completeSignup, refresh, signOut, fetchAccessToken],
+    [
+      snapshot,
+      retryRestore,
+      signIn,
+      completeSignup,
+      refresh,
+      signOut,
+      fetchAccessToken,
+    ],
   );
 
-  return <WorkOSSessionContext.Provider value={value}>{children}</WorkOSSessionContext.Provider>;
+  return (
+    <WorkOSSessionContext.Provider value={value}>
+      {children}
+    </WorkOSSessionContext.Provider>
+  );
 }
 
 export function useWorkOSSession(): WorkOSSessionContextValue {
   const value = useContext(WorkOSSessionContext);
-  if (value === null) throw new Error("useWorkOSSession must be used within WorkOSSessionProvider");
+  if (value === null) {
+    throw new Error(
+      "useWorkOSSession must be used within WorkOSSessionProvider",
+    );
+  }
   return value;
 }
 

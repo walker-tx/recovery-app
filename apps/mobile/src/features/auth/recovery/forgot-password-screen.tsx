@@ -1,6 +1,11 @@
 import { useAction } from "convex/react";
 import { useEffect, useReducer, useRef, useState } from "react";
-import { AccessibilityInfo, Pressable, View, type TextInput } from "react-native";
+import {
+  AccessibilityInfo,
+  Pressable,
+  View,
+  type TextInput,
+} from "react-native";
 
 import { api } from "@recovery/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -10,7 +15,12 @@ import { Typography } from "@/components/ui/text";
 import { toSafeAuthError } from "../auth-error-policy";
 import { createSubmissionGuard } from "../auth-submission";
 import { normalizeEmail } from "../email-policy";
-import { getRecoveryValidation, initialRecoveryState, recoveryResendSecondsRemaining, reduceRecoveryState } from "./recovery-state";
+import {
+  getRecoveryValidation,
+  initialRecoveryState,
+  recoveryResendSecondsRemaining,
+  reduceRecoveryState,
+} from "./recovery-state";
 
 export function ForgotPasswordScreen({
   onBack,
@@ -22,19 +32,29 @@ export function ForgotPasswordScreen({
   const startRecovery = useAction(api.workosAuth.startRecovery);
   const guard = useRef(createSubmissionGuard()).current;
   const emailInput = useRef<TextInput>(null);
-  const [state, dispatch] = useReducer(reduceRecoveryState, initialRecoveryState);
+  const [state, dispatch] = useReducer(
+    reduceRecoveryState,
+    initialRecoveryState,
+  );
   const [emailError, setEmailError] = useState<string>();
   const [now, setNow] = useState(Date.now());
-  const cooldownSeconds = recoveryResendSecondsRemaining(state.cooldownUntil, now);
+  const cooldownSeconds = recoveryResendSecondsRemaining(
+    state.cooldownUntil,
+    now,
+  );
 
   useEffect(() => {
-    if (cooldownSeconds === 0) return;
+    if (cooldownSeconds === 0) {
+      return;
+    }
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, [cooldownSeconds]);
 
   useEffect(() => {
-    if (state.submittedEmail === null) return;
+    if (state.submittedEmail === null) {
+      return;
+    }
     AccessibilityInfo.announceForAccessibility("Check your email");
   }, [state.submittedEmail]);
 
@@ -45,7 +65,9 @@ export function ForgotPasswordScreen({
       emailInput.current?.focus();
       return;
     }
-    if (cooldownSeconds > 0) return;
+    if (cooldownSeconds > 0) {
+      return;
+    }
 
     await guard.run(state.email, async (email) => {
       dispatch({ type: "submissionStarted" });
@@ -56,7 +78,10 @@ export function ForgotPasswordScreen({
         dispatch({ type: "submissionSucceeded", acceptedAt, submittedEmail });
         setNow(acceptedAt);
       } catch (error) {
-        dispatch({ type: "submissionFailed", message: toSafeAuthError("recovery", error) });
+        dispatch({
+          type: "submissionFailed",
+          message: toSafeAuthError("recovery", error),
+        });
       }
     });
   }
@@ -81,21 +106,54 @@ export function ForgotPasswordScreen({
       {state.submittedEmail ? (
         <View className="gap-lg">
           <View className="gap-sm">
-            <Typography accessibilityRole="header" variant="display">Check your email</Typography>
-            <Typography className="text-ink-muted" selectable>
-              If there is an account for {state.submittedEmail}, a reset token is on its way and is good for one hour.
+            <Typography
+              accessibilityRole="header"
+              variant="display"
+            >
+              Check your email
+            </Typography>
+            <Typography
+              className="text-ink-muted"
+              selectable
+            >
+              If there is an account for {state.submittedEmail}, a reset token
+              is on its way and is good for one hour.
             </Typography>
           </View>
           {state.formError ? (
-            <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
+            <Typography
+              accessibilityLiveRegion="polite"
+              accessibilityRole="alert"
+              className="text-danger"
+              selectable
+              variant="caption"
+            >
               {state.formError}
             </Typography>
           ) : null}
-          <Typography selectable variant="caption">Didn't arrive? Check spam, then</Typography>
-          {cooldownSeconds > 0 ? <Typography selectable variant="caption">You can request another reset token in {cooldownSeconds} seconds.</Typography> : null}
+          <Typography
+            selectable
+            variant="caption"
+          >
+            Didn't arrive? Check spam, then
+          </Typography>
+          {cooldownSeconds > 0 ? (
+            <Typography
+              selectable
+              variant="caption"
+            >
+              You can request another reset token in {cooldownSeconds} seconds.
+            </Typography>
+          ) : null}
           <View className="gap-xs">
             <Button
-              accessibilityLabel={state.isPending ? "Resending reset token" : cooldownSeconds > 0 ? "Resend unavailable" : "Resend reset token"}
+              accessibilityLabel={
+                state.isPending
+                  ? "Resending reset token"
+                  : cooldownSeconds > 0
+                    ? "Resend unavailable"
+                    : "Resend reset token"
+              }
               className="w-full"
               disabled={cooldownSeconds > 0}
               loading={state.isPending}
@@ -103,7 +161,12 @@ export function ForgotPasswordScreen({
             >
               Resend reset token
             </Button>
-            <Button accessibilityRole="link" disabled={state.isPending} onPress={onEnterResetToken} variant="ghost">
+            <Button
+              accessibilityRole="link"
+              disabled={state.isPending}
+              onPress={onEnterResetToken}
+              variant="ghost"
+            >
               Enter reset token
             </Button>
           </View>
@@ -112,9 +175,15 @@ export function ForgotPasswordScreen({
         <>
           <View className="gap-sm">
             <Typography variant="overline">PASSWORD</Typography>
-            <Typography accessibilityRole="header" variant="display">Reset it</Typography>
+            <Typography
+              accessibilityRole="header"
+              variant="display"
+            >
+              Reset it
+            </Typography>
             <Typography className="text-ink-muted">
-              Tell us the address on the account and we'll send a reset token. Your groups and your counts aren't touched.
+              Tell us the address on the account and we'll send a reset token.
+              Your groups and your counts aren't touched.
             </Typography>
           </View>
           <View className="gap-lg">
@@ -139,12 +208,20 @@ export function ForgotPasswordScreen({
               value={state.email}
             />
             {state.formError ? (
-              <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
+              <Typography
+                accessibilityLiveRegion="polite"
+                accessibilityRole="alert"
+                className="text-danger"
+                selectable
+                variant="caption"
+              >
                 {state.formError}
               </Typography>
             ) : null}
             <Button
-              accessibilityLabel={state.isPending ? "Sending reset token" : "Send reset token"}
+              accessibilityLabel={
+                state.isPending ? "Sending reset token" : "Send reset token"
+              }
               className="w-full"
               loading={state.isPending}
               onPress={handleSubmit}

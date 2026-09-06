@@ -15,9 +15,9 @@ import {
 const clientId = "client_01ABC123";
 const issuer = `https://api.workos.com/user_management/${clientId}`;
 
-function contextWith(identity: UserIdentity | null) {
+function contextWith(userIdentity: UserIdentity | null) {
   return {
-    auth: { getUserIdentity: vi.fn().mockResolvedValue(identity) },
+    auth: { getUserIdentity: vi.fn().mockResolvedValue(userIdentity) },
   };
 }
 
@@ -39,14 +39,18 @@ describe("requireWorkOSIdentity", () => {
   it("returns only the validated subject", async () => {
     vi.stubEnv("WORKOS_CLIENT_ID", clientId);
 
-    await expect(requireWorkOSIdentity(contextWith(identity()))).resolves.toEqual({
+    await expect(
+      requireWorkOSIdentity(contextWith(identity())),
+    ).resolves.toEqual({
       subject: "user_123",
     });
   });
 
   it("rejects a missing identity", async () => {
     vi.stubEnv("WORKOS_CLIENT_ID", clientId);
-    await expect(requireWorkOSIdentity(contextWith(null))).rejects.toMatchObject({
+    await expect(
+      requireWorkOSIdentity(contextWith(null)),
+    ).rejects.toMatchObject({
       data: { code: "UNAUTHENTICATED" },
     });
   });
@@ -67,7 +71,9 @@ describe("requireWorkOSIdentity", () => {
     vi.stubEnv("WORKOS_CLIENT_ID", clientId);
     await expect(
       requireWorkOSIdentity(
-        contextWith(identity({ issuer: "https://api.workos.com/user_management" })),
+        contextWith(
+          identity({ issuer: "https://api.workos.com/user_management" }),
+        ),
       ),
     ).rejects.toMatchObject({ data: { code: "UNAUTHENTICATED" } });
   });
@@ -135,32 +141,55 @@ describe("WorkOS identity source-contract detection", () => {
         "otherAuth.getUserIdentity()",
       );
 
-      expect(
-        findGetUserIdentityUsages({ rootDirectory, allowedFile }),
-      ).toEqual([join("nested", "protected.ts")]);
+      expect(findGetUserIdentityUsages({ rootDirectory, allowedFile })).toEqual(
+        [join("nested", "protected.ts")],
+      );
     } finally {
       rmSync(rootDirectory, { recursive: true, force: true });
     }
   });
 });
 
-describe('local identity binding', () => {
+describe("local identity binding", () => {
   afterEach(() => vi.unstubAllEnvs());
-  const generation = '12345678-1234-4234-8234-123456789abc';
-  const localClient = `client_local${generation.replaceAll('-', '')}`;
+  const generation = "12345678-1234-4234-8234-123456789abc";
+  const localClient = `client_local${generation.replaceAll("-", "")}`;
   const localIssuer = `https://local-workos.invalid/instances/${generation}`;
-  it.each([{}, { issuer: issuer }, { client_id: clientId }, { subject: ' ' }])('validates local claims %j', async (overrides) => {
-    const env = {
-      WORKOS_MODE: 'local', WORKOS_CLIENT_ID: localClient,
-      LOCAL_AUTH_STACK_ID: '87654321-1234-4234-8234-123456789abc',
-      LOCAL_AUTH_PROVIDER_GENERATION: generation,
-      WORKOS_ISSUER: localIssuer, WORKOS_AUDIENCE: localClient,
-      WORKOS_JWKS_URL: 'http://127.0.0.1:6100/jwks', WORKOS_API_URL: 'http://127.0.0.1:6100',
-      CONVEX_CLOUD_URL: 'http://127.0.0.1:6101', CONVEX_SITE_URL: 'http://127.0.0.1:6102', CONVEX_DEPLOY_KEY: '',
-    };
-    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
-    const result = requireWorkOSIdentity(contextWith(identity({ issuer: localIssuer, client_id: localClient, ...overrides })));
-    if (Object.keys(overrides).length === 0) await expect(result).resolves.toEqual({ subject: 'user_123' });
-    else await expect(result).rejects.toMatchObject({ data: { code: 'UNAUTHENTICATED' } });
-  });
+  it.each([{}, { issuer: issuer }, { client_id: clientId }, { subject: " " }])(
+    "validates local claims %j",
+    async (overrides) => {
+      const env = {
+        WORKOS_MODE: "local",
+        WORKOS_CLIENT_ID: localClient,
+        LOCAL_AUTH_STACK_ID: "87654321-1234-4234-8234-123456789abc",
+        LOCAL_AUTH_PROVIDER_GENERATION: generation,
+        WORKOS_ISSUER: localIssuer,
+        WORKOS_AUDIENCE: localClient,
+        WORKOS_JWKS_URL: "http://127.0.0.1:6100/jwks",
+        WORKOS_API_URL: "http://127.0.0.1:6100",
+        CONVEX_CLOUD_URL: "http://127.0.0.1:6101",
+        CONVEX_SITE_URL: "http://127.0.0.1:6102",
+        CONVEX_DEPLOY_KEY: "",
+      };
+      for (const [key, value] of Object.entries(env)) {
+        vi.stubEnv(key, value);
+      }
+      const result = requireWorkOSIdentity(
+        contextWith(
+          identity({
+            issuer: localIssuer,
+            client_id: localClient,
+            ...overrides,
+          }),
+        ),
+      );
+      if (Object.keys(overrides).length === 0) {
+        await expect(result).resolves.toEqual({ subject: "user_123" });
+      } else {
+        await expect(result).rejects.toMatchObject({
+          data: { code: "UNAUTHENTICATED" },
+        });
+      }
+    },
+  );
 });

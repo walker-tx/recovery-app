@@ -25,7 +25,10 @@ export function createWorkOSSessionStorage(
   environmentId: string,
 ): WorkOSSessionStorage {
   const requireEnvironment = () => {
-    if (typeof environmentId !== "string" || environmentId.trim().length === 0) {
+    if (
+      typeof environmentId !== "string" ||
+      environmentId.trim().length === 0
+    ) {
       throw new Error("Authentication environment is not configured");
     }
     return environmentId;
@@ -34,15 +37,23 @@ export function createWorkOSSessionStorage(
     async read() {
       const expectedEnvironment = requireEnvironment();
       const value = await store.getItemAsync(WORKOS_SESSION_STORAGE_KEY);
-      if (value === null) return null;
+      if (value === null) {
+        return null;
+      }
       let record: unknown;
       try {
         record = JSON.parse(value);
       } catch {
         record = null;
       }
-      if (isSessionRecord(record) && record.environmentId === expectedEnvironment) {
-        return { accessToken: record.accessToken, refreshToken: record.refreshToken };
+      if (
+        isSessionRecord(record) &&
+        record.environmentId === expectedEnvironment
+      ) {
+        return {
+          accessToken: record.accessToken,
+          refreshToken: record.refreshToken,
+        };
       }
       // Await deletion outside the parse catch: failure must reach restoration's retry state.
       await store.deleteItemAsync(WORKOS_SESSION_STORAGE_KEY);
@@ -66,14 +77,20 @@ export function createWorkOSSessionStorage(
   };
 }
 
-function isSessionRecord(value: unknown): value is SessionCredentials & { version: 2; environmentId: string } {
-  if (typeof value !== "object" || value === null) return false;
+function isSessionRecord(
+  value: unknown,
+): value is SessionCredentials & { version: 2; environmentId: string } {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
   const record = value as Record<string, unknown>;
-  return record.version === 2
-    && typeof record.environmentId === "string"
-    && record.environmentId.trim().length > 0
-    && typeof record.accessToken === "string"
-    && record.accessToken.length > 0
-    && typeof record.refreshToken === "string"
-    && record.refreshToken.length > 0;
+  return (
+    record.version === 2 &&
+    typeof record.environmentId === "string" &&
+    record.environmentId.trim().length > 0 &&
+    typeof record.accessToken === "string" &&
+    record.accessToken.length > 0 &&
+    typeof record.refreshToken === "string" &&
+    record.refreshToken.length > 0
+  );
 }

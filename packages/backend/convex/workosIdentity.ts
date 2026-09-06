@@ -1,6 +1,9 @@
 import type { UserIdentity } from "convex/server";
 import { ConvexError } from "convex/values";
-import { resolveWorkOSExpectations, workOSEnvironment } from "./workosAuthConfig";
+import {
+  resolveWorkOSExpectations,
+  workOSEnvironment,
+} from "./workosAuthConfig";
 
 type AuthContext = {
   auth: {
@@ -15,7 +18,8 @@ export async function requireWorkOSIdentity(ctx: AuthContext) {
   const identity = await ctx.auth.getUserIdentity();
   if (
     identity === null ||
-    (typeof identity.subject !== "string" || identity.subject.trim() === "") ||
+    typeof identity.subject !== "string" ||
+    identity.subject.trim() === "" ||
     identity.client_id !== trust.clientId ||
     identity.issuer !== trust.issuer
   ) {
