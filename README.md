@@ -139,8 +139,12 @@ manual ownership reconciliation. There is no automatic retry, tombstone removal,
 or trust re-pairing operation. A fresh identity requires deliberate trust
 re-pairing; ordinary restart must not recreate it under the old generation.
 Cooperative lifecycle exclusion does not defeat arbitrary same-user filesystem
-or unmanaged-process races. This capability has synthetic temporary-filesystem
-coverage only, not live destruction, secure erasure, or two-stack/native proof.
+or unmanaged-process races. Coverage includes an acquired-provider fixture with
+real SDK authentication and persisted SQLite signing identity, closed before
+lifecycle deletion; retired startup refuses recreation, and a sibling acquired
+provider remains usable. Non-provider sentinel files retain their bytes/inodes.
+These are owned temporary fixtures, not actual developer-resource destruction,
+secure erasure, trust re-pairing, or complete two-stack/native proof.
 Whole-stack teardown and reservation release remain unavailable pending the
 separately authorized authoritative route-retirement integration and all other
 owned-domain completion evidence.
