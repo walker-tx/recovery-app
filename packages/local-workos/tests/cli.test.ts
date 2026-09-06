@@ -49,12 +49,14 @@ test('CLI emits authoritative readiness, persists identity, and handles signals'
       } finally { p.child.kill('SIGKILL'); await p.exited; }
     }
     // A real-shaped WorkOS test key must never be accepted by the local CLI.
-    const wrongCredential = launch(args, 'sk_test_real_provider_fixture');
-    const rejected = await Promise.race([wrongCredential.exited, wrongCredential.ready.then(async () => {
-      wrongCredential.child.kill('SIGTERM');
-      return wrongCredential.exited;
-    })]);
-    assert.equal(rejected, 1);
+    for (const credential of ['sk_test_real_provider_fixture', ...[10, 13, 8232, 8233].map(code => key + String.fromCharCode(code))]) {
+      const wrongCredential = launch(args, credential);
+      const rejected = await Promise.race([wrongCredential.exited, wrongCredential.ready.then(async () => {
+        wrongCredential.child.kill('SIGTERM');
+        return wrongCredential.exited;
+      })]);
+      assert.equal(rejected, 1);
+    }
     const mismatch = launch([...args.slice(0, -1), randomUUID()]);
     assert.equal(await mismatch.exited, 1);
     assert.ok(!mismatch.output().includes(key));

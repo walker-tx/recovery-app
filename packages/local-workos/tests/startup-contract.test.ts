@@ -15,6 +15,11 @@ test("bootstrap-owned generation and port survive restart and reject mismatched 
     provider = await startProvider(options);
     assert.equal(provider.issuer, `https://local-workos.invalid/instances/${generation}`);
     assert.equal(provider.providerGeneration, generation);
+    const infoResponse = await fetch(`http://127.0.0.1:${provider.port}/instance-info`);
+    assert.equal(infoResponse.status, 200);
+    const info = await infoResponse.json();
+    assert.deepEqual(info, { providerGeneration: generation, issuer: provider.issuer, clientId: provider.clientId, port: provider.port });
+    assert.ok(!JSON.stringify(info).includes(options.apiKey));
     const port = provider.port;
     await provider.close();
     provider = undefined;
