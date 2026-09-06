@@ -1,3 +1,4 @@
+import { httpClientId } from "./config.ts";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { Effect, Scope, FileSystem, Layer, Schema } from "effect";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
@@ -189,10 +190,9 @@ function workosResponse<A>(
 }
 
 // Concrete HTTP boundary; database and server lifecycle remain in provider.ts.
-export async function makeHttpApp(
+export function makeHttpApp(
   options: {
     apiKey: string;
-    clientId: string;
     issuer: string;
     providerGeneration: string;
     port: number;
@@ -205,69 +205,69 @@ export async function makeHttpApp(
   },
   scope: Scope.Scope,
 ) {
-  const {
-    apiKey,
-    clientId,
-    issuer,
-    providerGeneration,
-    port,
-    authenticate,
-    createUser,
-    listUsers,
-    getUser,
-    getIdentities,
-    jwks,
-  } = options;
-  const api = makeApi(clientId);
-  const handlers = HttpApiBuilder.group(api, "workos", (handlers) =>
-    handlers
-      .handleRaw("instanceInfo", ({ endpoint }) =>
-        workosResponse(
-          apiKey,
-          () => ({
-            providerGeneration,
-            issuer,
-            clientId,
-            port,
+  return Effect.gen(function* () {
+    const clientId = yield* httpClientId;
+    const {
+      apiKey,
+      issuer,
+      providerGeneration,
+      port,
+      authenticate,
+      createUser,
+      listUsers,
+      getUser,
+      getIdentities,
+      jwks,
+    } = options;
+    const api = makeApi(clientId);
+    const handlers = HttpApiBuilder.group(api, "workos", (handlers) =>
+      handlers
+        .handleRaw("instanceInfo", ({ endpoint }) =>
+          workosResponse(
+            apiKey,
+            () => ({
+              providerGeneration,
+              issuer,
+              clientId,
+              port,
+            }),
+            { path: endpoint.path },
+          ),
+        )
+        .handleRaw("jwks", ({ endpoint }) =>
+          workosResponse(apiKey, () => jwks, { path: endpoint.path }),
+        )
+        .handleRaw("authenticate", ({ endpoint }) =>
+          workosResponse(apiKey, authenticate, { path: endpoint.path }),
+        )
+        .handleRaw("createUser", ({ endpoint }) =>
+          workosResponse(apiKey, createUser, {
+            access: "bearer",
+            path: endpoint.path,
           }),
-          { path: endpoint.path },
+        )
+        .handleRaw("listUsers", ({ endpoint }) =>
+          workosResponse(apiKey, (_, request) => listUsers(request.url), {
+            access: "bearer",
+            path: endpoint.path,
+          }),
+        )
+        .handleRaw("getUser", ({ endpoint }) =>
+          workosResponse(
+            apiKey,
+            (_, request) => getUser(rawUserId(request.url)),
+            { access: "bearer", path: endpoint.path },
+          ),
+        )
+        .handleRaw("getIdentities", ({ endpoint }) =>
+          workosResponse(
+            apiKey,
+            (_, request) => getIdentities(rawUserId(request.url)),
+            { access: "bearer", path: endpoint.path },
+          ),
         ),
-      )
-      .handleRaw("jwks", ({ endpoint }) =>
-        workosResponse(apiKey, () => jwks, { path: endpoint.path }),
-      )
-      .handleRaw("authenticate", ({ endpoint }) =>
-        workosResponse(apiKey, authenticate, { path: endpoint.path }),
-      )
-      .handleRaw("createUser", ({ endpoint }) =>
-        workosResponse(apiKey, createUser, {
-          access: "bearer",
-          path: endpoint.path,
-        }),
-      )
-      .handleRaw("listUsers", ({ endpoint }) =>
-        workosResponse(apiKey, (_, request) => listUsers(request.url), {
-          access: "bearer",
-          path: endpoint.path,
-        }),
-      )
-      .handleRaw("getUser", ({ endpoint }) =>
-        workosResponse(
-          apiKey,
-          (_, request) => getUser(rawUserId(request.url)),
-          { access: "bearer", path: endpoint.path },
-        ),
-      )
-      .handleRaw("getIdentities", ({ endpoint }) =>
-        workosResponse(
-          apiKey,
-          (_, request) => getIdentities(rawUserId(request.url)),
-          { access: "bearer", path: endpoint.path },
-        ),
-      ),
-  );
-  const routed = await Effect.runPromise(
-    HttpRouter.toHttpEffect(
+    );
+    const routed = yield* HttpRouter.toHttpEffect(
       HttpApiBuilder.layer(api).pipe(
         Layer.provide(handlers),
         Layer.provide(NodeHttpServer.layerHttpServices),
@@ -281,36 +281,39 @@ export async function makeHttpApp(
         maxParamLength: 16384,
       }),
       Effect.provideService(Scope.Scope, scope),
-    ),
-  );
-  const unsupported = workosResponse(
-    apiKey,
-    () => reject(404, "unsupported_operation"),
-    { access: "bearer" },
-  );
-  const app = Effect.gen(function* () {
-    const request = yield* HttpServerRequest;
-    // HttpRouter otherwise implicitly serves GET endpoints for HEAD.
-    if (request.method !== "GET" && request.method !== "POST")
-      return yield* unsupported;
-    return yield* routed.pipe(
-      Effect.catch((error) =>
-        error.reason._tag === "RouteNotFound"
-          ? unsupported
-          : Effect.succeed(
-              Response.jsonUnsafe({ code: "internal_error" }, { status: 500 }),
-            ),
+    );
+    const unsupported = workosResponse(
+      apiKey,
+      () => reject(404, "unsupported_operation"),
+      { access: "bearer" },
+    );
+    const app = Effect.gen(function* () {
+      const request = yield* HttpServerRequest;
+      // HttpRouter otherwise implicitly serves GET endpoints for HEAD.
+      if (request.method !== "GET" && request.method !== "POST")
+        return yield* unsupported;
+      return yield* routed.pipe(
+        Effect.catch((error) =>
+          error.reason._tag === "RouteNotFound"
+            ? unsupported
+            : Effect.succeed(
+                Response.jsonUnsafe(
+                  { code: "internal_error" },
+                  { status: 500 },
+                ),
+              ),
+        ),
+      );
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.succeed(
+          Response.jsonUnsafe({ code: "internal_error" }, { status: 500 }),
+        ),
       ),
     );
-  }).pipe(
-    Effect.catchCause(() =>
-      Effect.succeed(
-        Response.jsonUnsafe({ code: "internal_error" }, { status: 500 }),
-      ),
-    ),
-  );
 
-  return app.pipe(
-    Effect.provideService(MaxBodySize, FileSystem.Size(MAX_BODY_BYTES)),
-  );
+    return app.pipe(
+      Effect.provideService(MaxBodySize, FileSystem.Size(MAX_BODY_BYTES)),
+    );
+  });
 }
