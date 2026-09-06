@@ -156,7 +156,7 @@ describe('local identity binding', () => {
       LOCAL_AUTH_PROVIDER_GENERATION: generation,
       WORKOS_ISSUER: localIssuer, WORKOS_AUDIENCE: localClient,
       WORKOS_JWKS_URL: 'http://127.0.0.1:6100/jwks', WORKOS_API_URL: 'http://127.0.0.1:6100',
-      CONVEX_URL: 'http://127.0.0.1:6101', CONVEX_SITE_URL: 'http://127.0.0.1:6102', CONVEX_DEPLOY_KEY: '',
+      CONVEX_CLOUD_URL: 'http://127.0.0.1:6101', CONVEX_SITE_URL: 'http://127.0.0.1:6102', CONVEX_DEPLOY_KEY: '',
     };
     for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
     const result = requireWorkOSIdentity(contextWith(identity({ issuer: localIssuer, client_id: localClient, ...overrides })));

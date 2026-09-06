@@ -27,7 +27,8 @@ export function workOSEnvironment(): WorkOSAuthConfigEnvironment {
     audience: process.env.WORKOS_AUDIENCE,
     jwks: process.env.WORKOS_JWKS_URL,
     apiUrl: process.env.WORKOS_API_URL,
-    convexUrl: process.env.CONVEX_URL,
+    // Convex supplies CLOUD_URL to functions; CONVEX_URL is CLI/client config.
+    convexUrl: process.env.CONVEX_CLOUD_URL,
     convexSiteUrl: process.env.CONVEX_SITE_URL,
     deployKey: process.env.CONVEX_DEPLOY_KEY,
     deployment: process.env.CONVEX_DEPLOYMENT,
@@ -80,7 +81,7 @@ export function resolveWorkOSExpectations(env: WorkOSAuthConfigEnvironment) {
     throw new Error('Local auth rejects nonlocal CONVEX_DEPLOYMENT');
   }
   if (env.deployKey) throw new Error('Local auth rejects inherited CONVEX_DEPLOY_KEY');
-  loopback(env.convexUrl, 'CONVEX_URL', true);
+  loopback(env.convexUrl, 'CONVEX_CLOUD_URL', true);
   loopback(env.convexSiteUrl, 'CONVEX_SITE_URL', true);
   loopback(env.jwks, 'WORKOS_JWKS_URL');
   const api = loopback(env.apiUrl, 'WORKOS_API_URL', true);

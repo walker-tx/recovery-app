@@ -45,6 +45,13 @@ describe("buildWorkOSAuthConfig", () => {
   );
 });
 
+it('reads the documented Convex runtime cloud URL rather than the CLI variable', () => {
+  vi.stubEnv('CONVEX_CLOUD_URL', 'http://127.0.0.1:6300');
+  vi.stubEnv('CONVEX_URL', 'https://untrusted-cli.example');
+  try {
+    expect(workOSEnvironment().convexUrl === 'http://127.0.0.1:6300').toBe(true);
+  } finally { vi.unstubAllEnvs(); }
+});
 const generation = '12345678-1234-4234-8234-123456789abc';
 const local = {
   mode: 'local',

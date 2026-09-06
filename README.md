@@ -36,7 +36,7 @@ The backend supports an explicit `WORKOS_MODE=local` configuration; it never fal
 
 - `LOCAL_AUTH_STACK_ID` and `LOCAL_AUTH_PROVIDER_GENERATION`, paired to the registry.
 - `WORKOS_CLIENT_ID=client_local<generation UUID without hyphens>`, `WORKOS_AUDIENCE` equal to that client ID, and `WORKOS_ISSUER=https://local-workos.invalid/instances/<generation UUID>`.
-- Loopback `WORKOS_API_URL`, `WORKOS_JWKS_URL`, `CONVEX_URL`, and `CONVEX_SITE_URL`. Phone-facing Tailscale addresses are not backend runtime destinations.
+- Loopback `WORKOS_API_URL` and `WORKOS_JWKS_URL`. The backend additionally validates Convex's built-in `CONVEX_CLOUD_URL` and `CONVEX_SITE_URL` (not the CLI's `CONVEX_URL`). Phone-facing Tailscale addresses are not backend runtime destinations.
 - A launcher-generated `LOCAL_WORKOS_API_KEY`: `sk_test_local_` plus 64 lowercase hex characters from 32 cryptographically random bytes. Local mode never falls back to `WORKOS_API_KEY`; a differing generic key is rejected. Never copy a real WorkOS key into local configuration.
 
 Local trust rejects inherited cloud deploy keys and nonlocal deployment selectors. Convex enforces the local audience through `applicationID`; Recovery separately checks canonical issuer, client claim, and subject, with resource ownership unchanged. Staging retains its fixed real-WorkOS issuer/JWKS and rejects local overrides. SDK clients are constructed from current validated configuration rather than retaining an old destination.

@@ -14,7 +14,7 @@ it('does not reuse a prior SDK destination after validated local configuration c
     LOCAL_AUTH_PROVIDER_GENERATION: generation, WORKOS_CLIENT_ID: clientId,
     WORKOS_ISSUER: `https://local-workos.invalid/instances/${generation}`, WORKOS_AUDIENCE: clientId,
     WORKOS_JWKS_URL: 'http://127.0.0.1:6100/jwks', WORKOS_API_URL: 'http://127.0.0.1:6100',
-    CONVEX_URL: 'http://127.0.0.1:6101', CONVEX_SITE_URL: 'http://127.0.0.1:6102',
+    CONVEX_CLOUD_URL: 'http://127.0.0.1:6101', CONVEX_SITE_URL: 'http://127.0.0.1:6102',
     CONVEX_DEPLOY_KEY: '', CONVEX_DEPLOYMENT: '',
     LOCAL_WORKOS_API_KEY: 'sk_test_local_' + 'a'.repeat(64), WORKOS_API_KEY: 'sk_test_local_' + 'a'.repeat(64),
   };
