@@ -31,10 +31,16 @@ function requireBearer(authorization: string | undefined, apiKey: string) {
     reject(401, "unauthorized");
   }
 }
+// Node's origin-form request target is already a raw path, not a URL to resolve.
+// Strip only the query: WHATWG URL parsing would remove literal/encoded dots.
+function rawPathname(rawUrl: string) {
+  const query = rawUrl.indexOf("?");
+  return query === -1 ? rawUrl : rawUrl.slice(0, query);
+}
 // Compare only static segments using the selected endpoint's own declaration.
 // Router decoding must not make an encoded public path publicly accessible.
 function matchesRawPath(rawUrl: string, pattern: string) {
-  const segments = new URL(rawUrl, "http://127.0.0.1").pathname.split("/");
+  const segments = rawPathname(rawUrl).split("/");
   const expected = pattern.split("/");
   return (
     segments.length === expected.length &&
@@ -44,7 +50,7 @@ function matchesRawPath(rawUrl: string, pattern: string) {
   );
 }
 function rawUserId(rawUrl: string) {
-  return new URL(rawUrl, "http://127.0.0.1").pathname.split("/")[3];
+  return rawPathname(rawUrl).split("/")[3];
 }
 function makeApi(clientId: string) {
   // WorkOS has multiple non-tagged error envelopes and validation precedence.

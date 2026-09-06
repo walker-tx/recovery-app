@@ -1,18 +1,31 @@
 import { execFile } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 
 it.live("Effect CLI renders help without bootstrap credentials", () =>
   Effect.gen(function* () {
+    const dir = yield* Effect.acquireRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "local-workos-cli-path-"))),
+      (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
+    );
+    const packagePath = join(dir, "provider spaces # % ü");
+    yield* Effect.promise(() =>
+      symlink(
+        fileURLToPath(new URL("../", import.meta.url)),
+        packagePath,
+        "dir",
+      ),
+    );
+    const cliUrl = new URL("src/cli.ts", pathToFileURL(packagePath + "/"));
     const result = yield* Effect.tryPromise(() =>
       promisify(execFile)(
         process.execPath,
-        [
-          "--experimental-strip-types",
-          new URL("../src/cli.ts", import.meta.url).pathname,
-          "--help",
-        ],
+        ["--experimental-strip-types", fileURLToPath(cliUrl), "--help"],
         { env: {}, timeout: 5000 },
       ),
     );
@@ -62,7 +75,7 @@ it.live("CLI schema failures do not reflect argument values", () =>
               process.execPath,
               [
                 "--experimental-strip-types",
-                new URL("../src/cli.ts", import.meta.url).pathname,
+                fileURLToPath(new URL("../src/cli.ts", import.meta.url)),
                 ...args,
               ],
               {

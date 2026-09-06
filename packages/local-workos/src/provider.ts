@@ -3,12 +3,21 @@ import { lstatSync, openSync, closeSync, constants } from "node:fs";
 import { isAbsolute, dirname } from "node:path";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import { generateKeyPair, exportJWK, importJWK } from "jose";
+import {
+  generateKeyPair,
+  exportJWK,
+  importJWK,
+  CompactSign,
+  compactVerify,
+  type JWK,
+} from "jose";
 import { ConfigProvider, Effect, Scope, Exit, Redacted } from "effect";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { makeHttpApp } from "./http.ts";
 import { type User, type Jwks } from "./contracts.ts";
 import { workosLayer } from "./workos-service.ts";
+const generationPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 /** Explicit absolute state path; caller owns its directory and lifecycle. No environment fallback. */
 export async function startProvider(options: {
   database: string;
@@ -25,9 +34,7 @@ export async function startProvider(options: {
     throw new Error("Invalid provider port");
   if (
     options.providerGeneration !== undefined &&
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-      options.providerGeneration,
-    )
+    !generationPattern.test(options.providerGeneration)
   )
     throw new Error("Invalid provider generation UUID");
   if (!isAbsolute(options.database) || !options.apiKey.startsWith("sk_test_"))
@@ -95,28 +102,51 @@ export async function startProvider(options: {
         body: string;
       };
     }
-    const identity = JSON.parse(saved.body);
-    if (
-      !identity ||
-      typeof identity.generation !== "string" ||
-      !/^[0-9a-f-]{36}$/.test(identity.generation) ||
-      identity.privateKey?.kty !== "RSA" ||
-      identity.publicKey?.kty !== "RSA"
-    )
+    let identity: { generation: string; privateKey: JWK; publicKey: JWK };
+    let key;
+    try {
+      identity = JSON.parse(saved.body);
+      if (
+        !identity ||
+        typeof identity.generation !== "string" ||
+        !generationPattern.test(identity.generation) ||
+        identity.privateKey?.kty !== "RSA" ||
+        identity.publicKey?.kty !== "RSA" ||
+        typeof identity.privateKey.d !== "string" ||
+        typeof identity.publicKey.n !== "string" ||
+        typeof identity.publicKey.e !== "string" ||
+        identity.privateKey.n !== identity.publicKey.n ||
+        identity.privateKey.e !== identity.publicKey.e ||
+        ["d", "p", "q", "dp", "dq", "qi", "oth"].some(
+          (field) => field in identity.publicKey,
+        )
+      )
+        throw new Error("Invalid persisted signing identity");
+      const publicKey = await importJWK(identity.publicKey, "RS256");
+      key = await importJWK(identity.privateKey, "RS256");
+      // Import alone does not prove that persisted RSA components can sign.
+      await compactVerify(
+        await new CompactSign(new Uint8Array())
+          .setProtectedHeader({ alg: "RS256" })
+          .sign(key),
+        publicKey,
+      );
+    } catch {
       throw new Error("Invalid persisted signing identity");
+    }
     if (
       options.providerGeneration !== undefined &&
       identity.generation !== options.providerGeneration
     )
       throw new Error("Provider generation does not match persisted state");
-    await importJWK(identity.publicKey, "RS256");
     const issuer = `https://local-workos.invalid/instances/${identity.generation}`;
     const clientId = `client_local${identity.generation.replaceAll("-", "")}`;
-    const key = await importJWK(identity.privateKey, "RS256");
     const jwks: Jwks = {
       keys: [
         {
-          ...identity.publicKey,
+          kty: "RSA",
+          n: identity.publicKey.n,
+          e: identity.publicKey.e,
           kid: identity.generation,
           alg: "RS256",
           use: "sig",
@@ -192,14 +222,18 @@ export async function startProvider(options: {
             provider: input.provider,
           },
         ];
-        db.prepare("INSERT INTO users VALUES(?,?,?,?,?,?)").run(
-          user.id,
-          email,
-          JSON.stringify(user),
-          null,
-          null,
-          JSON.stringify(identities),
-        );
+        try {
+          db.prepare("INSERT INTO users VALUES(?,?,?,?,?,?)").run(
+            user.id,
+            email,
+            JSON.stringify(user),
+            null,
+            null,
+            JSON.stringify(identities),
+          );
+        } catch {
+          throw new Error("Unable to create identity fixture");
+        }
         return user;
       },
       async close() {
