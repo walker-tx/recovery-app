@@ -60,6 +60,29 @@ This keeps Metro bound to loopback, forwards it through a tailnet-only raw TCP S
 kit tui --root .
 ```
 
+## Isolated local stack (development checkpoint)
+
+`scripts/stack-runtime.cjs` provides ownership-checked `reserve`, `status <stack-UUID>`,
+`stop <stack-UUID>`, and `start <absolute-backend-executable>` commands. Run through
+`mise exec -- node` from the intended worktree. The executable is the local Convex
+server, not the Recovery backend functions. Startup requires the local provider
+package, installed Expo/Convex dependencies, Node, pnpm, Mailpit, and Pitchfork.
+
+The runtime reserves separate ports/state, prepares private bootstrap values,
+validates provider identity, synchronizes and pushes functions to the paired local
+Convex instance, publishes paired mobile configuration, then starts Metro. That
+`start` command performs local writes; tests use injected I/O instead. It never
+targets a cloud deployment or falls back to staging credentials.
+
+SMTP readiness uses its own greeting; Convex site readiness checks its own TCP
+listener only, not application health. Ambiguous command/publication timeouts
+retain the lifecycle lock for manual ownership reconciliation. Never remove locks
+or reset state merely to retry a failed start. Existing daily-development scripts
+and previews are not managed by these commands.
+
+This remains a development checkpoint: fake-I/O tests do not establish successful
+native startup, complete authentication, or the reset/refresh lifecycle.
+
 ## Checks
 
 - `mise run bootstrap-test` — test the secure bootstrap and documentation contract
