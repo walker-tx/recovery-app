@@ -23,6 +23,7 @@ The complete pinned payloads and license/provenance details are recorded in [`TH
 - all selected Obra Superpowers workflow skills;
 - Vercel composition patterns, React best practices, and React Native skills with their rule payloads;
 - the complete Ponytail skill set.
+- the official Effect-TS setup skill (`effect-ts`), copied unmodified.
 
 Do not edit these vendored directories locally. Put Recovery-specific policy in repository-owned orchestration skills.
 
