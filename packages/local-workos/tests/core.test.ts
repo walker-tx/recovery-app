@@ -98,6 +98,7 @@ it.live(
           emailVerified: true,
         }),
       );
+      const authenticationStartedAt = Date.now();
       const session = yield* Effect.promise(() =>
         sdk().userManagement.authenticateWithPassword({
           clientId: provider.clientId,
@@ -105,6 +106,7 @@ it.live(
           password: "Synthetic-password-42",
         }),
       );
+      const authenticationFinishedAt = Date.now();
       const jwks = yield* Effect.promise(async () =>
         (
           await fetch(
@@ -134,7 +136,8 @@ it.live(
         .prepare("SELECT * FROM sessions WHERE id=?")
         .get(payload.sid as string)!;
       assert.ok(
-        Math.abs(Number(stored.expires_at) - Date.now() - 7 * 86400000) < 5000,
+        Number(stored.expires_at) >= authenticationStartedAt + 7 * 86400000 &&
+          Number(stored.expires_at) <= authenticationFinishedAt + 7 * 86400000,
       );
       assert.ok(
         !JSON.stringify(
