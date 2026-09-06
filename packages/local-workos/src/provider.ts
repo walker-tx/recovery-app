@@ -11,47 +11,20 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { generateKeyPair, exportJWK, importJWK, SignJWT } from "jose";
-import { Effect, Scope, Exit, FileSystem, Layer, Schema } from "effect";
+import { Effect, Scope, Exit } from "effect";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
-import { HttpServerRequest } from "effect/unstable/http/HttpServerRequest";
-import { MaxBodySize } from "effect/unstable/http/HttpIncomingMessage";
-import * as Response from "effect/unstable/http/HttpServerResponse";
 import {
-  HttpApi,
-  HttpApiGroup,
-  HttpApiEndpoint,
-  HttpApiBuilder,
-} from "effect/unstable/httpapi";
-import * as HttpRouter from "effect/unstable/http/HttpRouter";
+  makeHttpApp,
+  HttpError,
+  reject,
+  equal,
+  type User,
+  type Authentication,
+  type UserList,
+  type Jwks,
+} from "./http.ts";
 const derive = promisify(scrypt);
 const digest = (s: string) => createHash("sha256").update(s).digest("hex");
-const equal = (a: string, b: string) =>
-  timingSafeEqual(Buffer.from(digest(a)), Buffer.from(digest(b)));
-class HttpError extends Error {
-  readonly status: number;
-  readonly body: object;
-  constructor(status: number, body: object) {
-    super("Provider request rejected");
-    this.status = status;
-    this.body = body;
-  }
-}
-const reject = (status: number, code: string): never => {
-  throw new HttpError(status, { code, message: code });
-};
-type User = {
-  id: string;
-  email: string;
-  email_verified: boolean;
-  first_name: string | null;
-  last_name: string | null;
-  created_at: string;
-  updated_at: string;
-  object: string;
-  profile_picture_url: null;
-  external_id: null;
-  metadata: object;
-};
 type Row = {
   id: string;
   email: string;
@@ -60,114 +33,6 @@ type Row = {
   verifier: string | null;
   identities: string;
 };
-const MAX_BODY_BYTES = 16 * 1024;
-function requireBearer(authorization: string | undefined, apiKey: string) {
-  if (!authorization || !equal(authorization, `Bearer ${apiKey}`)) {
-    reject(401, "unauthorized");
-  }
-}
-// Compare only static segments using the selected endpoint's own declaration.
-// Router decoding must not make an encoded public path publicly accessible.
-function matchesRawPath(rawUrl: string, pattern: string) {
-  const segments = new URL(rawUrl, "http://127.0.0.1").pathname.split("/");
-  const expected = pattern.split("/");
-  return (
-    segments.length === expected.length &&
-    expected.every(
-      (part, index) => part.startsWith(":") || part === segments[index],
-    )
-  );
-}
-function rawUserId(rawUrl: string) {
-  return new URL(rawUrl, "http://127.0.0.1").pathname.split("/")[3];
-}
-function makeApi(clientId: string) {
-  // WorkOS has multiple non-tagged error envelopes and validation precedence.
-  // Raw handlers retain those wire contracts rather than exposing default
-  // schema-decode errors, which can also include credential input values.
-  return HttpApi.make("localWorkOS").add(
-    HttpApiGroup.make("workos").add(
-      HttpApiEndpoint.get("instanceInfo", "/instance-info", {
-        success: Schema.Struct({
-          providerGeneration: Schema.String,
-          issuer: Schema.String,
-          clientId: Schema.String,
-          port: Schema.Number,
-        }),
-      }),
-      HttpApiEndpoint.get("jwks", `/sso/jwks/${clientId}`, {
-        success: Schema.Unknown,
-      }),
-      HttpApiEndpoint.post("authenticate", "/user_management/authenticate", {
-        payload: Schema.Unknown,
-        success: Schema.Unknown,
-      }),
-      HttpApiEndpoint.post("createUser", "/user_management/users", {
-        payload: Schema.Unknown,
-        success: Schema.Unknown,
-      }),
-      HttpApiEndpoint.get("listUsers", "/user_management/users", {
-        success: Schema.Unknown,
-      }),
-      HttpApiEndpoint.get("getUser", "/user_management/users/:id", {
-        params: { id: Schema.String },
-        success: Schema.Unknown,
-      }),
-      HttpApiEndpoint.get(
-        "getIdentities",
-        "/user_management/users/:id/identities",
-        { params: { id: Schema.String }, success: Schema.Unknown },
-      ),
-    ),
-  );
-}
-function workosResponse(
-  apiKey: string,
-  run: (
-    body: Record<string, unknown>,
-    request: HttpServerRequest,
-  ) => unknown | Promise<unknown>,
-  options: {
-    access?: "bearer";
-    path?: string;
-  } = {},
-) {
-  return Effect.gen(function* () {
-    const request = yield* HttpServerRequest;
-    if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES)
-      return Response.jsonUnsafe({ code: "invalid_request" }, { status: 413 });
-    const body = request.method === "POST" ? yield* request.json : {};
-    return yield* Effect.promise(async () => {
-      try {
-        if (body === null || typeof body !== "object" || Array.isArray(body))
-          return Response.jsonUnsafe(
-            { code: "invalid_request" },
-            { status: 422 },
-          );
-        if (options.access === "bearer")
-          requireBearer(request.headers.authorization, apiKey);
-        if (options.path && !matchesRawPath(request.url, options.path)) {
-          requireBearer(request.headers.authorization, apiKey);
-          return reject(404, "unsupported_operation");
-        }
-        return Response.jsonUnsafe(
-          await run(body as Record<string, unknown>, request),
-        );
-      } catch (e) {
-        return Response.jsonUnsafe(
-          e instanceof HttpError ? e.body : { code: "internal_error" },
-          { status: e instanceof HttpError ? e.status : 500 },
-        );
-      }
-    });
-  }).pipe(
-    Effect.catchCause(() =>
-      Effect.succeed(
-        Response.jsonUnsafe({ code: "invalid_request" }, { status: 422 }),
-      ),
-    ),
-  );
-}
 /** Explicit absolute state path; caller owns its directory and lifecycle. No environment fallback. */
 export async function startProvider(options: {
   database: string;
@@ -272,7 +137,7 @@ export async function startProvider(options: {
     const issuer = `https://local-workos.invalid/instances/${identity.generation}`;
     const clientId = `client_local${identity.generation.replaceAll("-", "")}`;
     const key = await importJWK(identity.privateKey, "RS256");
-    const jwks = {
+    const jwks: Jwks = {
       keys: [
         {
           ...identity.publicKey,
@@ -285,7 +150,9 @@ export async function startProvider(options: {
     const getUser = (id: string) =>
       db.prepare("SELECT * FROM users WHERE id=?").get(id) as Row | undefined;
     // WorkOS operations: database ownership stays inside this lifecycle.
-    async function authenticate(body: Record<string, unknown>) {
+    async function authenticate(
+      body: Record<string, unknown>,
+    ): Promise<Authentication> {
       if (
         body.client_id !== clientId ||
         typeof body.client_secret !== "string" ||
@@ -406,7 +273,7 @@ export async function startProvider(options: {
       }
       return user;
     }
-    async function listUsers(rawUrl: string) {
+    async function listUsers(rawUrl: string): Promise<UserList> {
       const url = new URL(rawUrl, "http://127.0.0.1");
       if (
         url.searchParams.has("before") ||
@@ -451,111 +318,24 @@ export async function startProvider(options: {
         port: options.port ?? 0,
       }).pipe(Effect.provideService(Scope.Scope, scope)),
     );
-    const api = makeApi(clientId);
-    const handlers = HttpApiBuilder.group(api, "workos", (handlers) =>
-      handlers
-        .handleRaw("instanceInfo", ({ endpoint }) =>
-          workosResponse(
-            options.apiKey,
-            () => ({
-              providerGeneration: identity.generation,
-              issuer,
-              clientId,
-              port:
-                server.address._tag === "TcpAddress" ? server.address.port : 0,
-            }),
-            { path: endpoint.path },
-          ),
-        )
-        .handleRaw("jwks", ({ endpoint }) =>
-          workosResponse(options.apiKey, () => jwks, { path: endpoint.path }),
-        )
-        .handleRaw("authenticate", ({ endpoint }) =>
-          workosResponse(options.apiKey, authenticate, { path: endpoint.path }),
-        )
-        .handleRaw("createUser", ({ endpoint }) =>
-          workosResponse(options.apiKey, createUser, {
-            access: "bearer",
-            path: endpoint.path,
-          }),
-        )
-        .handleRaw("listUsers", ({ endpoint }) =>
-          workosResponse(
-            options.apiKey,
-            (_, request) => listUsers(request.url),
-            { access: "bearer", path: endpoint.path },
-          ),
-        )
-        .handleRaw("getUser", ({ endpoint }) =>
-          workosResponse(
-            options.apiKey,
-            (_, request) => readUser(rawUserId(request.url), "body"),
-            { access: "bearer", path: endpoint.path },
-          ),
-        )
-        .handleRaw("getIdentities", ({ endpoint }) =>
-          workosResponse(
-            options.apiKey,
-            (_, request) => readUser(rawUserId(request.url), "identities"),
-            { access: "bearer", path: endpoint.path },
-          ),
-        ),
-    );
-    const routed = await Effect.runPromise(
-      HttpRouter.toHttpEffect(
-        HttpApiBuilder.layer(api).pipe(
-          Layer.provide(handlers),
-          Layer.provide(NodeHttpServer.layerHttpServices),
-        ),
-      ).pipe(
-        Effect.provideService(HttpRouter.RouterConfig, {
-          caseSensitive: true,
-          ignoreTrailingSlash: false,
-          ignoreDuplicateSlashes: false,
-          // At least the Node HTTP request-header budget; no new 100-byte ID cutoff.
-
-          maxParamLength: 16384,
-        }),
-        Effect.provideService(Scope.Scope, scope),
-      ),
-    );
-    const unsupported = workosResponse(
-      options.apiKey,
-      () => reject(404, "unsupported_operation"),
-      { access: "bearer" },
-    );
-    const app = Effect.gen(function* () {
-      const request = yield* HttpServerRequest;
-      // HttpRouter otherwise implicitly serves GET endpoints for HEAD.
-      if (request.method !== "GET" && request.method !== "POST")
-        return yield* unsupported;
-      return yield* routed.pipe(
-        Effect.catch((error) =>
-          error.reason._tag === "RouteNotFound"
-            ? unsupported
-            : Effect.succeed(
-                Response.jsonUnsafe(
-                  { code: "internal_error" },
-                  { status: 500 },
-                ),
-              ),
-        ),
-      );
-    }).pipe(
-      Effect.catchCause(() =>
-        Effect.succeed(
-          Response.jsonUnsafe({ code: "internal_error" }, { status: 500 }),
-        ),
-      ),
+    const app = await makeHttpApp(
+      {
+        apiKey: options.apiKey,
+        clientId,
+        issuer,
+        providerGeneration: identity.generation,
+        port: server.address._tag === "TcpAddress" ? server.address.port : 0,
+        jwks,
+        authenticate,
+        createUser,
+        listUsers,
+        getUser: (id) => readUser(id, "body"),
+        getIdentities: (id) => readUser(id, "identities"),
+      },
+      scope,
     );
     await Effect.runPromise(
-      server
-        .serve(
-          app.pipe(
-            Effect.provideService(MaxBodySize, FileSystem.Size(MAX_BODY_BYTES)),
-          ),
-        )
-        .pipe(Effect.provideService(Scope.Scope, scope)),
+      server.serve(app).pipe(Effect.provideService(Scope.Scope, scope)),
     );
     if (server.address._tag !== "TcpAddress")
       throw new Error("Expected loopback TCP address");

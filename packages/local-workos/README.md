@@ -11,6 +11,24 @@ mise exec -- pnpm --filter @recovery/local-workos test
 mise exec -- pnpm --filter @recovery/local-workos check
 ```
 
+## Effect implementation and tests
+
+The CLI uses the pinned Effect 4 `effect/unstable/cli` command and flag APIs.
+HTTP routes use `effect/unstable/httpapi`; raw request validation preserves
+WorkOS error envelopes and authentication precedence without exposing schema
+diagnostics or credential values. Router matching is case-sensitive and does not
+normalize trailing/duplicate slashes or encoded static path segments. Successful
+responses use concrete schemas and Effect's native response encoding; malformed
+stored response data produces a generic 500, and undeclared user fields are
+omitted. `src/http.ts` owns HTTP contracts and routing; `src/provider.ts` owns
+SQLite, signing, domain operations, and server lifecycle.
+
+Tests use the matching `@effect/vitest` release. `it.live` retains real HTTP, SDK,
+SQLite, and subprocess behavior, with scoped cleanup for provider instances and
+temporary directories. JWT verification with an overridden date and persisted
+expiry metadata checks are not proof of expiry after actual elapsed time; that
+lifecycle verification remains separate.
+
 ## Implemented core
 
 Effect/platform-node are exactly `4.0.0-rc.112`. Node 24 built-in SQLite avoids
