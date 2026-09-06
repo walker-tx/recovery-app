@@ -162,6 +162,7 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
         },
       );
       assert.equal(authenticationResponse.status, 401);
+      yield* authenticationResponse.text.pipe(Effect.timeout("3 seconds"));
     }
     for (const authorization of ["", "Bearer wrong"]) {
       for (const method of ["GET", "POST", "DELETE"] as const) {
@@ -171,6 +172,7 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
           ...(method === "POST" ? { body: "{}" } : {}),
         });
         assert.equal(unauthorizedResponse.status, 401);
+        yield* unauthorizedResponse.text.pipe(Effect.timeout("3 seconds"));
       }
     }
     for (const query of [
@@ -185,6 +187,7 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
         headers: { authorization: `Bearer ${options.apiKey}` },
       });
       assert.equal(pagingResponse.status, 422);
+      yield* pagingResponse.text.pipe(Effect.timeout("3 seconds"));
     }
     const password = "Synthetic-password-42";
     const u = yield* Effect.promise(() =>

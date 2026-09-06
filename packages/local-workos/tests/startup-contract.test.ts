@@ -1,5 +1,5 @@
 import { it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Schema } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -97,17 +97,18 @@ it.live("invalid explicit startup generation and ports are rejected", () =>
         assert.rejects(
           Effect.runPromiseWith(context)(
             Effect.gen(function* () {
-              const unexpected = yield* Effect.tryPromise({
-                try: () => startProvider({ ...options, port }),
-                catch: (error) => {
-                  assert.ok(error instanceof ConfigurationError);
-                  return error;
-                },
-              });
+              const unexpected = yield* Effect.tryPromise(() =>
+                startProvider({ ...options, port }),
+              );
               yield* Effect.promise(() => unexpected.close());
             }),
           ),
-          /port/i,
+          (error: unknown) => {
+            assert.ok(Cause.isUnknownError(error));
+            assert.ok(error.cause instanceof ConfigurationError);
+            assert.match(error.cause.message, /port/i);
+            return true;
+          },
         ),
       );
     }
@@ -115,21 +116,21 @@ it.live("invalid explicit startup generation and ports are rejected", () =>
       assert.rejects(
         Effect.runPromiseWith(context)(
           Effect.gen(function* () {
-            const unexpected = yield* Effect.tryPromise({
-              try: () =>
-                startProvider({
-                  ...options,
-                  providerGeneration: "not-a-uuid",
-                }),
-              catch: (error) => {
-                assert.ok(error instanceof ConfigurationError);
-                return error;
-              },
-            });
+            const unexpected = yield* Effect.tryPromise(() =>
+              startProvider({
+                ...options,
+                providerGeneration: "not-a-uuid",
+              }),
+            );
             yield* Effect.promise(() => unexpected.close());
           }),
         ),
-        /generation/i,
+        (error: unknown) => {
+          assert.ok(Cause.isUnknownError(error));
+          assert.ok(error.cause instanceof ConfigurationError);
+          assert.match(error.cause.message, /generation/i);
+          return true;
+        },
       ),
     );
   }),

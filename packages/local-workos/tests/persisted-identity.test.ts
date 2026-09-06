@@ -21,8 +21,9 @@ it.live("rejects malformed stored identities without replacing state", () =>
   Effect.gen(function* () {
     const dir = yield* directory;
     const blocker = yield* Effect.acquireRelease(
-      Effect.callback<ReturnType<typeof createServer>>((resume) => {
+      Effect.callback<ReturnType<typeof createServer>, Error>((resume) => {
         const server = createServer();
+        server.once("error", (error) => resume(Effect.fail(error)));
         server.listen(0, "127.0.0.1", () => resume(Effect.succeed(server)));
       }),
       (server) =>
