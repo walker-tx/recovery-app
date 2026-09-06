@@ -190,6 +190,8 @@ async function createRuntime({
         inspectProcess: identity.inspectProcess,
         portAvailable,
       }),
+      // Explicit local capability only, not exposed by the CLI. Never re-pairs trust.
+      destroyProvider: confirmation => lifecycle.destroyProvider(worktree, confirmation),
       reserve: () => registry.reserve(worktree),
       status: async (stackId) => {
         const status = await check(stackId);

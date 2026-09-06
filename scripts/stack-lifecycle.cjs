@@ -5,6 +5,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { performance } = require("node:perf_hooks");
 const { isDeepStrictEqual } = require("node:util");
+const { assertProviderNotRetired, destroyProvider } = require('./stack-provider-destruction.cjs');
 const groups = [
   ["mailpitHttp", "mailpitSmtp"],
   ["provider"],
@@ -119,7 +120,9 @@ function createLifecycle({
     }
     let retain = false;
     try {
-      return await action(canonical);
+      const result = await action(canonical);
+      retain = result?.lifecycleLockRetained === true;
+      return result;
     } catch (error) {
       retain = error.ambiguousTimeout === true || error.ambiguous === true;
       throw error;
@@ -132,8 +135,14 @@ function createLifecycle({
   }
   return {
     status,
+    destroyProvider: (worktree, confirmation) => locked(worktree, canonical => destroyProvider({
+      worktree: canonical, confirmation,
+      readOwned: stackId => bounded('ownership', () => registry.readOwned(canonical, stackId)),
+      status: () => status(canonical),
+    })),
     start: (worktree, definitions) =>
       locked(worktree, async (canonical) => {
+        await assertProviderNotRetired(canonical);
         const record = await bounded("reservation", () =>
           registry.reserve(canonical),
         );

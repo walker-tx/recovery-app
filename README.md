@@ -118,3 +118,29 @@ refresh/reset operations or whole-stack destruction/reservation release.
 - `mise run bootstrap-test` — test the secure bootstrap and documentation contract
 - `mise run check` — run workspace static checks
 - `mise run doctor` — run Expo Doctor
+
+The explicit local runtime API also exposes `destroyProvider(confirmation)` for a
+**stopped** isolated provider. It is not exposed by a CLI, HTTP route, or console.
+Confirmation names `operation: "destroy-provider-identity"`, the exact canonical
+`worktree`, `stackId`, `providerGeneration`, and both `affectedDomains`:
+`["provider-data", "provider-signing-identity"]`. This removes only the owned
+provider SQLite database and its present WAL/SHM files, which contain provider
+records and signing keys. It does not clear Convex, Mailpit, device state, admin
+seed, ownership markers, routes, or reservations, and does not rotate registry
+identity or re-pair trust.
+
+Before deletion, the lifecycle lock covers original registry/stopped-provider and
+private filesystem identity checks, and a retirement intent is exclusively
+created and synced along with its parent directory. Any retirement entry blocks
+normal stack startup before allocation/preparation, including malformed entries.
+Partial results enumerate removed, uncertain, and unattempted storage files;
+uncertain operations retain both retirement intent and lifecycle exclusion for
+manual ownership reconciliation. There is no automatic retry, tombstone removal,
+or trust re-pairing operation. A fresh identity requires deliberate trust
+re-pairing; ordinary restart must not recreate it under the old generation.
+Cooperative lifecycle exclusion does not defeat arbitrary same-user filesystem
+or unmanaged-process races. This capability has synthetic temporary-filesystem
+coverage only, not live destruction, secure erasure, or two-stack/native proof.
+Whole-stack teardown and reservation release remain unavailable pending the
+separately authorized authoritative route-retirement integration and all other
+owned-domain completion evidence.
