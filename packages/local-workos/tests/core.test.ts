@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { it } from "@effect/vitest";
-import { Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -102,7 +103,9 @@ it.live(
           emailVerified: true,
         }),
       );
-      const authenticationStartedAt = Date.now();
+      const authenticationStartedAt = DateTime.toEpochMillis(
+        yield* DateTime.now,
+      );
       const session = yield* Effect.promise(() =>
         sdk().userManagement.authenticateWithPassword({
           clientId: provider.clientId,
@@ -110,19 +113,26 @@ it.live(
           password: "Synthetic-password-42",
         }),
       );
-      const authenticationFinishedAt = Date.now();
-      const jwks = yield* Effect.promise(async () =>
-        (
-          await fetch(
-            `http://127.0.0.1:${provider.port}/sso/jwks/${provider.clientId}`,
-          )
-        ).json(),
+      const authenticationFinishedAt = DateTime.toEpochMillis(
+        yield* DateTime.now,
       );
-      const { payload } = yield* Effect.promise(() =>
-        jwtVerify(session.accessToken, createLocalJWKSet(jwks), {
-          issuer: provider.issuer,
-          audience: provider.clientId,
+      const jwksResponse = yield* HttpClient.get(
+        `http://127.0.0.1:${provider.port}/sso/jwks/${provider.clientId}`,
+      );
+      const jwks = yield* Schema.decodeUnknownEffect(
+        Schema.Struct({
+          keys: Schema.Array(Schema.Record(Schema.String, Schema.Unknown)),
         }),
+      )(yield* jwksResponse.json);
+      const { payload } = yield* Effect.promise(() =>
+        jwtVerify(
+          session.accessToken,
+          createLocalJWKSet({ keys: [...jwks.keys] }),
+          {
+            issuer: provider.issuer,
+            audience: provider.clientId,
+          },
+        ),
       );
       assert.equal(payload.sub, verifiedUser.id);
       assert.equal(payload.client_id, provider.clientId);
@@ -130,9 +140,15 @@ it.live(
       assert.equal(payload.exp! - payload.iat!, 300);
       yield* Effect.promise(() =>
         assert.rejects(
-          jwtVerify(session.accessToken, createLocalJWKSet(jwks), {
-            currentDate: new Date((payload.exp! + 1) * 1000),
-          }),
+          jwtVerify(
+            session.accessToken,
+            createLocalJWKSet({ keys: [...jwks.keys] }),
+            {
+              currentDate: DateTime.toDateUtc(
+                DateTime.makeUnsafe((payload.exp! + 1) * 1000),
+              ),
+            },
+          ),
         ),
       );
       const databaseInspection = new DatabaseSync(options.database);
@@ -145,11 +161,15 @@ it.live(
           Number(stored.expires_at) <= authenticationFinishedAt + 7 * 86400000,
       );
       assert.ok(
-        !JSON.stringify(
+        !(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
           databaseInspection.prepare("SELECT * FROM users").all(),
-        ).includes("Synthetic-password-42"),
+        )).includes("Synthetic-password-42"),
       );
-      assert.ok(!JSON.stringify(stored).includes(session.refreshToken));
+      assert.ok(
+        !(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+          stored,
+        )).includes(session.refreshToken),
+      );
       databaseInspection.close();
       const issuer = provider.issuer;
       yield* Effect.promise(() => provider.close());
@@ -170,16 +190,18 @@ it.live(
         sdk().userManagement.getUser(unverifiedUser.id),
       );
       assert.equal(persistedUser.id, unverifiedUser.id);
-      yield* Effect.promise(async () =>
+      const reopenedJwksResponse = yield* HttpClient.get(
+        `http://127.0.0.1:${provider.port}/sso/jwks/${provider.clientId}`,
+      );
+      const reopenedJwks = yield* Schema.decodeUnknownEffect(
+        Schema.Struct({
+          keys: Schema.Array(Schema.Record(Schema.String, Schema.Unknown)),
+        }),
+      )(yield* reopenedJwksResponse.json);
+      yield* Effect.promise(() =>
         jwtVerify(
           session.accessToken,
-          createLocalJWKSet(
-            await (
-              await fetch(
-                `http://127.0.0.1:${provider.port}/sso/jwks/${provider.clientId}`,
-              )
-            ).json(),
-          ),
+          createLocalJWKSet({ keys: [...reopenedJwks.keys] }),
         ),
       );
       const sibling = yield* Effect.acquireRelease(
@@ -201,5 +223,8 @@ it.live(
       yield* Effect.promise(() =>
         assert.rejects(siblingSdk.userManagement.getUser(unverifiedUser.id)),
       );
-    }),
+    }).pipe(
+      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- The live test is the HTTP client layer entry point.
+      Effect.provide(FetchHttpClient.layer),
+    ),
 );

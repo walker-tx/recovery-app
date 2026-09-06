@@ -1,3 +1,5 @@
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
+import { Schema } from "effect";
 import assert from "node:assert/strict";
 import { createServer } from "node:net";
 import { randomUUID } from "node:crypto";
@@ -19,20 +21,16 @@ it.live("rejects malformed stored identities without replacing state", () =>
   Effect.gen(function* () {
     const dir = yield* directory;
     const blocker = yield* Effect.acquireRelease(
-      Effect.promise(
-        () =>
-          new Promise<ReturnType<typeof createServer>>((resolve) => {
-            const server = createServer();
-            server.listen(0, "127.0.0.1", () => resolve(server));
-          }),
-      ),
+      Effect.callback<ReturnType<typeof createServer>>((resume) => {
+        const server = createServer();
+        server.listen(0, "127.0.0.1", () => resume(Effect.succeed(server)));
+      }),
       (server) =>
-        Effect.promise(
-          () =>
-            new Promise<void>((resolve, reject) =>
-              server.close((error) => (error ? reject(error) : resolve())),
-            ),
-        ),
+        Effect.callback<void>((resume) => {
+          server.close((error) =>
+            resume(error ? Effect.die(error) : Effect.void),
+          );
+        }),
     );
     const address = blocker.address();
     assert.ok(address && typeof address !== "string");
@@ -67,6 +65,14 @@ it.live("rejects malformed stored identities without replacing state", () =>
           publicKey: { ...identity.publicKey, n: "AA" },
         },
         { ...identity, publicKey: identity.privateKey },
+        // Schema decoding must not strip forbidden private fields before validation.
+        ...["d", "p", "q", "dp", "dq", "qi", "oth"].map((field) => ({
+          ...identity,
+          publicKey: {
+            ...identity.publicKey,
+            [field]: "synthetic-private-marker",
+          },
+        })),
         { ...identity, privateKey: identity.publicKey },
         null,
         "malformed-json",
@@ -79,7 +85,12 @@ it.live("rejects malformed stored identities without replacing state", () =>
           db.exec(
             "CREATE TABLE instance (id INTEGER PRIMARY KEY, body TEXT NOT NULL)",
           );
-          const saved = body === "malformed-json" ? "{" : JSON.stringify(body);
+          const saved =
+            body === "malformed-json"
+              ? "{"
+              : yield* Schema.encodeEffect(
+                  Schema.fromJsonString(Schema.Unknown),
+                )(body);
           db.prepare("INSERT INTO instance VALUES(1,?)").run(saved);
           const exit: Exit.Exit<unknown, unknown> = yield* Effect.exit(
             Effect.scoped(
@@ -210,19 +221,25 @@ it.live(
       );
       const saved = db.prepare("SELECT body FROM instance").get()?.body;
       assert.ok(typeof saved === "string");
-      const identity = JSON.parse(saved);
+      const identity = yield* Schema.decodeUnknownEffect(
+        Schema.fromJsonString(
+          Schema.Struct({
+            publicKey: Schema.Struct({ n: Schema.String, e: Schema.String }),
+          }),
+        ),
+      )(saved);
       const second = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider(options)),
         (p) => Effect.promise(() => p.close()),
       );
       assert.equal(second.providerGeneration, first.providerGeneration);
       assert.equal(db.prepare("SELECT body FROM instance").get()?.body, saved);
-      const jwks = yield* Effect.promise(async () =>
-        (
-          await fetch(
-            `http://127.0.0.1:${second.port}/sso/jwks/${second.clientId}`,
-          )
-        ).json(),
+      const jwks = yield* HttpClient.get(
+        `http://127.0.0.1:${second.port}/sso/jwks/${second.clientId}`,
+      ).pipe(
+        Effect.flatMap((response) => response.json),
+        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- Test entry point supplies its isolated HTTP client layer.
+        Effect.provide(FetchHttpClient.layer),
       );
       assert.deepEqual(jwks, {
         keys: [

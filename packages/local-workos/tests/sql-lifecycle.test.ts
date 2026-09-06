@@ -152,6 +152,7 @@ it.live("interrupted signing cannot continue into a session write", () =>
     const started = yield* Deferred.make<void>();
     // SignJWT.sign is a Promise API; only its completion is controlled here.
     let finishSigning!: (token: string) => void;
+    // oxlint-disable-next-line effecttsgo/new-promise -- The jose sign mock must return a manually completed native Promise even after its Effect consumer is interrupted.
     const signing = new Promise<string>((resolve) => {
       finishSigning = resolve;
     });
@@ -321,6 +322,7 @@ it.live(
       yield* Fiber.interrupt(owner);
       assert.equal(close.mock.calls.length, 1);
       yield* Effect.promise(() =>
+        // oxlint-disable-next-line effecttsgo/global-fetch-in-effect -- Assert native client connection rejection after HTTP scope disposal.
         assert.rejects(fetch(`http://127.0.0.1:${port}/instance-info`)),
       );
     }),

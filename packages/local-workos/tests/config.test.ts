@@ -1,3 +1,4 @@
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import { UserId, SessionId } from "../src/contracts.ts";
 import { it } from "@effect/vitest";
 import { ConfigProvider, Effect, Exit, Redacted, Schema } from "effect";
@@ -31,7 +32,11 @@ it.effect(
         provide({ LOCAL_WORKOS_API_KEY: key }),
       );
       assert.equal(Redacted.value(value), key);
-      assert.ok(!JSON.stringify(value).includes(key));
+      assert.ok(
+        !(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+          value,
+        )).includes(key),
+      );
     }),
 );
 
@@ -51,7 +56,11 @@ for (const [description, value] of [
         ),
       );
       assert.ok(Exit.isFailure(exit));
-      assert.ok(!JSON.stringify(exit).includes(key));
+      assert.ok(
+        !(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+          exit,
+        )).includes(key),
+      );
     }),
   );
 }
@@ -127,25 +136,32 @@ it.live(
       assert.notEqual(providers[0].clientId, providers[1].clientId);
       for (const [index, provider] of providers.entries()) {
         const base = `http://127.0.0.1:${provider.port}`;
-        const info = yield* Effect.promise(async () =>
-          (await fetch(`${base}/instance-info`)).json(),
+        const info = yield* HttpClient.get(`${base}/instance-info`).pipe(
+          Effect.flatMap((response) => response.json),
+          Effect.flatMap(
+            Schema.decodeUnknownEffect(
+              Schema.Struct({ clientId: Schema.String }),
+            ),
+          ),
         );
         assert.equal(
           info.clientId,
           `client_local${provider.providerGeneration.replaceAll("-", "")}`,
         );
-        const own = yield* Effect.promise(() =>
-          fetch(`${base}/sso/jwks/${provider.clientId}`),
+        const own = yield* HttpClient.get(
+          `${base}/sso/jwks/${provider.clientId}`,
         );
         assert.equal(own.status, 200);
-        const other = yield* Effect.promise(() =>
-          fetch(`${base}/sso/jwks/${providers[1 - index].clientId}`, {
-            headers: { authorization: `Bearer ${key}` },
-          }),
+        const other = yield* HttpClient.get(
+          `${base}/sso/jwks/${providers[1 - index].clientId}`,
+          { headers: { authorization: `Bearer ${key}` } },
         );
         assert.equal(other.status, 404);
       }
-    }),
+    }).pipe(
+      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- The live test owns its HTTP client layer.
+      Effect.provide(FetchHttpClient.layer),
+    ),
 );
 
 it.effect(
@@ -168,7 +184,11 @@ it.effect(
         keys,
       );
       for (const apiKey of keys) {
-        assert.ok(!JSON.stringify(configs).includes(apiKey));
+        assert.ok(
+          !(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+            configs,
+          )).includes(apiKey),
+        );
       }
     }),
 );

@@ -34,12 +34,21 @@ mise exec -- pnpm --filter @recovery/local-workos run prepare
 mise exec -- pnpm --filter @recovery/local-workos run lint
 ```
 
-Tests retain native Node, Promise, fetch, JSON, environment, and date APIs to
-exercise real SDK/HTTP/subprocess boundaries. Only those native-API preference
-rules have test-only overrides; correctness and antipattern checks remain enabled.
-Source exceptions are local, explained suppression comments for deliberate
+Tests enforce the same Effect presets as source, including JSON, async-function,
+Promise, fetch, and date rules. The only configuration override is native Node
+imports in the explicitly listed black-box harness files: these tests inspect
+SQLite files, filesystem permissions, child processes, and raw HTTP transport.
+New test files do not inherit that exception automatically.
+
+Other exceptions are local, explained suppression comments for deliberate
 interop/security boundaries (for example, the shutdown watchdog must work even
-when Effect cleanup cannot finish). Do not suppress a finding merely to pass lint.
+when Effect cleanup cannot finish, and native Promise mocks must settle after
+an Effect consumer is interrupted). HTTP client Layers are supplied at test
+entry points. Do not suppress a finding merely to pass lint.
+
+`pnpm run test:style` also injects forbidden Effect code into a temporary test
+file and verifies that floating Effects, raw JSON, and async wrappers are rejected.
+The fixture is removed on exit.
 
 ## Effect implementation and tests
 

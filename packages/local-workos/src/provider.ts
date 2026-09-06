@@ -14,7 +14,6 @@ import {
   importJWK,
   CompactSign,
   compactVerify,
-  type JWK,
 } from "jose";
 import {
   Effect,
@@ -159,48 +158,42 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
       }),
     );
   }
-  const identity = yield* Effect.try({
-    try: () => {
-      const persistedIdentity: {
-        generation: string;
-        privateKey: JWK;
-        publicKey: JWK;
-      } =
-        // oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- Keep parsing inside the existing security validator and startup-error mapping.
-        JSON.parse(saved.body);
-      if (
-        !persistedIdentity ||
-        typeof persistedIdentity.generation !== "string" ||
-        !generationPattern.test(persistedIdentity.generation) ||
-        persistedIdentity.privateKey?.kty !== "RSA" ||
-        persistedIdentity.publicKey?.kty !== "RSA" ||
-        typeof persistedIdentity.privateKey.d !== "string" ||
-        typeof persistedIdentity.publicKey.n !== "string" ||
-        typeof persistedIdentity.publicKey.e !== "string" ||
-        persistedIdentity.privateKey.n !== persistedIdentity.publicKey.n ||
-        persistedIdentity.privateKey.e !== persistedIdentity.publicKey.e ||
-        ["d", "p", "q", "dp", "dq", "qi", "oth"].some(
-          (field) => field in persistedIdentity.publicKey,
-        )
-      ) {
-        throw new ProviderStartupError({
+  const identity = yield* Schema.decodeUnknownEffect(
+    Schema.fromJsonString(
+      Schema.Struct({
+        generation: Schema.String.check(Schema.isPattern(generationPattern)),
+        privateKey: Schema.Struct({
+          kty: Schema.Literal("RSA"),
+          n: Schema.String,
+          e: Schema.String,
+          d: Schema.String,
+        }),
+        publicKey: Schema.Struct({
+          kty: Schema.Literal("RSA"),
+          n: Schema.String,
+          e: Schema.String,
+        }),
+      }).check(
+        Schema.makeFilter(
+          (persisted) =>
+            persisted.privateKey.n === persisted.publicKey.n &&
+            persisted.privateKey.e === persisted.publicKey.e &&
+            !["d", "p", "q", "dp", "dq", "qi", "oth"].some(
+              (field) => field in persisted.publicKey,
+            ),
+        ),
+      ),
+    ),
+    // Retain all signing parameters and expose private public-key material to the check.
+    { onExcessProperty: "preserve" },
+  )(saved.body).pipe(
+    Effect.mapError(
+      () =>
+        new ProviderStartupError({
           message: "Invalid persisted signing identity",
-        });
-      }
-      return {
-        ...persistedIdentity,
-        publicKey: {
-          ...persistedIdentity.publicKey,
-          n: persistedIdentity.publicKey.n,
-          e: persistedIdentity.publicKey.e,
-        },
-      };
-    },
-    catch: () =>
-      new ProviderStartupError({
-        message: "Invalid persisted signing identity",
-      }),
-  });
+        }),
+    ),
+  );
   const { key } = yield* Effect.gen(function* () {
     const publicKey = yield* Effect.tryPromise(() =>
       importJWK(identity.publicKey, "RS256"),

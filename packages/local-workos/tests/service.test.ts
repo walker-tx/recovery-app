@@ -1,3 +1,9 @@
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+} from "effect/unstable/http";
+import { Schema } from "effect";
 import { Predicate } from "effect";
 import {
   HttpServerRequest,
@@ -91,7 +97,9 @@ it.effect(
                 new Request("http://127.0.0.1/user_management/users", {
                   method: "POST",
                   headers: { authorization: `Bearer ${apiKey}` },
-                  body: JSON.stringify({ mode }),
+                  body: Schema.encodeSync(
+                    Schema.fromJsonString(Schema.Unknown),
+                  )({ mode }),
                 }),
               ),
             ),
@@ -119,37 +127,46 @@ it.effect(
           throw new Error("Expected TCP server");
         }
         const base = `http://127.0.0.1:${server.address.port}`;
-        yield* Effect.promise(async () => {
-          const instance = await fetch(`${base}/instance-info`);
+        yield* Effect.gen(function* () {
+          const instance = yield* HttpClient.get(`${base}/instance-info`);
           assert.equal(instance.status, 200);
-          assert.deepEqual(await instance.json(), info);
-          const denied = await fetch(`${base}/user_management/users`, {
-            method: "POST",
-            body: "{}",
-          });
+          assert.deepEqual(yield* instance.json, info);
+          const denied = yield* HttpClient.post(
+            `${base}/user_management/users`,
+            {
+              body: HttpClientRequest.bodyText("{}")(
+                HttpClientRequest.post("/"),
+              ).body,
+            },
+          );
           assert.equal(denied.status, 401);
           assert.equal(creates, 0);
-          const conflict = await fetch(`${base}/user_management/users`, {
-            method: "POST",
-            headers: { authorization: `Bearer ${apiKey}` },
-            body: "{}",
-          });
+          const conflict = yield* HttpClient.post(
+            `${base}/user_management/users`,
+            {
+              headers: { authorization: `Bearer ${apiKey}` },
+              body: HttpClientRequest.bodyText("{}")(
+                HttpClientRequest.post("/"),
+              ).body,
+            },
+          );
           assert.equal(conflict.status, 409);
-          assert.deepEqual(await conflict.json(), {
+          assert.deepEqual(yield* conflict.json, {
             code: "email_exists",
             message: "email_exists",
           });
           assert.equal(creates, 1);
-          const list = await fetch(`${base}/user_management/users`, {
+          const list = yield* HttpClient.get(`${base}/user_management/users`, {
             headers: { authorization: `Bearer ${apiKey}` },
           });
           assert.equal(list.status, 200);
-          assert.deepEqual(await list.json(), {
+          assert.deepEqual(yield* list.json, {
             object: "list",
             data: [],
             list_metadata: { before: null, after: null },
           });
-        });
+          // oxlint-disable-next-line effecttsgo/strict-effect-provide -- Test entry point supplies its isolated HTTP client layer.
+        }).pipe(Effect.provide(FetchHttpClient.layer));
       }),
     ),
 );
@@ -157,12 +174,16 @@ it.effect(
 it.effect(
   "tagged verification failure does not serialize its pending credential",
   () =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       const error = new VerificationRequired({
         id: "verification_fixture",
         pending: Redacted.make("SECRET_PENDING_CREDENTIAL"),
       });
-      assert.ok(!JSON.stringify(error).includes("SECRET_PENDING_CREDENTIAL"));
+      assert.ok(
+        !(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+          error,
+        )).includes("SECRET_PENDING_CREDENTIAL"),
+      );
       assert.ok(Predicate.isTagged(error, "VerificationRequired"));
       assert.ok(
         Predicate.isTagged(

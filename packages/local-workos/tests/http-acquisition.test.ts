@@ -1,5 +1,5 @@
 import { it } from "@effect/vitest";
-import { Effect, Fiber } from "effect";
+import { Deferred, Effect, Fiber } from "effect";
 import { vi } from "vitest";
 import assert from "node:assert/strict";
 import { Server } from "node:http";
@@ -18,18 +18,15 @@ it.live(
           (path) =>
             Effect.promise(() => rm(path, { recursive: true, force: true })),
         );
-        let entered!: () => void;
-        const pending = new Promise<void>((resolve) => {
-          entered = resolve;
-        });
+        const pending = yield* Deferred.make<void>();
+        const entered = () => Deferred.doneUnsafe(pending, Effect.void);
         let release!: () => void;
+        // oxlint-disable-next-line effecttsgo/new-promise -- Native listen shim must defer the real bind to a microtask even after its owning fiber is interrupted.
         const gate = new Promise<void>((resolve) => {
           release = resolve;
         });
-        let bound!: () => void;
-        const listening = new Promise<void>((resolve) => {
-          bound = resolve;
-        });
+        const listening = yield* Deferred.make<void>();
+        const bound = () => Deferred.doneUnsafe(listening, Effect.void);
         let cleaning = false;
         // oxlint-disable-next-line typescript/unbound-method -- Interception forwards the original method with the captured server receiver.
         const originalListen = Server.prototype.listen;
@@ -54,16 +51,16 @@ it.live(
             }),
           ),
           (spy) =>
-            Effect.promise(async () => {
+            Effect.gen(function* () {
               const server = spy.mock.contexts[0];
               cleaning = true;
               release();
               spy.mockRestore();
               if (server instanceof Server && server.listening) {
                 server.closeAllConnections();
-                await new Promise<void>((resolve) =>
-                  server.close(() => resolve()),
-                );
+                yield* Effect.callback<void>((resume) => {
+                  server.close(() => resume(Effect.void));
+                });
               }
             }),
         );
@@ -75,15 +72,13 @@ it.live(
         ).pipe(Effect.forkScoped);
         // Registered after forkScoped: release the gate before its interrupt finalizer.
         yield* Effect.addFinalizer(() => Effect.sync(release));
-        yield* Effect.promise(() => pending).pipe(Effect.timeout("2 seconds"));
+        yield* Deferred.await(pending).pipe(Effect.timeout("2 seconds"));
         // rc.112's interruptUnsafe synchronously records the request. This
         // handshake must not await cleanup: masked acquisition needs the gate
         // released before interruption can finish. Fiber.interrupt waits for both.
         yield* Effect.sync(() => owner.interruptUnsafe());
         release();
-        yield* Effect.promise(() => listening).pipe(
-          Effect.timeout("2 seconds"),
-        );
+        yield* Deferred.await(listening).pipe(Effect.timeout("2 seconds"));
         yield* Fiber.await(owner).pipe(Effect.timeout("2 seconds"));
         const boundServer = listenSpy.mock.contexts[0];
         assert.ok(boundServer instanceof Server);
