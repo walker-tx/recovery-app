@@ -1,4 +1,7 @@
-export type SignupFlowState = { intentId: string | null; submittedEmail: string | null };
+export type SignupFlowState = {
+  intentId: string | null;
+  submittedEmail: string | null;
+};
 export type SignupFlowEvent =
   | { type: "started"; intentId: string; submittedEmail: string }
   | { type: "completed" }

@@ -30,11 +30,17 @@ test("editing either credential clears a stale authentication error", () => {
   };
 
   assert.deepEqual(
-    reduceSignInState(failed, { type: "emailChanged", value: "new@example.com" }),
+    reduceSignInState(failed, {
+      type: "emailChanged",
+      value: "new@example.com",
+    }),
     { ...failed, email: "new@example.com", formError: null },
   );
   assert.deepEqual(
-    reduceSignInState(failed, { type: "passwordChanged", value: "new-password" }),
+    reduceSignInState(failed, {
+      type: "passwordChanged",
+      value: "new-password",
+    }),
     { ...failed, password: "new-password", formError: null },
   );
 });

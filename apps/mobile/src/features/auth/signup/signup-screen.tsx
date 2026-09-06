@@ -11,11 +11,23 @@ import { toSafeAuthError } from "../auth-error-policy";
 import { createSubmissionGuard } from "../auth-submission";
 import { normalizeEmail } from "../email-policy";
 import { useSignupFlow } from "./signup-flow-provider";
-import { getFirstInvalidSignupField, getSignupCooldownSecondsRemaining, getSignupValidation, initialSignupState, reduceSignupState } from "./signup-state";
+import {
+  getFirstInvalidSignupField,
+  getSignupCooldownSecondsRemaining,
+  getSignupValidation,
+  initialSignupState,
+  reduceSignupState,
+} from "./signup-state";
 
 type FieldErrors = ReturnType<typeof getSignupValidation>;
 
-export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => void; onVerificationStarted: () => void }) {
+export function SignupScreen({
+  onBack,
+  onVerificationStarted,
+}: {
+  onBack: () => void;
+  onVerificationStarted: () => void;
+}) {
   const startSignup = useAction(api.workosAuth.startSignup);
   const { beginVerification, backToWelcome } = useSignupFlow();
   const guard = useRef(createSubmissionGuard()).current;
@@ -28,7 +40,9 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
   const cooldownSeconds = getSignupCooldownSecondsRemaining(state, now);
 
   useEffect(() => {
-    if (cooldownSeconds === 0) return;
+    if (cooldownSeconds === 0) {
+      return;
+    }
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, [cooldownSeconds]);
@@ -38,25 +52,38 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
     setFieldErrors(errors);
     const firstInvalid = getFirstInvalidSignupField(errors);
     if (firstInvalid !== null) {
-      ({ email: emailInput, password: passwordInput }[firstInvalid]).current?.focus();
+      ({ email: emailInput, password: passwordInput })[
+        firstInvalid
+      ].current?.focus();
       return;
     }
-    if (cooldownSeconds > 0) return;
+    if (cooldownSeconds > 0) {
+      return;
+    }
 
-    await guard.run({ email: state.email, password: state.password }, async (values) => {
-      dispatch({ type: "submissionStarted" });
-      try {
-        const submittedEmail = normalizeEmail(values.email);
-        const result = await startSignup({ email: submittedEmail, password: values.password });
-        const acceptedAt = Date.now();
-        dispatch({ type: "submissionAccepted", submittedEmail, acceptedAt });
-        setNow(acceptedAt);
-        beginVerification(result.intentId, submittedEmail);
-        onVerificationStarted();
-      } catch (error) {
-        dispatch({ type: "submissionFailed", message: toSafeAuthError("signup", error) });
-      }
-    });
+    await guard.run(
+      { email: state.email, password: state.password },
+      async (values) => {
+        dispatch({ type: "submissionStarted" });
+        try {
+          const submittedEmail = normalizeEmail(values.email);
+          const result = await startSignup({
+            email: submittedEmail,
+            password: values.password,
+          });
+          const acceptedAt = Date.now();
+          dispatch({ type: "submissionAccepted", submittedEmail, acceptedAt });
+          setNow(acceptedAt);
+          beginVerification(result.intentId, submittedEmail);
+          onVerificationStarted();
+        } catch (error) {
+          dispatch({
+            type: "submissionFailed",
+            message: toSafeAuthError("signup", error),
+          });
+        }
+      },
+    );
   }
 
   function handleBack() {
@@ -83,11 +110,15 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
         </Pressable>
         <View className="gap-sm">
           <Typography variant="overline">NEW ACCOUNT</Typography>
-          <Typography accessibilityRole="header" variant="display">
+          <Typography
+            accessibilityRole="header"
+            variant="display"
+          >
             Your email and a password
           </Typography>
           <Typography className="text-ink-muted">
-            We use the address to get you back in if you're locked out. Nothing else.
+            We use the address to get you back in if you're locked out. Nothing
+            else.
           </Typography>
         </View>
       </View>
@@ -122,14 +153,19 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
             editable={!state.isPending}
             endAdornment={
               <Pressable
-                accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
+                accessibilityLabel={
+                  isPasswordVisible ? "Hide password" : "Show password"
+                }
                 accessibilityRole="button"
                 accessibilityState={{ disabled: state.isPending }}
                 className="min-h-touch min-w-touch items-center justify-center px-md"
                 disabled={state.isPending}
                 onPress={() => setIsPasswordVisible((current) => !current)}
               >
-                <Typography className="text-blueprint-pressed" variant="overline">
+                <Typography
+                  className="text-blueprint-pressed"
+                  variant="overline"
+                >
                   {isPasswordVisible ? "HIDE" : "SHOW"}
                 </Typography>
               </Pressable>
@@ -138,7 +174,10 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
             label="Password"
             onChangeText={(value) => {
               dispatch({ type: "passwordChanged", value });
-              setFieldErrors((current) => ({ ...current, password: undefined }));
+              setFieldErrors((current) => ({
+                ...current,
+                password: undefined,
+              }));
             }}
             onSubmitEditing={handleSubmit}
             ref={passwordInput}
@@ -147,23 +186,43 @@ export function SignupScreen({ onBack, onVerificationStarted }: { onBack: () => 
             textContentType="newPassword"
             value={state.password}
           />
-          <Typography className="text-ink-muted" variant="caption">
-            Ten characters or more. This is the one thing you'll need to remember.
+          <Typography
+            className="text-ink-muted"
+            variant="caption"
+          >
+            Ten characters or more. This is the one thing you'll need to
+            remember.
           </Typography>
         </View>
         {state.formError ? (
-          <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
+          <Typography
+            accessibilityLiveRegion="polite"
+            accessibilityRole="alert"
+            className="text-danger"
+            selectable
+            variant="caption"
+          >
             {state.formError}
           </Typography>
         ) : null}
         <Button
-          accessibilityLabel={state.isPending ? "Starting signup" : cooldownSeconds > 0 ? "Continue unavailable" : "Continue"}
+          accessibilityLabel={
+            state.isPending
+              ? "Starting signup"
+              : cooldownSeconds > 0
+                ? "Continue unavailable"
+                : "Continue"
+          }
           className="w-full"
           disabled={cooldownSeconds > 0}
           loading={state.isPending}
           onPress={handleSubmit}
         >
-          {state.isPending ? "Starting signup" : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds}s` : "Continue"}
+          {state.isPending
+            ? "Starting signup"
+            : cooldownSeconds > 0
+              ? `Try again in ${cooldownSeconds}s`
+              : "Continue"}
         </Button>
       </View>
     </Screen>

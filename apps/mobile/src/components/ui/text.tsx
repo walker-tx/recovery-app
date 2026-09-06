@@ -1,7 +1,20 @@
-import { Text as NativeText, type TextProps as NativeTextProps } from "react-native";
+import {
+  Text as NativeText,
+  type TextProps as NativeTextProps,
+} from "react-native";
 
-export type TypographyVariant = "display" | "title" | "heading" | "body" | "label" | "caption" | "overline";
-export type TypographyProps = NativeTextProps & { variant?: TypographyVariant; className?: string };
+export type TypographyVariant =
+  | "display"
+  | "title"
+  | "heading"
+  | "body"
+  | "label"
+  | "caption"
+  | "overline";
+export type TypographyProps = NativeTextProps & {
+  variant?: TypographyVariant;
+  className?: string;
+};
 
 const variants: Record<TypographyVariant, string> = {
   display: "text-display text-ink",
@@ -13,8 +26,18 @@ const variants: Record<TypographyVariant, string> = {
   overline: "text-overline text-blueprint",
 };
 
-export function Typography({ className, variant = "body", ...props }: TypographyProps) {
-  return <NativeText allowFontScaling className={`${variants[variant]} ${className ?? ""}`} {...props} />;
+export function Typography({
+  className,
+  variant = "body",
+  ...props
+}: TypographyProps) {
+  return (
+    <NativeText
+      allowFontScaling
+      className={`${variants[variant]} ${className ?? ""}`}
+      {...props}
+    />
+  );
 }
 
 export const Text = Typography;

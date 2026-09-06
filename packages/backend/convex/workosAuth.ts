@@ -22,8 +22,14 @@ import {
   fingerprintEmail,
 } from "./workosIntentCrypto.ts";
 
-const sessionValue = v.object({ accessToken: v.string(), refreshToken: v.string() });
-const acceptedSignupValue = v.object({ accepted: v.literal(true), intentId: v.string() });
+const sessionValue = v.object({
+  accessToken: v.string(),
+  refreshToken: v.string(),
+});
+const acceptedSignupValue = v.object({
+  accepted: v.literal(true),
+  intentId: v.string(),
+});
 const refreshValue = v.union(
   v.object({
     status: v.literal("success"),
@@ -36,43 +42,50 @@ const refreshValue = v.union(
 export const startSignup = action({
   args: { email: v.string(), password: v.string() },
   returns: acceptedSignupValue,
-  handler: (ctx, args) => runPublic(() => productionOrchestration(ctx).startSignup(args)),
+  handler: (ctx, args) =>
+    runPublic(() => productionOrchestration(ctx).startSignup(args)),
 });
 
 export const completeSignup = action({
   args: { intentId: v.string(), code: v.string() },
   returns: sessionValue,
-  handler: (ctx, args) => runPublic(() => productionOrchestration(ctx).completeSignup(args)),
+  handler: (ctx, args) =>
+    runPublic(() => productionOrchestration(ctx).completeSignup(args)),
 });
 
 export const signIn = action({
   args: { email: v.string(), password: v.string() },
   returns: sessionValue,
-  handler: (ctx, args) => runPublic(() => productionOrchestration(ctx).signIn(args)),
+  handler: (ctx, args) =>
+    runPublic(() => productionOrchestration(ctx).signIn(args)),
 });
 
 export const refreshSession = action({
   args: { refreshToken: v.string() },
   returns: refreshValue,
-  handler: (ctx, args) => runPublic(() => productionOrchestration(ctx).refreshSession(args)),
+  handler: (ctx, args) =>
+    runPublic(() => productionOrchestration(ctx).refreshSession(args)),
 });
 
 export const signOutSession = action({
   args: { refreshToken: v.string() },
   returns: v.object({ revoked: v.literal(true) }),
-  handler: (ctx, args) => runPublic(() => productionOrchestration(ctx).signOutSession(args)),
+  handler: (ctx, args) =>
+    runPublic(() => productionOrchestration(ctx).signOutSession(args)),
 });
 
 export const startRecovery = action({
   args: { email: v.string() },
   returns: v.object({ accepted: v.literal(true) }),
-  handler: (ctx, args) => runPublic(() => productionOrchestration(ctx).startRecovery(args)),
+  handler: (ctx, args) =>
+    runPublic(() => productionOrchestration(ctx).startRecovery(args)),
 });
 
 export const resetPassword = action({
   args: { token: v.string(), newPassword: v.string() },
   returns: v.object({ reset: v.literal(true) }),
-  handler: (ctx, args) => runPublic(() => productionOrchestration(ctx).resetPassword(args)),
+  handler: (ctx, args) =>
+    runPublic(() => productionOrchestration(ctx).resetPassword(args)),
 });
 
 function productionOrchestration(
@@ -99,19 +112,34 @@ function productionOrchestration(
         return result.admitted;
       },
       async createSignupIntent(input) {
-        await ctx.runMutation(internal.workosAuthInternal.createSignupIntent, input);
+        await ctx.runMutation(
+          internal.workosAuthInternal.createSignupIntent,
+          input,
+        );
       },
       async acquireSignupIntent(input) {
-        return ctx.runMutation(internal.workosAuthInternal.acquireSignupIntent, input);
+        return ctx.runMutation(
+          internal.workosAuthInternal.acquireSignupIntent,
+          input,
+        );
       },
       async releaseSignupIntentLease(input) {
-        await ctx.runMutation(internal.workosAuthInternal.releaseSignupIntentLease, input);
+        await ctx.runMutation(
+          internal.workosAuthInternal.releaseSignupIntentLease,
+          input,
+        );
       },
       async completeSignupIntent(input) {
-        await ctx.runMutation(internal.workosAuthInternal.completeSignupIntent, input);
+        await ctx.runMutation(
+          internal.workosAuthInternal.completeSignupIntent,
+          input,
+        );
       },
       async cleanupExpiredAuthData() {
-        await ctx.runMutation(internal.workosAuthInternal.cleanupExpiredAuthData, {});
+        await ctx.runMutation(
+          internal.workosAuthInternal.cleanupExpiredAuthData,
+          {},
+        );
       },
     },
   });

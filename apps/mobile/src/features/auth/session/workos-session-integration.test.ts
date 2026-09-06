@@ -12,7 +12,8 @@ const credentials = (suffix: string): SessionCredentials => ({
   accessToken: `access-${suffix}`,
   refreshToken: `refresh-${suffix}`,
 });
-const encoded = (suffix: string) => JSON.stringify({ version: 1, ...credentials(suffix) });
+const encoded = (suffix: string) =>
+  JSON.stringify({ version: 1, ...credentials(suffix) });
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 function deferred<T>() {
@@ -29,30 +30,56 @@ function fakeSecureStore(initial: string | null) {
   let value = initial;
   return {
     adapter: {
-      async getItemAsync() { return value; },
-      async setItemAsync(_key: string, next: string) { value = next; },
-      async deleteItemAsync() { value = null; },
+      async getItemAsync() {
+        return value;
+      },
+      async setItemAsync(_key: string, next: string) {
+        value = next;
+      },
+      async deleteItemAsync() {
+        value = null;
+      },
     },
-    get value() { return value; },
+    get value() {
+      return value;
+    },
   };
 }
 
-function actions(overrides: Partial<WorkOSSessionActions> = {}): WorkOSSessionActions {
+function actions(
+  overrides: Partial<WorkOSSessionActions> = {},
+): WorkOSSessionActions {
   return {
-    async signIn() { return credentials("signed-in"); },
-    async completeSignup() { return credentials("signup"); },
-    async refreshSession() { return { status: "success", ...credentials("refreshed") }; },
-    async signOutSession() { return { revoked: true }; },
+    async signIn() {
+      return credentials("signed-in");
+    },
+    async completeSignup() {
+      return credentials("signup");
+    },
+    async refreshSession() {
+      return { status: "success", ...credentials("refreshed") };
+    },
+    async signOutSession() {
+      return { revoked: true };
+    },
     ...overrides,
   };
 }
 
 test("restoration refreshes persisted credentials without a protected-route flash", async () => {
-  const refresh = deferred<{ status: "success"; accessToken: string; refreshToken: string }>();
+  const refresh = deferred<{
+    status: "success";
+    accessToken: string;
+    refreshToken: string;
+  }>();
   const secureStore = fakeSecureStore(encoded("stored"));
   const owner = createWorkOSSessionOwner({
     storage: createWorkOSSessionStorage(secureStore.adapter),
-    actions: actions({ async refreshSession() { return refresh.promise; } }),
+    actions: actions({
+      async refreshSession() {
+        return refresh.promise;
+      },
+    }),
   });
   const published = [owner.getSnapshot()];
   owner.subscribe(() => published.push(owner.getSnapshot()));
@@ -60,16 +87,28 @@ test("restoration refreshes persisted credentials without a protected-route flas
   const restoring = owner.restore();
   await tick();
   assert.equal(owner.getSnapshot().isLoading, true);
-  assert.equal(published.some(({ isLoading, isAuthenticated }) => !isLoading && isAuthenticated), false);
+  assert.equal(
+    published.some(
+      ({ isLoading, isAuthenticated }) => !isLoading && isAuthenticated,
+    ),
+    false,
+  );
   refresh.resolve({ status: "success", ...credentials("restored") });
   await restoring;
 
   assert.equal(owner.getSnapshot().isAuthenticated, true);
-  assert.deepEqual(JSON.parse(secureStore.value!), { version: 1, ...credentials("restored") });
+  assert.deepEqual(JSON.parse(secureStore.value!), {
+    version: 1,
+    ...credentials("restored"),
+  });
 });
 
 test("forced concurrent token requests serialize one refresh and share its result", async () => {
-  const forcedRefresh = deferred<{ status: "success"; accessToken: string; refreshToken: string }>();
+  const forcedRefresh = deferred<{
+    status: "success";
+    accessToken: string;
+    refreshToken: string;
+  }>();
   let refreshCalls = 0;
   const secureStore = fakeSecureStore(encoded("stored"));
   const owner = createWorkOSSessionOwner({
@@ -77,7 +116,9 @@ test("forced concurrent token requests serialize one refresh and share its resul
     actions: actions({
       async refreshSession() {
         refreshCalls += 1;
-        if (refreshCalls === 1) return { status: "success", ...credentials("restored") };
+        if (refreshCalls === 1) {
+          return { status: "success", ...credentials("restored") };
+        }
         return forcedRefresh.promise;
       },
     }),
@@ -89,8 +130,14 @@ test("forced concurrent token requests serialize one refresh and share its resul
   await tick();
   assert.equal(refreshCalls, 2);
   forcedRefresh.resolve({ status: "success", ...credentials("forced") });
-  assert.deepEqual(await Promise.all([first, second]), ["access-forced", "access-forced"]);
-  assert.equal(await owner.fetchAccessToken({ forceRefreshToken: false }), "access-forced");
+  assert.deepEqual(await Promise.all([first, second]), [
+    "access-forced",
+    "access-forced",
+  ]);
+  assert.equal(
+    await owner.fetchAccessToken({ forceRefreshToken: false }),
+    "access-forced",
+  );
 });
 
 test("transient restoration failure retains SecureStore credentials and retries", async () => {
@@ -100,7 +147,9 @@ test("transient restoration failure retains SecureStore credentials and retries"
     storage: createWorkOSSessionStorage(secureStore.adapter),
     actions: actions({
       async refreshSession() {
-        if (fail) throw new Error("offline");
+        if (fail) {
+          throw new Error("offline");
+        }
         return { status: "success", ...credentials("retried") };
       },
     }),
@@ -120,7 +169,11 @@ test("terminal restoration invalidation clears SecureStore and settles unauthent
   const secureStore = fakeSecureStore(encoded("expired"));
   const owner = createWorkOSSessionOwner({
     storage: createWorkOSSessionStorage(secureStore.adapter),
-    actions: actions({ async refreshSession() { return { status: "invalid" }; } }),
+    actions: actions({
+      async refreshSession() {
+        return { status: "invalid" };
+      },
+    }),
   });
 
   await owner.restore();
@@ -141,7 +194,10 @@ test("successful sign-out revokes before clearing the persisted session", async 
   const owner = createWorkOSSessionOwner({
     storage: {
       ...storage,
-      async clear() { events.push("clear"); await storage.clear(); },
+      async clear() {
+        events.push("clear");
+        await storage.clear();
+      },
     },
     actions: actions({
       async signOutSession({ refreshToken }) {
@@ -163,7 +219,11 @@ test("failed sign-out retains the local session for a safe retry", async () => {
   const secureStore = fakeSecureStore(null);
   const owner = createWorkOSSessionOwner({
     storage: createWorkOSSessionStorage(secureStore.adapter),
-    actions: actions({ async signOutSession() { throw new Error("offline"); } }),
+    actions: actions({
+      async signOutSession() {
+        throw new Error("offline");
+      },
+    }),
   });
   await owner.restore();
   await owner.signIn({ email: "person@example.com", password: "secret" });
@@ -182,7 +242,9 @@ test("an interrupted sign-out response retains credentials until an already-revo
     actions: actions({
       async signOutSession() {
         attempts += 1;
-        if (attempts === 1) throw new Error("response interrupted after provider revocation");
+        if (attempts === 1) {
+          throw new Error("response interrupted after provider revocation");
+        }
         return { revoked: true };
       },
     }),

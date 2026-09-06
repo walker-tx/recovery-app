@@ -27,12 +27,18 @@ describe("WorkOS authorization after cutover", () => {
     const t = convexTest(schema, modules);
     const identities = [
       t,
-      t.withIdentity({ subject: "user_wrong", issuer, client_id: "client_other" }),
+      t.withIdentity({
+        subject: "user_wrong",
+        issuer,
+        client_id: "client_other",
+      }),
       t.withIdentity({ subject: "user_missing", issuer }),
     ];
 
     for (const identity of identities) {
-      await expect(identity.query(api.profiles.getMine, {})).rejects.toMatchObject({
+      await expect(
+        identity.query(api.profiles.getMine, {}),
+      ).rejects.toMatchObject({
         data: { code: "UNAUTHENTICATED" },
       });
     }
@@ -46,8 +52,15 @@ describe("WorkOS authorization after cutover", () => {
     await expect(userA.query(api.profiles.getMine, {})).resolves.toBeNull();
     await expect(userB.query(api.profiles.getMine, {})).resolves.toBeNull();
     await expect(
-      userA.mutation(api.profiles.complete, { displayName: "User A", firstName: "A" }),
-    ).resolves.toEqual({ displayName: "User A", firstName: "A", onboardingComplete: true });
+      userA.mutation(api.profiles.complete, {
+        displayName: "User A",
+        firstName: "A",
+      }),
+    ).resolves.toEqual({
+      displayName: "User A",
+      firstName: "A",
+      onboardingComplete: true,
+    });
     await expect(
       userB.mutation(api.profiles.complete, { displayName: "User B" }),
     ).resolves.toEqual({ displayName: "User B", onboardingComplete: true });
@@ -64,20 +77,30 @@ describe("WorkOS authorization after cutover", () => {
 
     const profiles = await t.run((ctx) => ctx.db.query("profiles").collect());
     expect(profiles).toHaveLength(2);
-    expect(profiles).toEqual(expect.arrayContaining([
-      expect.objectContaining({ ownerSubject: "user_a", displayName: "User A" }),
-      expect.objectContaining({ ownerSubject: "user_b", displayName: "User B" }),
-    ]));
+    expect(profiles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ownerSubject: "user_a",
+          displayName: "User A",
+        }),
+        expect.objectContaining({
+          ownerSubject: "user_b",
+          displayName: "User B",
+        }),
+      ]),
+    );
   });
 
   test("narrow public validators refuse caller-selected owners", async () => {
     const t = convexTest(schema, modules);
     const userA = asWorkOSUser(t, "user_a");
 
-    await expect(userA.mutation(completeWithOwnerArgument, {
-      displayName: "Impersonated",
-      ownerSubject: "user_b",
-    })).rejects.toThrow(/unexpected field `ownerSubject`/i);
+    await expect(
+      userA.mutation(completeWithOwnerArgument, {
+        displayName: "Impersonated",
+        ownerSubject: "user_b",
+      }),
+    ).rejects.toThrow(/unexpected field `ownerSubject`/i);
     await expect(userA.query(api.profiles.getMine, {})).resolves.toBeNull();
   });
 });

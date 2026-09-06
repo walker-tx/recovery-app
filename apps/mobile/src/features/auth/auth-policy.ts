@@ -25,8 +25,12 @@ export function getSignInValidation(
 }
 
 export function getFirstInvalidSignInField(errors: SignInValidation) {
-  if (errors.email) return "email" as const;
-  if (errors.password) return "password" as const;
+  if (errors.email) {
+    return "email" as const;
+  }
+  if (errors.password) {
+    return "password" as const;
+  }
   return null;
 }
 

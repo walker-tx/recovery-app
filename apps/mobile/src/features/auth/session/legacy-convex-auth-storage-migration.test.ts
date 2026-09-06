@@ -16,8 +16,13 @@ test("deletes the exact namespaced legacy Convex Auth keys without reading them"
   const deleted: string[] = [];
   let reads = 0;
   const store = {
-    async getItemAsync() { reads += 1; return "secret-that-must-not-be-read"; },
-    async deleteItemAsync(key: string) { deleted.push(key); },
+    async getItemAsync() {
+      reads += 1;
+      return "secret-that-must-not-be-read";
+    },
+    async deleteItemAsync(key: string) {
+      deleted.push(key);
+    },
   };
 
   await migrateLegacyConvexAuthStorage(store, convexUrl);
@@ -29,8 +34,12 @@ test("deletes the exact namespaced legacy Convex Auth keys without reading them"
 test("is idempotent for empty and already-migrated stores", async () => {
   const deleted: string[] = [];
   const store = {
-    async getItemAsync() { throw new Error("must not read legacy values"); },
-    async deleteItemAsync(key: string) { deleted.push(key); },
+    async getItemAsync() {
+      throw new Error("must not read legacy values");
+    },
+    async deleteItemAsync(key: string) {
+      deleted.push(key);
+    },
   };
 
   await migrateLegacyConvexAuthStorage(store, convexUrl);

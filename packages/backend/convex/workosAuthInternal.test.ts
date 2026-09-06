@@ -8,7 +8,11 @@ const modules = import.meta.glob("./**/*.ts");
 const minute = 60_000;
 
 type Purpose = "signup" | "recovery";
-type EncryptedToken = { ciphertext: string; nonce: string; authenticationTag: string };
+type EncryptedToken = {
+  ciphertext: string;
+  nonce: string;
+  authenticationTag: string;
+};
 
 const admitInitiationRequest = makeFunctionReference<
   "mutation",
@@ -22,7 +26,10 @@ const createSignupIntent = makeFunctionReference<
     emailFingerprint: string;
     purpose: "signup";
     encryptedPendingToken?: EncryptedToken;
-    privateGuidanceCategory?: "passwordSignInOrRecovery" | "googleSignIn" | "appleSignIn";
+    privateGuidanceCategory?:
+      | "passwordSignInOrRecovery"
+      | "googleSignIn"
+      | "appleSignIn";
     now: number;
   },
   null
@@ -35,7 +42,10 @@ const acquireSignupIntent = makeFunctionReference<
     purpose: "signup";
     leaseExpiresAt: number;
     encryptedPendingToken?: EncryptedToken;
-    privateGuidanceCategory?: "passwordSignInOrRecovery" | "googleSignIn" | "appleSignIn";
+    privateGuidanceCategory?:
+      | "passwordSignInOrRecovery"
+      | "googleSignIn"
+      | "appleSignIn";
   }
 >("workosAuthInternal:acquireSignupIntent");
 const releaseSignupIntentLease = makeFunctionReference<
@@ -73,7 +83,9 @@ async function createIntent(
 }
 
 describe("WorkOS auth persistence", () => {
-  beforeEach(() => vi.useFakeTimers().setSystemTime(new Date("2026-08-26T12:00:00Z")));
+  beforeEach(() =>
+    vi.useFakeTimers().setSystemTime(new Date("2026-08-26T12:00:00Z")),
+  );
   afterEach(() => vi.useRealTimers());
 
   it("allows only one racing lease acquisition", async () => {
@@ -94,7 +106,9 @@ describe("WorkOS auth persistence", () => {
       }),
     ]);
 
-    expect(attempts.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(
+      attempts.filter(({ status }) => status === "fulfilled"),
+    ).toHaveLength(1);
     const rejection = attempts.find(({ status }) => status === "rejected");
     expect(rejection).toMatchObject({
       status: "rejected",
@@ -234,13 +248,17 @@ describe("WorkOS auth persistence", () => {
       }
     });
 
-    await expect(t.mutation(cleanupExpiredAuthData, { now })).resolves.toEqual({ deleted: 100 });
+    await expect(t.mutation(cleanupExpiredAuthData, { now })).resolves.toEqual({
+      deleted: 100,
+    });
     const remainingAfterFirstBatch = await t.run(async (ctx) => {
       const intents = await ctx.db.query("signupIntents").collect();
       const requests = await ctx.db.query("authInitiationRequests").collect();
       return intents.length + requests.length;
     });
     expect(remainingAfterFirstBatch).toBe(20);
-    await expect(t.mutation(cleanupExpiredAuthData, {})).resolves.toEqual({ deleted: 20 });
+    await expect(t.mutation(cleanupExpiredAuthData, {})).resolves.toEqual({
+      deleted: 20,
+    });
   });
 });

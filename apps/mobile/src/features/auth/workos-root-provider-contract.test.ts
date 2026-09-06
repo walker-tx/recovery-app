@@ -2,17 +2,23 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const source = await readFile(new URL("./workos-root-provider.tsx", import.meta.url), "utf8");
+const source = await readFile(
+  new URL("./workos-root-provider.tsx", import.meta.url),
+  "utf8",
+);
 
 test("WorkOS root nests session, Convex custom auth hook, signup flow, and protected routes", () => {
   assert.match(
     source,
-    /<WorkOSSessionProvider client=\{client\}>[\s\S]*?<ConvexProviderWithAuth client=\{client\} useAuth=\{useWorkOSConvexAuth\}>[\s\S]*?<SignupFlowProvider>[\s\S]*?<WorkOSProtectedRoutes \/>[\s\S]*?<\/SignupFlowProvider>[\s\S]*?<\/ConvexProviderWithAuth>[\s\S]*?<\/WorkOSSessionProvider>/,
+    /<WorkOSSessionProvider client=\{client\}>[\s\S]*?<ConvexProviderWithAuth\s+client=\{client\}\s+useAuth=\{useWorkOSConvexAuth\}\s*>[\s\S]*?<SignupFlowProvider>[\s\S]*?<WorkOSProtectedRoutes \/>[\s\S]*?<\/SignupFlowProvider>[\s\S]*?<\/ConvexProviderWithAuth>[\s\S]*?<\/WorkOSSessionProvider>/,
   );
 });
 
 test("protected retries dispatch restore and authenticated refresh through their matching callbacks", () => {
-  assert.match(source, /operation === "restore" \? session\.retryRestore : session\.refresh/);
+  assert.match(
+    source,
+    /operation\s+===\s+"restore"\s+\?\s+session\.retryRestore\s+:\s+session\.refresh/,
+  );
   assert.match(source, /destination === "retry"/);
   assert.match(source, /<WorkOSRetryState onRetry=\{retry\} \/>/);
 });

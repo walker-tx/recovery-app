@@ -27,34 +27,48 @@ describe("Mailpit auth email delivery", () => {
     },
     {
       method: "reset" as const,
-      input: { email: "reset@example.net", resetToken: "reset-secret", expiresAt },
+      input: {
+        email: "reset@example.net",
+        resetToken: "reset-secret",
+        expiresAt,
+      },
       subject: "Recovery password reset",
       text: "Enter this reset token to choose a new password.\n\nReset token: reset-secret\nExpires at: 2026-08-26T12:15:00.000Z",
     },
     {
       method: "guidance" as const,
-      input: { email: "existing@example.net", category: "appleSignIn" as const, expiresAt },
+      input: {
+        email: "existing@example.net",
+        category: "appleSignIn" as const,
+        expiresAt,
+      },
       subject: "Recovery account guidance",
       text: "Sign in with Apple to continue.\n\nExpires at: 2026-08-26T12:15:00.000Z",
     },
-  ])("posts $method mail to Mailpit", async ({ method, input, subject, text }) => {
-    const fetch = successfulFetch();
-    const delivery = createMailpitAuthEmailDelivery({ ...localConfig, fetch });
+  ])(
+    "posts $method mail to Mailpit",
+    async ({ method, input, subject, text }) => {
+      const fetch = successfulFetch();
+      const delivery = createMailpitAuthEmailDelivery({
+        ...localConfig,
+        fetch,
+      });
 
-    await delivery[method](input as never);
+      await delivery[method](input as never);
 
-    expect(fetch).toHaveBeenCalledWith(localConfig.deliveryUrl, {
-      method: "POST",
-      redirect: "error",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        From: { Email: "no-reply@recovery.local", Name: "Recovery" },
-        To: [{ Email: input.email }],
-        Subject: subject,
-        Text: text,
-      }),
-    });
-  });
+      expect(fetch).toHaveBeenCalledWith(localConfig.deliveryUrl, {
+        method: "POST",
+        redirect: "error",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          From: { Email: "no-reply@recovery.local", Name: "Recovery" },
+          To: [{ Email: input.email }],
+          Subject: subject,
+          Text: text,
+        }),
+      });
+    },
+  );
 
   it("refuses redirects so credential bodies stay on loopback", async () => {
     const fetch = successfulFetch();
@@ -78,47 +92,67 @@ describe("Mailpit auth email delivery", () => {
     ["https://example.convex.cloud", localConfig.siteUrl],
     [localConfig.cloudUrl, "https://example.convex.site"],
     ["not a url", localConfig.siteUrl],
-  ])("fails closed outside a local Convex runtime: %s / %s", (cloudUrl, siteUrl) => {
-    expect(() => createMailpitAuthEmailDelivery({ ...localConfig, cloudUrl, siteUrl, fetch: successfulFetch() }))
-      .toThrow("Mailpit auth delivery requires local Convex runtime URLs");
-  });
+  ])(
+    "fails closed outside a local Convex runtime: %s / %s",
+    (cloudUrl, siteUrl) => {
+      expect(() =>
+        createMailpitAuthEmailDelivery({
+          ...localConfig,
+          cloudUrl,
+          siteUrl,
+          fetch: successfulFetch(),
+        }),
+      ).toThrow("Mailpit auth delivery requires local Convex runtime URLs");
+    },
+  );
 
   it("fails closed for a non-loopback Mailpit URL", () => {
-    expect(() => createMailpitAuthEmailDelivery({
-      ...localConfig,
-      deliveryUrl: "https://mail.example.com/api/v1/send",
-      fetch: successfulFetch(),
-    })).toThrow("Mailpit auth delivery requires a local delivery URL");
+    expect(() =>
+      createMailpitAuthEmailDelivery({
+        ...localConfig,
+        deliveryUrl: "https://mail.example.com/api/v1/send",
+        fetch: successfulFetch(),
+      }),
+    ).toThrow("Mailpit auth delivery requires a local delivery URL");
   });
 
   it("rejects non-successful Mailpit responses", async () => {
     const fetch = vi.fn(async () => new Response(null, { status: 503 }));
     const delivery = createMailpitAuthEmailDelivery({ ...localConfig, fetch });
 
-    await expect(delivery.verification({
-      email: "person@example.net",
-      code: "credential-value",
-      expiresAt,
-    })).rejects.toThrow("Mailpit auth delivery failed with status 503");
+    await expect(
+      delivery.verification({
+        email: "person@example.net",
+        code: "credential-value",
+        expiresAt,
+      }),
+    ).rejects.toThrow("Mailpit auth delivery failed with status 503");
   });
 
   it("propagates Mailpit network rejection", async () => {
     const delivery = createMailpitAuthEmailDelivery({
       ...localConfig,
-      fetch: vi.fn(async () => { throw new Error("network unavailable"); }),
+      fetch: vi.fn(async () => {
+        throw new Error("network unavailable");
+      }),
     });
 
-    await expect(delivery.reset({
-      email: "person@example.net",
-      resetToken: "credential-value",
-      expiresAt,
-    })).rejects.toThrow("network unavailable");
+    await expect(
+      delivery.reset({
+        email: "person@example.net",
+        resetToken: "credential-value",
+        expiresAt,
+      }),
+    ).rejects.toThrow("network unavailable");
   });
 
   it("never writes credentials to console", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const delivery = createMailpitAuthEmailDelivery({ ...localConfig, fetch: successfulFetch() });
+    const delivery = createMailpitAuthEmailDelivery({
+      ...localConfig,
+      fetch: successfulFetch(),
+    });
 
     await delivery.verification({
       email: "person@example.net",
@@ -126,7 +160,9 @@ describe("Mailpit auth email delivery", () => {
       expiresAt,
     });
 
-    expect(JSON.stringify([...info.mock.calls, ...log.mock.calls])).not.toContain("credential-value");
+    expect(
+      JSON.stringify([...info.mock.calls, ...log.mock.calls]),
+    ).not.toContain("credential-value");
     expect(info).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalled();
   });
