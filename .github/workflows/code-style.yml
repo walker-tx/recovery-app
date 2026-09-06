@@ -52,3 +52,5 @@ jobs:
         run: mise exec -- pnpm --filter @recovery/local-workos run prepare
       - name: Check lint
         run: mise exec -- pnpm run lint
+      - name: Check local WorkOS types
+        run: mise exec -- pnpm --filter @recovery/local-workos exec tsc --noEmit
