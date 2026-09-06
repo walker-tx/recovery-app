@@ -31,17 +31,27 @@ function fixture(t) {
     routeEvidence: async () => ({ ...target, state: 'absent', scope: 'whole-stack' }) };
   return { root, worktree, record, options, save };
 }
+test('unsupported route callback is never consumed as authoritative evidence', async t => {
+  const f = fixture(t);
+  let called = false;
+  f.options.routeEvidence = () => { called = true; throw Error('unsupported proof'); };
+  const result = await preflightDestruction(f.options);
+  assert.equal(called, false);
+  assert.equal(result.confirmationAccepted, true);
+  assert.equal(result.readyForTeardown, false);
+  assert.deepEqual(result.blockers, [{ code: 'routes-unknown', domain: 'routes' }]);
+});
 function snapshot(root) {
   return fs.readdirSync(root).sort().flatMap(name => {
     const file = path.join(root,name), st = fs.lstatSync(file);
     return [[file, st.mode, st.ino, st.nlink, st.mtimeMs, st.isFile() ? fs.readFileSync(file).toString('hex') : null], ...(st.isDirectory() ? snapshot(file) : [])];
   });
 }
-test('proof enumerates domains without authorizing destruction or mutating state', async t => {
+test('legacy absent-route tuple cannot establish contract-ready teardown or mutate state', async t => {
   const f = fixture(t), before = snapshot(f.root);
   const result = await preflightDestruction(f.options);
-  assert.deepEqual(result.blockers, []);
-  assert.equal(result.readyForTeardown, true);
+  assert.deepEqual(result.blockers, [{ code: 'routes-unknown', domain: 'routes' }]);
+  assert.equal(result.readyForTeardown, false);
   assert.equal(result.destructionImplemented, false);
   assert.equal(result.reservationReleaseAllowed, false);
   assert.deepEqual(result.affectedDomains.map(x => x.domain), ['provider', 'convex', 'inbox', 'stack-metadata', 'routes', 'reservation']);
@@ -96,11 +106,11 @@ test('missing port observer reports unknown evidence, not occupied ports', async
   const f = fixture(t);
   delete f.options.portAvailable;
   const result = await preflightDestruction(f.options);
-  assert.deepEqual(result.blockers, names.map(domain => ({ code: 'ports-unknown', domain })));
+  assert.deepEqual(result.blockers, [...names.map(domain => ({ code: 'ports-unknown', domain })), { code: 'routes-unknown', domain: 'routes' }]);
   assert.equal(result.destructionImplemented, false);
   assert.equal(result.reservationReleaseAllowed, false);
 });
-for (const adapter of ['inspectProcess', 'portAvailable', 'routeEvidence']) {
+for (const adapter of ['inspectProcess', 'portAvailable']) {
   test(`bounded evidence collection when ${adapter} never resolves`, async t => {
     const f = fixture(t);
     f.record.processes.provider = { pid: 123, startedAt: 'one', stackId: f.record.stackId, worktree: f.worktree };
@@ -180,7 +190,7 @@ for (const changed of ['generation', 'process', 'routes']) {
     const f = fixture(t);
     const first = await preflightDestruction(f.options);
     assert.equal(first.confirmationAccepted, true);
-    assert.equal(first.readyForTeardown, true);
+    assert.equal(first.readyForTeardown, false);
     if (changed === 'generation') {
       f.record.providerGeneration = randomUUID();
       f.save();

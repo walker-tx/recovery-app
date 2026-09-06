@@ -34,7 +34,7 @@ function contents(dir, budget, depth = 0) {
     }
   } finally { entries.closeSync(); }
 }
-async function preflightDestruction({ worktree, registryPath, target, confirmation, inspectProcess, portAvailable, routeEvidence, timeoutMs = 2000 } = {}) {
+async function preflightDestruction({ worktree, registryPath, target, confirmation, inspectProcess, portAvailable, timeoutMs = 2000 } = {}) {
   const blockers = [];
   const block = (code, domain) => blockers.push({ code, domain });
   const result = { readyForTeardown: false, confirmationAccepted: false, destructionImplemented: false,
@@ -128,14 +128,12 @@ async function preflightDestruction({ worktree, registryPath, target, confirmati
       else if (available !== true) block('ports-unknown', service);
     } catch { block('ports-unknown', service); }
   }
-  // #49 has no production route proof yet. Only explicit evidence from a trusted
-  // read-only adapter (currently fake fixtures) can satisfy this checkpoint.
-  try {
-    const evidence = await observe(() => routeEvidence?.(result.target));
-    if (!evidence || evidence.state !== 'absent' || evidence.scope !== 'whole-stack' ||
-        evidence.stackId !== record.stackId || evidence.providerGeneration !== record.providerGeneration ||
-        evidence.worktree !== worktree) throw Error();
-  } catch { block('routes-unknown', 'routes'); }
+  // The reviewed #49 semantic contract (PR59, 704deb999003388bae82c040b698966a98ce8f61)
+  // requires complete authoritative inventory and coordinated retirement proof.
+  // Legacy target/absent tuples cannot establish either. No production evidence
+  // implementation is authorized yet; do not freeze a speculative adapter schema
+  // or let fixture claims establish readiness. Keep this boundary closed.
+  block('routes-unknown', 'routes');
   result.readyForTeardown = blockers.length === 0;
   // Observations are not an atomic authorization. A future teardown must recheck
   // under coordination and release the reservation only after complete teardown.
