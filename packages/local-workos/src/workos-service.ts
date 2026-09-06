@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Redacted, Schema, Clock } from "effect";
+import { Context, Effect, Layer, Redacted, Schema, Clock, DateTime } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { randomUUID, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
@@ -90,7 +90,7 @@ export const workosLayer = Layer.effect(
       sql<Row>`SELECT * FROM users WHERE id=${id}`.pipe(
         Effect.map((rows) => rows[0]),
       );
-    const issueSession = (user: User, now: number, existing?: { id: string; expires_at: number }) => Effect.gen(function* () {
+    const issueSession = Effect.fn("issueSession")(function* (user: User, now: number, existing?: { id: string; expires_at: number }) {
         const sid = yield* Schema.decodeUnknownEffect(SessionId)(
           existing?.id ?? `session_${randomUUID()}`,
         ).pipe(Effect.orDie);
@@ -186,7 +186,7 @@ export const workosLayer = Layer.effect(
             const row = yield* getUser(challenge.user_id);
             if (!row || verification.user_id !== challenge.user_id) return null;
             const saved = yield* Schema.decodeUnknownEffect(UserSchema)(JSON.parse(row.body)).pipe(Effect.orDie);
-            const user = { ...saved, email_verified: true, updated_at: new Date(now).toISOString() };
+            const user = { ...saved, email_verified: true, updated_at: DateTime.formatIso(DateTime.makeUnsafe(now)) };
             yield* sql`UPDATE users SET body=${JSON.stringify(user)} WHERE id=${user.id}`;
             yield* sql`DELETE FROM challenges WHERE id=${challenge.id}`;
             return yield* issueSession(user, now);
@@ -229,11 +229,11 @@ export const workosLayer = Layer.effect(
         if (!user.email_verified) {
           const id = `email_verification_${randomUUID()}`,
             pending = randomBytes(32).toString("base64url");
-          const timestamp = new Date(now).toISOString();
+          const timestamp = DateTime.formatIso(DateTime.makeUnsafe(now));
           const verification: EmailVerification = {
             object: "email_verification", id, user_id: user.id, email: user.email,
             code: randomInt(1_000_000).toString().padStart(6, "0"),
-            expires_at: new Date(now + lifetimes.verificationSeconds * 1000).toISOString(),
+            expires_at: DateTime.formatIso(DateTime.makeUnsafe(now + lifetimes.verificationSeconds * 1000)),
             created_at: timestamp, updated_at: timestamp,
           };
           yield* sql`INSERT INTO challenges VALUES(${id},${user.id},${digest(pending)},${now + lifetimes.verificationSeconds * 1000})`;
@@ -245,7 +245,7 @@ export const workosLayer = Layer.effect(
         if (result instanceof VerificationRequired) return yield* Effect.fail(result);
         return result ?? (yield* Effect.fail(new RequestRejected({ reason: "invalid_grant" })));
       }).pipe(Effect.catch(operationFailure));
-    const createPasswordReset = (body: Record<string, unknown>) => Effect.gen(function* () {
+    const createPasswordReset = Effect.fn("createPasswordReset")(function* (body: Record<string, unknown>) {
       const payload = yield* Schema.decodeUnknownEffect(CreatePasswordResetRequestSchema)(body).pipe(
         Effect.mapError(() => new RequestRejected({ reason: "invalid_user" })),
       );
@@ -265,10 +265,10 @@ export const workosLayer = Layer.effect(
           // Compatibility field only: reserved issuer has no hosted reset page.
           // Recovery owns the native link, templates and delivery.
           password_reset_url: `${issuer}/password-reset?token=${token}`,
-          expires_at: new Date(expires).toISOString(), created_at: new Date(now).toISOString() };
+          expires_at: DateTime.formatIso(DateTime.makeUnsafe(expires)), created_at: DateTime.formatIso(DateTime.makeUnsafe(now)) };
       }));
-    }).pipe(Effect.catch(operationFailure));
-    const resetPassword = (body: Record<string, unknown>) => Effect.gen(function* () {
+    }, Effect.catch(operationFailure));
+    const resetPassword = Effect.fn("resetPassword")(function* (body: Record<string, unknown>) {
       const payload = yield* Schema.decodeUnknownEffect(ResetPasswordRequestSchema)(body).pipe(
         Effect.mapError(() => new RequestRejected({ reason: "invalid_user" })),
       );
@@ -285,14 +285,14 @@ export const workosLayer = Layer.effect(
         const row = yield* getUser(reset.user_id);
         if (!row) return null;
         const saved = yield* Schema.decodeUnknownEffect(UserSchema)(JSON.parse(row.body)).pipe(Effect.orDie);
-        const user = { ...saved, email_verified: true, updated_at: new Date(now).toISOString() };
+        const user = { ...saved, email_verified: true, updated_at: DateTime.formatIso(DateTime.makeUnsafe(now)) };
         yield* sql`UPDATE users SET body=${JSON.stringify(user)},salt=${salt},verifier=${verifier} WHERE id=${user.id}`;
         yield* sql`DELETE FROM sessions WHERE user_id=${user.id}`;
         yield* sql`DELETE FROM challenges WHERE user_id=${user.id}`;
         return { user };
       }));
       return result ?? (yield* Effect.fail(new RequestRejected({ reason: "invalid_reset_token" })));
-    }).pipe(Effect.catch(operationFailure));
+    }, Effect.catch(operationFailure));
     const createUser = (body: Record<string, unknown>) =>
       Effect.gen(function* () {
         const payload = yield* Schema.decodeUnknownEffect(
@@ -410,7 +410,7 @@ export const workosLayer = Layer.effect(
       authenticate,
       createUser,
       createPasswordReset, resetPassword,
-      revokeSession: (body) => Effect.gen(function* () {
+      revokeSession: Effect.fn("revokeSession")(function* (body: Record<string, unknown>) {
         const payload = yield* Schema.decodeUnknownEffect(RevokeSessionRequestSchema)(body).pipe(
           Effect.mapError(() => new RequestRejected({ reason: "not_found" })),
         );
@@ -420,7 +420,7 @@ export const workosLayer = Layer.effect(
           if (!session) return yield* Effect.fail(new RequestRejected({ reason: "not_found" }));
           yield* sql`DELETE FROM sessions WHERE id=${payload.session_id}`;
         }));
-      }).pipe(Effect.catch(operationFailure)),
+      }, Effect.catch(operationFailure)),
 
       deleteUser: Effect.fn("deleteUser")(function* (id: string) {
         const userId = yield* Schema.decodeUnknownEffect(UserId)(id).pipe(
@@ -431,12 +431,12 @@ export const workosLayer = Layer.effect(
         if (deleted.length === 0) return yield* Effect.fail(new RequestRejected({ reason: "not_found" }));
       }, Effect.catch(operationFailure)),
       listUsers,
-      getEmailVerification: (id) => Effect.gen(function* () {
+      getEmailVerification: Effect.fn("getEmailVerification")(function* (id: string) {
         const now = yield* Clock.currentTimeMillis;
         const [row] = yield* sql<{ body: string }>`SELECT v.body FROM email_verifications v JOIN challenges c ON c.id=v.challenge_id WHERE c.id=${id} AND c.expires_at>${now}`;
         if (!row) return yield* Effect.fail(new RequestRejected({ reason: "not_found" }));
         return yield* Schema.decodeUnknownEffect(EmailVerificationSchema)(JSON.parse(row.body)).pipe(Effect.orDie);
-      }).pipe(Effect.catch(operationFailure)),
+      }, Effect.catch(operationFailure)),
       instanceInfo: Effect.succeed({
         clientId,
         issuer,

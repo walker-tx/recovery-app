@@ -15,7 +15,7 @@ const fixture = (lifetimes = { accessTokenSeconds: 300, sessionSeconds: 604800, 
   const options = { database: join(dir, "state.sqlite"), apiKey: `sk_test_local_${"18".repeat(32)}`, lifetimes };
   const acquire = () => Effect.acquireRelease(Effect.promise(() => startProvider(options)), provider => Effect.promise(() => provider.close()));
   let provider = yield* acquire();
-  const sdk = () => new WorkOS(options.apiKey, { apiHostname: "127.0.0.1", port: provider.port, https: false, maxRetries: 0 });
+  const sdk = (maxRetries?: number) => new WorkOS(options.apiKey, { apiHostname: "127.0.0.1", port: provider.port, https: false, maxRetries });
   const db = yield* Effect.acquireRelease(Effect.sync(() => new DatabaseSync(options.database)), db => Effect.sync(() => db.close()));
   const challenge = (email: string) => Effect.promise(async () => {
     await sdk().userManagement.createUser({ email, password: "Synthetic-password-48" });
@@ -27,7 +27,7 @@ const fixture = (lifetimes = { accessTokenSeconds: 300, sessionSeconds: 604800, 
     }
     throw new Error("Expected verification challenge");
   });
-  const verify = (pending: string, code: string, clientId: string = provider.clientId) => sdk().userManagement.authenticateWithEmailVerification({ clientId, pendingAuthenticationToken: pending, code });
+  const verify = (pending: string, code: string, clientId: string = provider.clientId, maxRetries?: number) => sdk(maxRetries).userManagement.authenticateWithEmailVerification({ clientId, pendingAuthenticationToken: pending, code });
   const jwks = () => Effect.promise(async () => (await fetch(`http://127.0.0.1:${provider.port}/sso/jwks/${provider.clientId}`)).json());
   return { db, sdk, challenge, verify, jwks, restart: () => Effect.gen(function* () { yield* Effect.promise(() => provider.close()); provider = yield* acquire(); }) };
 });
@@ -90,7 +90,7 @@ it.live("session insertion defects roll back verification and consumption withou
   const f = yield* fixture();
   const a = yield* f.challenge("rollback@example.test");
   f.db.exec("CREATE TRIGGER reject_session BEFORE INSERT ON sessions BEGIN SELECT RAISE(ABORT, 'synthetic-sensitive-storage'); END");
-  yield* Effect.promise(() => assert.rejects(f.verify(a.pending, a.verification.code), (error: unknown) => {
+  yield* Effect.promise(() => assert.rejects(f.verify(a.pending, a.verification.code, undefined, 0), (error: unknown) => {
     assert.ok(error instanceof Error);
     assert.ok(!error.message.includes("synthetic-sensitive-storage"));
     return "status" in error && error.status === 500;

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { WorkOS } from "@workos-inc/node";
 import { decodeJwt, createLocalJWKSet, jwtVerify } from "jose";
+import { categorizeWorkOSError } from "../../backend/convex/workosErrorPolicy.ts";
 import { startProvider } from "../src/provider.ts";
 const fixture = (sessionSeconds = 604800, accessTokenSeconds = 300) => Effect.gen(function* () {
   const dir = yield* Effect.acquireRelease(Effect.promise(() => mkdtemp(join(tmpdir(), "refresh-fixture-"))), dir => Effect.promise(() => rm(dir, { recursive: true, force: true })));
@@ -97,7 +98,7 @@ it.live("replay storage has a hard capacity without evicting promised grace resu
   }
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM refresh_replays").get()?.n, 256);
   // Only this expected429 suppresses SDK backoff; no global retry override.
-  yield* Effect.promise(() => assert.rejects(f.refresh(current.refreshToken, 0), (error: unknown) => error instanceof Error && "status" in error && error.status === 429));
+  yield* Effect.promise(() => assert.rejects(f.refresh(current.refreshToken, 0), (error: unknown) => error instanceof Error && "status" in error && error.status === 429 && categorizeWorkOSError("refreshSession", error) === "rateLimited"));
   assert.deepEqual(yield* Effect.promise(() => f.refresh(original.refreshToken)), first);
   yield* Effect.promise(() => f.sdk().userManagement.revokeSession({ sessionId: decodeJwt(original.accessToken).sid as string }));
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM refresh_replays").get()?.n, 0);
@@ -109,6 +110,7 @@ it.live("revocation/reset/clear override replay; encrypted result tampering fail
   f.db.exec("CREATE TRIGGER reject_replay BEFORE INSERT ON refresh_replays BEGIN SELECT RAISE(ABORT, 'synthetic-sensitive-replay'); END");
   yield* Effect.promise(() => assert.rejects(f.refresh(original.refreshToken, 0), (error: unknown) => {
     assert.ok(error instanceof Error && !error.message.includes("synthetic-sensitive-replay"));
+    assert.equal(categorizeWorkOSError("refreshSession", error), "providerUnavailable");
     return "status" in error && error.status === 500;
   }));
   assert.equal(f.db.prepare("SELECT refresh_hash FROM sessions").get()!.refresh_hash, originalHash);
