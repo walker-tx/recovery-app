@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Config, Redacted, Schema } from "effect";
-import type { DatabaseSync } from "node:sqlite";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import {
   randomUUID,
   randomBytes,
@@ -12,7 +12,6 @@ import { SignJWT, type importJWK } from "jose";
 import { httpClientId } from "./config.ts";
 import {
   HttpError,
-  reject,
   equal,
   PasswordAuthenticationRequestSchema,
   CreateUserRequestSchema,
@@ -63,9 +62,8 @@ const operationError = (error: unknown): HttpError =>
   error instanceof HttpError
     ? error
     : new HttpError(500, { code: "internal_error" });
-// The provider owns and closes the database; this layer borrows it for its lifetime.
+// The provider scope owns the SQL client; operations share that one connection.
 export function workosLayer(
-  db: DatabaseSync,
   key: Awaited<ReturnType<typeof importJWK>>,
   publicJwks: Jwks,
   apiKey: Redacted.Redacted<string>,
@@ -73,188 +71,224 @@ export function workosLayer(
   return Layer.effect(
     WorkOSService,
     Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
       const clientId = yield* httpClientId;
       const issuer = yield* Config.string("issuer");
       const generation = yield* Config.string("providerGeneration");
       const port = yield* Config.number("port");
       const getUser = (id: string) =>
-        db.prepare("SELECT * FROM users WHERE id=?").get(id) as Row | undefined;
+        sql<Row>`SELECT * FROM users WHERE id=${id}`.pipe(
+          Effect.map((rows) => rows[0]),
+        );
       // Effects are lazy; only the provider lifecycle owns database cleanup.
       const authenticate = (body: Record<string, unknown>) =>
-        Effect.tryPromise({
-          try: async (): Promise<Authentication> => {
-            if (
-              body.client_id !== clientId ||
-              typeof body.client_secret !== "string" ||
-              !equal(body.client_secret, Redacted.value(apiKey))
-            )
-              return reject(401, "invalid_client");
-            if (body.grant_type !== "password")
-              return reject(400, "unsupported_grant_type");
-            let payload: PasswordAuthenticationRequest | undefined;
-            try {
-              payload = Schema.decodeUnknownSync(
-                PasswordAuthenticationRequestSchema,
-              )(body);
-            } catch {
-              // Never expose Schema issues: they can contain passwords/client secrets.
-              // Still derive against a synthetic account for malformed credentials.
-            }
-            const email = payload?.email.trim().toLowerCase() ?? "";
-            const row = db
-              .prepare("SELECT * FROM users WHERE email=?")
-              .get(email) as Row | undefined;
-            const password = payload?.password ?? "";
-            const hash = (await derive(
-              password,
-              row?.salt ?? "synthetic-missing-user",
-              64,
-            )) as Buffer;
-            if (
-              !payload ||
-              !row?.verifier ||
-              !timingSafeEqual(hash, Buffer.from(row.verifier, "hex"))
-            )
-              throw new HttpError(400, {
+        Effect.gen(function* () {
+          if (
+            body.client_id !== clientId ||
+            typeof body.client_secret !== "string" ||
+            !equal(body.client_secret, Redacted.value(apiKey))
+          )
+            return yield* Effect.fail(
+              new HttpError(401, {
+                code: "invalid_client",
+                message: "invalid_client",
+              }),
+            );
+          if (body.grant_type !== "password")
+            return yield* Effect.fail(
+              new HttpError(400, {
+                code: "unsupported_grant_type",
+                message: "unsupported_grant_type",
+              }),
+            );
+          let payload: PasswordAuthenticationRequest | undefined;
+          try {
+            payload = Schema.decodeUnknownSync(
+              PasswordAuthenticationRequestSchema,
+            )(body);
+          } catch {
+            // Never expose Schema issues: they can contain passwords/client secrets.
+            // Still derive against a synthetic account for malformed credentials.
+          }
+          const email = payload?.email.trim().toLowerCase() ?? "";
+          const [row] =
+            yield* sql<Row>`SELECT * FROM users WHERE email=${email}`;
+          const password = payload?.password ?? "";
+          const hash = (yield* Effect.tryPromise({
+            try: () =>
+              derive(password, row?.salt ?? "synthetic-missing-user", 64),
+            catch: operationError,
+          })) as Buffer;
+          if (
+            !payload ||
+            !row?.verifier ||
+            !timingSafeEqual(hash, Buffer.from(row.verifier, "hex"))
+          )
+            return yield* Effect.fail(
+              new HttpError(400, {
                 error: "invalid_grant",
                 error_description: "Invalid credentials",
-              });
-            const user: User = JSON.parse(row.body);
-            if (!user.email_verified) {
-              const id = `email_verification_${randomUUID()}`,
-                pending = randomBytes(32).toString("base64url");
-              db.prepare("INSERT INTO challenges VALUES(?,?,?,?)").run(
-                id,
-                user.id,
-                digest(pending),
-                Date.now() + 600000,
-              );
-              throw new HttpError(400, {
+              }),
+            );
+          const user: User = JSON.parse(row.body);
+          if (!user.email_verified) {
+            const id = `email_verification_${randomUUID()}`,
+              pending = randomBytes(32).toString("base64url");
+            yield* sql`INSERT INTO challenges VALUES(${id},${user.id},${digest(pending)},${Date.now() + 600000})`;
+            return yield* Effect.fail(
+              new HttpError(400, {
                 code: "email_verification_required",
                 message: "Email verification required",
                 email_verification_id: id,
                 pending_authentication_token: pending,
-              });
-            }
-            const sid = `session_${randomUUID()}`,
-              refresh = randomBytes(32).toString("base64url");
-            const access = await new SignJWT({ client_id: clientId, sid })
-              .setProtectedHeader({ alg: "RS256", kid: generation })
-              .setIssuer(issuer)
-              .setAudience(clientId)
-              .setSubject(user.id)
-              .setIssuedAt()
-              .setExpirationTime("5m")
-              .sign(key);
-            db.prepare("INSERT INTO sessions VALUES(?,?,?,?)").run(
-              sid,
-              user.id,
-              digest(refresh),
-              Date.now() + 7 * 86400000,
+              }),
             );
-            return {
-              user,
-              access_token: access,
-              refresh_token: refresh,
-              authentication_method: "Password",
-              organization_id: null,
-            };
-          },
-          catch: operationError,
-        });
+          }
+          const sid = `session_${randomUUID()}`,
+            refresh = randomBytes(32).toString("base64url");
+          const access = yield* Effect.tryPromise({
+            try: () =>
+              new SignJWT({ client_id: clientId, sid })
+                .setProtectedHeader({ alg: "RS256", kid: generation })
+                .setIssuer(issuer)
+                .setAudience(clientId)
+                .setSubject(user.id)
+                .setIssuedAt()
+                .setExpirationTime("5m")
+                .sign(key),
+            catch: operationError,
+          });
+          yield* sql`INSERT INTO sessions VALUES(${sid},${user.id},${digest(refresh)},${Date.now() + 7 * 86400000})`;
+          return {
+            user,
+            access_token: access,
+            refresh_token: refresh,
+            authentication_method: "Password" as const,
+            organization_id: null,
+          };
+        }).pipe(
+          Effect.mapError(operationError),
+          Effect.catchDefect((error) => Effect.fail(operationError(error))),
+        );
       const createUser = (body: Record<string, unknown>) =>
-        Effect.tryPromise({
-          try: async () => {
-            let payload: CreateUserRequest;
-            try {
-              payload = Schema.decodeUnknownSync(CreateUserRequestSchema)(body);
-            } catch {
-              return reject(422, "invalid_user");
-            }
-            const email = payload.email.trim().toLowerCase();
-            const salt = randomBytes(16).toString("hex");
-            const verifier = (
-              (await derive(payload.password, salt, 64)) as Buffer
-            ).toString("hex");
-            const now = new Date().toISOString();
-            const user: User = {
-              id: `user_${randomUUID()}`,
-              object: "user",
-              email,
-              email_verified: payload.email_verified === true,
-              first_name: payload.first_name ?? null,
-              last_name: payload.last_name ?? null,
-              created_at: now,
-              updated_at: now,
-              profile_picture_url: null,
-              external_id: null,
-              metadata: {},
-            };
-            try {
-              db.prepare("INSERT INTO users VALUES(?,?,?,?,?,?)").run(
-                user.id,
-                email,
-                JSON.stringify(user),
-                salt,
-                verifier,
-                "[]",
-              );
-            } catch (e) {
-              if (db.prepare("SELECT id FROM users WHERE email=?").get(email))
-                return reject(409, "email_exists");
-              throw e;
-            }
-            return user;
-          },
-          catch: operationError,
-        });
+        Effect.gen(function* () {
+          let payload: CreateUserRequest;
+          try {
+            payload = Schema.decodeUnknownSync(CreateUserRequestSchema)(body);
+          } catch {
+            return yield* Effect.fail(
+              new HttpError(422, {
+                code: "invalid_user",
+                message: "invalid_user",
+              }),
+            );
+          }
+          const email = payload.email.trim().toLowerCase();
+          const salt = randomBytes(16).toString("hex");
+          const verifier = (
+            (yield* Effect.tryPromise({
+              try: () => derive(payload.password, salt, 64),
+              catch: operationError,
+            })) as Buffer
+          ).toString("hex");
+          const now = new Date().toISOString();
+          const user: User = {
+            id: `user_${randomUUID()}`,
+            object: "user",
+            email,
+            email_verified: payload.email_verified === true,
+            first_name: payload.first_name ?? null,
+            last_name: payload.last_name ?? null,
+            created_at: now,
+            updated_at: now,
+            profile_picture_url: null,
+            external_id: null,
+            metadata: {},
+          };
+          yield* sql`INSERT INTO users VALUES(${user.id},${email},${JSON.stringify(user)},${salt},${verifier},${"[]"})`.pipe(
+            Effect.catch((error) =>
+              Effect.gen(function* () {
+                const rows =
+                  yield* sql`SELECT id FROM users WHERE email=${email}`;
+                if (rows.length)
+                  return yield* Effect.fail(
+                    new HttpError(409, {
+                      code: "email_exists",
+                      message: "email_exists",
+                    }),
+                  );
+                return yield* Effect.fail(error);
+              }),
+            ),
+          );
+          return user;
+        }).pipe(
+          Effect.mapError(operationError),
+          Effect.catchDefect((error) => Effect.fail(operationError(error))),
+        );
       const listUsers = (rawUrl: string) =>
-        Effect.try({
-          try: (): UserList => {
-            const url = new URL(rawUrl, "http://127.0.0.1");
-            if (
-              url.searchParams.has("before") ||
-              (url.searchParams.has("order") &&
-                !["asc", "desc"].includes(url.searchParams.get("order")!))
-            )
-              return reject(422, "unsupported_pagination");
-            const after = url.searchParams.get("after");
-            if (
-              after !== null &&
-              (!/^user_[0-9a-f-]{36}$/.test(after) || !getUser(after))
-            )
-              return reject(422, "invalid_cursor");
-            const limit = Number(url.searchParams.get("limit") ?? 10);
-            if (!Number.isInteger(limit) || limit < 1 || limit > 100)
-              return reject(422, "invalid_limit");
-            const email = url.searchParams.get("email")?.trim().toLowerCase();
-            const descending = url.searchParams.get("order") === "desc";
-            const rows = db
-              .prepare(
-                `SELECT * FROM users WHERE (? IS NULL OR email=?) AND (? IS NULL OR id ${descending ? "<" : ">"} ?) ORDER BY id ${descending ? "DESC" : "ASC"} LIMIT ?`,
-              )
-              .all(
-                email ?? null,
-                email ?? null,
-                after,
-                after,
-                limit + 1,
-              ) as Row[];
-            return {
-              object: "list",
-              data: rows.slice(0, limit).map((r) => JSON.parse(r.body)),
-              list_metadata: {
-                before: null,
-                after: rows.length > limit ? rows[limit - 1].id : null,
-              },
-            };
-          },
-          catch: operationError,
-        });
-      function readUser(id: string, field: "body" | "identities") {
-        const row = getUser(id);
-        if (!row) return reject(404, "not_found");
-        return JSON.parse(row[field]);
+        Effect.gen(function* () {
+          const url = new URL(rawUrl, "http://127.0.0.1");
+          if (
+            url.searchParams.has("before") ||
+            (url.searchParams.has("order") &&
+              !["asc", "desc"].includes(url.searchParams.get("order")!))
+          )
+            return yield* Effect.fail(
+              new HttpError(422, {
+                code: "unsupported_pagination",
+                message: "unsupported_pagination",
+              }),
+            );
+          const after = url.searchParams.get("after");
+          if (
+            after !== null &&
+            (!/^user_[0-9a-f-]{36}$/.test(after) || !(yield* getUser(after)))
+          )
+            return yield* Effect.fail(
+              new HttpError(422, {
+                code: "invalid_cursor",
+                message: "invalid_cursor",
+              }),
+            );
+          const limit = Number(url.searchParams.get("limit") ?? 10);
+          if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+            return yield* Effect.fail(
+              new HttpError(422, {
+                code: "invalid_limit",
+                message: "invalid_limit",
+              }),
+            );
+          const email = url.searchParams.get("email")?.trim().toLowerCase();
+          const descending = url.searchParams.get("order") === "desc";
+          const rows = yield* sql.unsafe<Row>(
+            `SELECT * FROM users WHERE (? IS NULL OR email=?) AND (? IS NULL OR id ${descending ? "<" : ">"} ?) ORDER BY id ${descending ? "DESC" : "ASC"} LIMIT ?`,
+            [email ?? null, email ?? null, after, after, limit + 1],
+          );
+          return {
+            object: "list" as const,
+            data: rows.slice(0, limit).map((r) => JSON.parse(r.body)),
+            list_metadata: {
+              before: null,
+              after: rows.length > limit ? rows[limit - 1].id : null,
+            },
+          };
+        }).pipe(
+          Effect.mapError(operationError),
+          Effect.catchDefect((error) => Effect.fail(operationError(error))),
+        );
+      function readUser<A>(id: string, field: "body" | "identities") {
+        return Effect.gen(function* () {
+          const row = yield* getUser(id);
+          if (!row)
+            return yield* Effect.fail(
+              new HttpError(404, { code: "not_found", message: "not_found" }),
+            );
+          return yield* Effect.try({
+            try: (): A => JSON.parse(row[field]),
+            catch: operationError,
+          });
+        }).pipe(Effect.mapError(operationError));
       }
 
       return WorkOSService.of({
@@ -269,16 +303,8 @@ export function workosLayer(
           port,
         }),
         jwks: Effect.succeed(publicJwks),
-        getUser: (id) =>
-          Effect.try({
-            try: (): User => readUser(id, "body"),
-            catch: operationError,
-          }),
-        getIdentities: (id) =>
-          Effect.try({
-            try: (): Identities => readUser(id, "identities"),
-            catch: operationError,
-          }),
+        getUser: (id) => readUser<User>(id, "body"),
+        getIdentities: (id) => readUser<Identities>(id, "identities"),
       });
     }),
   );

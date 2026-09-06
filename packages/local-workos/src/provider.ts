@@ -1,4 +1,5 @@
-import { DatabaseSync } from "node:sqlite";
+import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { lstatSync, openSync, closeSync, constants } from "node:fs";
 import { isAbsolute, dirname } from "node:path";
 import { createServer } from "node:http";
@@ -11,7 +12,15 @@ import {
   compactVerify,
   type JWK,
 } from "jose";
-import { ConfigProvider, Effect, Scope, Exit, Redacted } from "effect";
+import {
+  ConfigProvider,
+  Effect,
+  Scope,
+  Exit,
+  Redacted,
+  Layer,
+  Context,
+} from "effect";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { makeHttpApp } from "./http.ts";
 import { type User, type Jwks } from "./contracts.ts";
@@ -76,31 +85,50 @@ export async function startProvider(options: {
       0o600,
     ),
   );
-  const db = new DatabaseSync(options.database);
   const scope = Scope.makeUnsafe();
   try {
-    db.exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=50;
- CREATE TABLE IF NOT EXISTS instance (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,body TEXT NOT NULL,salt TEXT,verifier TEXT,identities TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,refresh_hash TEXT NOT NULL,expires_at INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,pending_hash TEXT NOT NULL,expires_at INTEGER NOT NULL);`);
-    let saved = db.prepare("SELECT body FROM instance WHERE id=1").get() as
-      | {
-          body: string;
-        }
-      | undefined;
+    const databaseContext = await Effect.runPromise(
+      Layer.buildWithScope(
+        SqliteClient.layer({
+          filename: options.database,
+          busyTimeout: 50,
+          disableWAL: true,
+        }),
+        scope,
+      ),
+    );
+    const sql = Context.get(databaseContext, SqlClient.SqlClient);
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* sql`PRAGMA foreign_keys=ON`;
+        yield* sql`CREATE TABLE IF NOT EXISTS instance (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL)`;
+        yield* sql`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,body TEXT NOT NULL,salt TEXT,verifier TEXT,identities TEXT NOT NULL)`;
+        yield* sql`CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,refresh_hash TEXT NOT NULL,expires_at INTEGER NOT NULL)`;
+        yield* sql`CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,pending_hash TEXT NOT NULL,expires_at INTEGER NOT NULL)`;
+      }),
+    );
+    let [saved] = await Effect.runPromise(
+      sql<{ body: string }>`SELECT body FROM instance WHERE id=1`,
+    );
     if (!saved) {
       const keys = await generateKeyPair("RS256", { extractable: true });
-      const generation = options.providerGeneration ?? randomUUID();
       const body = JSON.stringify({
-        generation,
+        generation: options.providerGeneration ?? randomUUID(),
         privateKey: await exportJWK(keys.privateKey),
         publicKey: await exportJWK(keys.publicKey),
       });
-      db.prepare("INSERT OR IGNORE INTO instance VALUES(1,?)").run(body);
-      saved = db.prepare("SELECT body FROM instance WHERE id=1").get() as {
-        body: string;
-      };
+      saved = await Effect.runPromise(
+        sql.withTransaction(
+          Effect.gen(function* () {
+            const [winner] = yield* sql<{
+              body: string;
+            }>`SELECT body FROM instance WHERE id=1`;
+            if (winner) return winner;
+            yield* sql`INSERT INTO instance VALUES(1,${body})`;
+            return { body };
+          }),
+        ),
+      );
     }
     let identity: { generation: string; privateKey: JWK; publicKey: JWK };
     let key;
@@ -163,7 +191,9 @@ export async function startProvider(options: {
     const app = await Effect.runPromise(
       makeHttpApp(scope).pipe(
         Effect.provide(
-          workosLayer(db, key, jwks, Redacted.make(options.apiKey)),
+          workosLayer(key, jwks, Redacted.make(options.apiKey)).pipe(
+            Layer.provide(Layer.succeedContext(databaseContext)),
+          ),
         ),
         // Persisted generation owns identity; never fall back to ambient env.
         Effect.provideService(
@@ -183,13 +213,13 @@ export async function startProvider(options: {
     );
     if (server.address._tag !== "TcpAddress")
       throw new Error("Expected loopback TCP address");
-    let closed = false;
+    let closePromise: Promise<void> | undefined;
     return {
       port: server.address.port,
       providerGeneration: identity.generation as string,
       issuer,
       clientId,
-      createIdentityFixture(input: {
+      async createIdentityFixture(input: {
         email: string;
         provider: "GoogleOAuth" | "AppleOAuth";
       }) {
@@ -223,36 +253,22 @@ export async function startProvider(options: {
           },
         ];
         try {
-          db.prepare("INSERT INTO users VALUES(?,?,?,?,?,?)").run(
-            user.id,
-            email,
-            JSON.stringify(user),
-            null,
-            null,
-            JSON.stringify(identities),
+          await Effect.runPromise(
+            sql`INSERT INTO users VALUES(${user.id},${email},${JSON.stringify(user)},${null},${null},${JSON.stringify(identities)})`,
           );
         } catch {
           throw new Error("Unable to create identity fixture");
         }
         return user;
       },
-      async close() {
-        if (!closed) {
-          closed = true;
-          try {
-            await Effect.runPromise(Scope.close(scope, Exit.void));
-          } finally {
-            db.close();
-          }
-        }
+      close() {
+        return (closePromise ??= Effect.runPromise(
+          Scope.close(scope, Exit.void),
+        ));
       },
     };
   } catch (e) {
-    try {
-      await Effect.runPromise(Scope.close(scope, Exit.void));
-    } finally {
-      db.close();
-    }
+    await Effect.runPromise(Scope.close(scope, Exit.void));
     throw e;
   }
 }
