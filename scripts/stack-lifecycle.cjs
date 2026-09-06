@@ -335,4 +335,4 @@ function createLifecycle({
       }),
   };
 }
-module.exports = { createLifecycle, localConfiguration, processName, StopFailure };
+module.exports = { createLifecycle, localConfiguration, processName, StopFailure, groups };

@@ -172,6 +172,8 @@ test("composed stop verifies owned PID and sends only the exact stack daemon ID"
     portAvailable: async () => true,
     inspector: { inspect: inspectProcess, close: async () => {} },
     identity: { inspectProcess, identify: async () => processIdentity },
+    fetchImpl: async () => new Response("{}"),
+    connect: () => { throw Error("Unexpected socket"); },
     run: async (command, args) => {
       calls.push([command, args]);
       processIdentity = null;
@@ -182,7 +184,7 @@ test("composed stop verifies owned PID and sends only the exact stack daemon ID"
     "running",
   );
   assert.deepEqual((await runtime.status(record.stackId)).readiness.provider, {
-    state: "unknown", reason: "not-probed",
+    state: "ready", evidence: "protocol",
   });
   await runtime.stop(record.stackId);
   assert.deepEqual(calls, [

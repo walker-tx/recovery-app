@@ -1,5 +1,6 @@
 // Explicit local-only boundary. Legacy zero/status/stop scripts remain unchanged.
 const path = require("node:path");
+const { isDeepStrictEqual } = require("node:util");
 const os = require("node:os");
 const fs = require("node:fs/promises");
 const { constants } = require("node:fs");
@@ -17,7 +18,7 @@ const { createProcessInspector } = require("./stack-process-inspector.cjs");
 const { createPitchforkIdentity } = require("./stack-pitchfork-identity.cjs");
 const { createPitchforkRunner } = require("./stack-adapters.cjs");
 const { createRegistry, portAvailable: observePort } = require("./stack-registry.cjs");
-const { createLifecycle, processName, StopFailure } = require("./stack-lifecycle.cjs");
+const { createLifecycle, processName, StopFailure, groups } = require("./stack-lifecycle.cjs");
 const uuid = (value) =>
   typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
@@ -194,17 +195,42 @@ async function createRuntime({
       destroyProvider: confirmation => lifecycle.destroyProvider(worktree, confirmation),
       reserve: () => registry.reserve(worktree),
       status: async (stackId) => {
+        if (!uuid(stackId)) throw Error("Explicit stack UUID required");
+        const record = await registry.readOwned(worktree, stackId);
         const status = await check(stackId);
-        // Registry observations prove neither listener nor HTTP health for an
-        // owned process. URLs are configured destinations, not reachability.
+        const observations = Object.fromEntries(Object.keys(status.ports).map(service => [
+          service, { state: "unknown", reason: "not-probed" },
+        ]));
+        await Promise.all(groups.map(async group => {
+          const original = record.processes[group[0]];
+          if (!original || !group.every(service =>
+            status.services[service] === "running" &&
+            isDeepStrictEqual(record.processes[service], original)
+          )) return;
+          try {
+            // Check the canonical paired daemon against the original registry
+            // identity, never using HTTP to establish process ownership.
+            if (!isDeepStrictEqual(await identity.identify(processName(record, group[0])), original)) return;
+          } catch { return; }
+          await Promise.all(group.map(async service => {
+            try {
+              await readiness.ready(service, record);
+              observations[service] = {
+                state: "ready", evidence: service === "convexSite" ? "transport" : "protocol",
+              };
+            } catch {
+              observations[service] = { state: "not-ready", reason: "probe-failed" };
+            }
+          }));
+        }));
+        // Single-attempt bounded protocol observations, not application health
+        // or identity evidence. URLs remain configured destinations.
         return {
           ...status,
           urls: Object.fromEntries(Object.entries(status.ports).map(([service, port]) => [
             service, `${service === "mailpitSmtp" ? "smtp" : "http"}://127.0.0.1:${port}`,
           ])),
-          readiness: Object.fromEntries(Object.keys(status.ports).map(service => [
-            service, { state: "unknown", reason: "not-probed" },
-          ])),
+          readiness: observations,
           // Paired endpoints share one daemon; do not invent filesystem log paths.
           logs: Object.fromEntries(["mailpitHttp", "provider", "convexCloud", "metro"].map(service => [
             service, { manager: "pitchfork", name: processName(status, service) },

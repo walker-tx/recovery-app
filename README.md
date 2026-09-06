@@ -101,8 +101,14 @@ Convex instance, publishes paired mobile configuration, then starts Metro. That
 `start` command performs local writes; tests use injected I/O instead. It never
 targets a cloud deployment or falls back to staging credentials.
 
-SMTP readiness uses its own greeting; Convex site readiness checks its own TCP
-listener only, not application health. Ambiguous command/publication timeouts
+Status probes only verified original owned-running processes whose paired daemon
+mapping still matches. Stopped, conflicted, or unknown endpoints stay
+`unknown/not-probed`. Each eligible endpoint gets one bounded probe; failures are
+sanitized as `not-ready/probe-failed`, without changing process ownership state.
+`ready` reports protocol evidence, not application health or process identity.
+SMTP readiness uses its own greeting; Convex site readiness reports `transport`
+evidence for its own TCP listener only, not application health.
+Ambiguous command/publication timeouts
 retain the lifecycle lock for manual ownership reconciliation. Never remove locks
 or reset state merely to retry a failed start. Existing daily-development scripts
 and previews are not managed by these commands.
