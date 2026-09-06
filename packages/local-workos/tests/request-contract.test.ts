@@ -13,14 +13,15 @@ import { startProvider } from "../src/provider.ts";
 const fixture = Effect.gen(function* () {
   const dir = yield* Effect.acquireRelease(
     Effect.promise(() => mkdtemp(join(tmpdir(), "workos-request-"))),
-    (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
+    (resource) =>
+      Effect.promise(() => rm(resource, { recursive: true, force: true })),
   );
   const apiKey = `sk_test_local_${"04".repeat(32)}`;
   const provider = yield* Effect.acquireRelease(
     Effect.promise(() =>
       startProvider({ database: join(dir, "state.sqlite"), apiKey }),
     ),
-    (provider) => Effect.promise(() => provider.close()),
+    (resource) => Effect.promise(() => resource.close()),
   );
   return {
     provider,
@@ -73,9 +74,9 @@ it.live("request validation preserves ordering and never echoes secrets", () =>
         status: 400,
         code: "unsupported_grant_type",
       },
-      ...[null, 123, {}, "x".repeat(1025)].map((password) => ({
+      ...[null, 123, {}, "x".repeat(1025)].map((invalidPassword) => ({
         path: "authenticate",
-        body: { ...auth, password },
+        body: { ...auth, password: invalidPassword },
         authorized: false,
         status: 400,
         code: "invalid_grant",

@@ -30,20 +30,20 @@ it.live(
         const listening = new Promise<void>((resolve) => {
           bound = resolve;
         });
-        let server: Server | undefined;
         let cleaning = false;
         const originalListen = Server.prototype.listen;
-        yield* Effect.acquireRelease(
+        const listenSpy = yield* Effect.acquireRelease(
           Effect.sync(() =>
             vi.spyOn(Server.prototype, "listen").mockImplementation(function (
               this: Server,
               ...args: Parameters<Server["listen"]>
             ) {
-              server = this;
               this.once("listening", () => {
                 bound();
                 // Also cover a late bind after a timeout/assertion failure.
-                if (cleaning) this.close();
+                if (cleaning) {
+                  this.close();
+                }
               });
               void gate.then(() => {
                 originalListen.apply(this, args);
@@ -54,10 +54,11 @@ it.live(
           ),
           (spy) =>
             Effect.promise(async () => {
+              const server = spy.mock.contexts[0];
               cleaning = true;
               release();
               spy.mockRestore();
-              if (server?.listening) {
+              if (server instanceof Server && server.listening) {
                 server.closeAllConnections();
                 await new Promise<void>((resolve) =>
                   server!.close(() => resolve()),
@@ -83,8 +84,10 @@ it.live(
           Effect.timeout("2 seconds"),
         );
         yield* Fiber.await(owner).pipe(Effect.timeout("2 seconds"));
+        const boundServer = listenSpy.mock.contexts[0];
+        assert.ok(boundServer instanceof Server);
         assert.equal(
-          server?.listening,
+          boundServer.listening,
           false,
           "interrupted acquisition left a late HTTP listener alive",
         );

@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { Schema, Data, Redacted } from "effect";
+import { Schema, Data, type Redacted } from "effect";
 export const digest = (s: string) =>
   createHash("sha256").update(s).digest("hex");
 export const equal = (a: string, b: string) =>
