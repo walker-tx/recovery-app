@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, ConfigProvider, Effect, Exit, Schema } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 import { loadProviderConfig, ConfigService } from "./config.ts";
 import { acquireConfiguredProvider } from "./provider.ts";
@@ -63,7 +63,20 @@ const command = Command.make(
     }),
 );
 
-Command.run(command, { version: "0.0.0", renderErrors: false }).pipe(
+Effect.suspend(() => {
+  const snapshot = {
+    LOCAL_WORKOS_API_KEY: process.env.LOCAL_WORKOS_API_KEY,
+  };
+  // CLI-only consumption prevents later ambient reads/default child inheritance;
+  // it does not erase the initial OS environment or zeroize credential memory.
+  delete process.env.LOCAL_WORKOS_API_KEY;
+  return Command.run(command, { version: "0.0.0", renderErrors: false }).pipe(
+    Effect.provideService(
+      ConfigProvider.ConfigProvider,
+      ConfigProvider.fromUnknown(snapshot),
+    ),
+  );
+}).pipe(
   Effect.scoped,
   Effect.provide(NodeServices.layer),
   Effect.tapCause((cause) =>

@@ -7,7 +7,14 @@ import { promisify } from "node:util";
 import { expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 
-it.live("Effect CLI renders help without bootstrap credentials", () =>
+// Observe only the disposable child's synthetic environment, including error exits.
+const assertBootstrapConsumed = `data:text/javascript,${encodeURIComponent(`
+  process.on("exit", () => {
+    if (Object.hasOwn(process.env, "LOCAL_WORKOS_API_KEY")) process.exitCode = 97;
+  });
+`)}`;
+
+it.live("Effect CLI help consumes supplied credentials without requiring them", () =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
       Effect.promise(() => mkdtemp(join(tmpdir(), "local-workos-cli-path-"))),
@@ -22,18 +29,37 @@ it.live("Effect CLI renders help without bootstrap credentials", () =>
       ),
     );
     const cliUrl = new URL("src/cli.ts", pathToFileURL(packagePath + "/"));
-    const result = yield* Effect.tryPromise(() =>
-      promisify(execFile)(
-        process.execPath,
-        ["--experimental-strip-types", fileURLToPath(cliUrl), "--help"],
-        { env: {}, timeout: 5000 },
-      ),
-    );
-    expect(result.stdout).toContain("--database");
-    expect(result.stdout).toContain("--port");
-    expect(result.stdout).toContain("--provider-generation");
-    expect(result.stdout).not.toContain("--api-key");
-    expect(result.stderr).not.toContain("startup failed");
+    for (const credential of [
+      undefined,
+      "sk_test_local_" + "a".repeat(64),
+      "private-invalid-bootstrap-key",
+    ]) {
+      const result = yield* Effect.tryPromise(() =>
+        promisify(execFile)(
+          process.execPath,
+          [
+            "--experimental-strip-types",
+            "--import",
+            assertBootstrapConsumed,
+            fileURLToPath(cliUrl),
+            "--help",
+          ],
+          {
+            env:
+              credential === undefined ? {} : { LOCAL_WORKOS_API_KEY: credential },
+            timeout: 5000,
+          },
+        ),
+      );
+      expect(result.stdout).toContain("--database");
+      expect(result.stdout).toContain("--port");
+      expect(result.stdout).toContain("--provider-generation");
+      expect(result.stdout).not.toContain("--api-key");
+      expect(result.stderr).not.toContain("startup failed");
+      if (credential !== undefined) {
+        expect(result.stdout + result.stderr).not.toContain(credential);
+      }
+    }
   }),
 );
 
@@ -75,6 +101,8 @@ it.live("CLI schema failures do not reflect argument values", () =>
               process.execPath,
               [
                 "--experimental-strip-types",
+                "--import",
+                assertBootstrapConsumed,
                 fileURLToPath(new URL("../src/cli.ts", import.meta.url)),
                 ...args,
               ],

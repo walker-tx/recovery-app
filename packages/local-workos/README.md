@@ -98,6 +98,12 @@ local-only format `sk_test_local_` followed by 64 lowercase hex characters from
 The same explicit local credential is supplied to the paired backend; no staging
 credential fallback is permitted.
 
+Before argument validation, the CLI snapshots this key into its Effect-local
+configuration provider and deletes it from `process.env`, preventing later ambient
+JavaScript reads and default inheritance by future child processes. This does not
+wipe credential memory or erase the original OS process environment. Library
+entrypoints do not delete environment values.
+
 After the loopback server is serving, stdout emits one JSON readiness record with
 `providerGeneration`, `issuer`, `clientId`, and `port`. The loopback-only
 `GET /instance-info` endpoint returns those same public fields, allowing a launcher

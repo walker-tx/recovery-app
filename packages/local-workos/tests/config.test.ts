@@ -13,6 +13,7 @@ import {
   ClientId,
   ConfigService,
   decodeProviderConfig,
+  loadProviderConfig,
 } from "../src/config.ts";
 
 const key = `sk_test_local_${"a".repeat(64)}`;
@@ -145,4 +146,20 @@ it.live(
         assert.equal(other.status, 404);
       }
     }),
+);
+
+it.effect("isolates concurrent bootstrap ConfigProviders without a global handoff", () =>
+  Effect.gen(function* () {
+    const keys = ["a", "b"].map((letter) => `sk_test_local_${letter.repeat(64)}`);
+    const configs = yield* Effect.all(
+      keys.map((apiKey) =>
+        loadProviderConfig({ database: "/tmp/synthetic.sqlite" }).pipe(
+          provide({ LOCAL_WORKOS_API_KEY: apiKey }),
+        ),
+      ),
+      { concurrency: "unbounded" },
+    );
+    assert.deepEqual(configs.map((config) => Redacted.value(config.apiKey)), keys);
+    for (const apiKey of keys) assert.ok(!JSON.stringify(configs).includes(apiKey));
+  }),
 );

@@ -8,6 +8,12 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:net";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
+// Observe only the disposable child's synthetic environment, including error exits.
+const assertBootstrapConsumed = `data:text/javascript,${encodeURIComponent(`
+  process.on("exit", () => {
+    if (Object.hasOwn(process.env, "LOCAL_WORKOS_API_KEY")) process.exitCode = 97;
+  });
+`)}`;
 const scopedLaunch = (args: string[], credential?: string) =>
   Effect.acquireRelease(
     Effect.sync(() => launch(args, credential)),
@@ -23,11 +29,13 @@ function launch(args: string[], credential = key) {
     process.execPath,
     [
       "--experimental-strip-types",
+      "--import",
+      assertBootstrapConsumed,
       fileURLToPath(new URL("../src/cli.ts", import.meta.url)),
       ...args,
     ],
     {
-      env: { PATH: process.env.PATH, LOCAL_WORKOS_API_KEY: credential },
+      env: { LOCAL_WORKOS_API_KEY: credential },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -224,11 +232,23 @@ it.live(
           ],
           "",
         ],
+        [
+          [
+            "--database",
+            "/unused",
+            "--port",
+            "12345",
+            "--provider-generation",
+            randomUUID(),
+          ],
+          "private-invalid-bootstrap-key",
+        ],
       ] as const) {
         const p = yield* scopedLaunch([...args], credential);
         const exitCode = yield* Effect.promise(() => p.exited);
         assert.equal(exitCode, 1);
         assert.ok(!p.output().includes(key));
+        if (credential !== "") assert.ok(!p.output().includes(credential));
         assert.ok(!p.output().includes("providerGeneration"));
       }
     }),
