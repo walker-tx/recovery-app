@@ -87,10 +87,12 @@ for (const kind of ["encoded", "long", "dot", "encoded-dot"] as const) {
   it.live(`user lookup preserves ${kind} raw identifiers`, () =>
     Effect.gen(function* () {
       const { provider, base, headers } = yield* fixture;
-      const user = provider.createIdentityFixture({
-        email: "routing@example.test",
-        provider: "GoogleOAuth",
-      });
+      const user = yield* Effect.promise(() =>
+        provider.createIdentityFixture({
+          email: "routing@example.test",
+          provider: "GoogleOAuth",
+        }),
+      );
       const id =
         kind === "encoded"
           ? user.id.replace("user_", "%75ser_")
@@ -138,10 +140,12 @@ it.live("HEAD retains unsupported routing and bearer precedence", () =>
 it.live("raw dot segments cannot normalize user lookup", () =>
   Effect.gen(function* () {
     const { provider, base, headers } = yield* fixture;
-    const user = provider.createIdentityFixture({
-      email: "dot@example.test",
-      provider: "GoogleOAuth",
-    });
+    const user = yield* Effect.promise(() =>
+      provider.createIdentityFixture({
+        email: "dot@example.test",
+        provider: "GoogleOAuth",
+      }),
+    );
     for (const dot of ["..", "%2e%2e", ".%2E", "%2e."]) {
       for (const suffix of ["", "/identities"]) {
         const response = yield* Effect.promise(() =>
@@ -164,10 +168,12 @@ it.live("raw dot segments cannot normalize user lookup", () =>
 it.live("canonical raw paths ignore query dot segments", () =>
   Effect.gen(function* () {
     const { provider, base, headers } = yield* fixture;
-    const user = provider.createIdentityFixture({
-      email: "query@example.test",
-      provider: "GoogleOAuth",
-    });
+    const user = yield* Effect.promise(() =>
+      provider.createIdentityFixture({
+        email: "query@example.test",
+        provider: "GoogleOAuth",
+      }),
+    );
     const info = yield* Effect.promise(() =>
       rawRequest(base, "/instance-info?path=/../%2e%2e", {}),
     );
