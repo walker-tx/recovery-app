@@ -34,8 +34,11 @@ lifecycle verification remains separate.
 
 ## Implemented core
 
-Effect/platform-node are exactly `4.0.0-rc.112`. Node 24 built-in SQLite avoids
-an additional native adapter/ORM. State files are mode 0600; the caller owns the
+Effect, platform-node, and sql-sqlite-node are exactly `4.0.0-rc.112`. The Effect
+SQLite Layer owns one scoped connection backed by Node 24 built-in SQLite; no
+separate native database driver or ORM is required. It enables foreign keys,
+uses a 50 ms busy timeout, and preserves the existing non-WAL journal behavior.
+State files are mode 0600; the caller owns the
 parent directory and cleanup. The parent must be an owner-only directory; existing
 database/journal/WAL/SHM files must be same-owner regular files with no group/other
 permissions. Symlinks are rejected, never chmodded. This assumes trusted same-UID
@@ -99,7 +102,9 @@ credential persistence, process identity checks, and public-configuration publis
 ## Fixtures and boundaries
 
 `provider.createIdentityFixture({email, provider: "GoogleOAuth" | "AppleOAuth"})`
-is a trusted in-process setup API for social-only identity metadata. It stores no
+is an asynchronous trusted in-process setup API for social-only identity metadata.
+Await its returned Promise; it uses the same scoped SQL client as HTTP operations.
+It stores no
 password and exposes no HTTP fixture endpoint or working social authentication.
 SDK identity reads retain the provider/type fields used by Recovery classification.
 Forward cursor paging supports ascending/descending ID order; `before`, unknown

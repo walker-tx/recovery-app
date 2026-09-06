@@ -182,7 +182,7 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
     );
     assert.equal(db.prepare("SELECT count(*) AS n FROM sessions").get()?.n, 0);
     for (const provider of ["GoogleOAuth", "AppleOAuth"] as const) {
-      const user = yield* Effect.sync(() =>
+      const user = yield* Effect.promise(() =>
         p.createIdentityFixture({
           email: provider + "@example.test",
           provider,

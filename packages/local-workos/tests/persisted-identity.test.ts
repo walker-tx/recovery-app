@@ -113,10 +113,12 @@ it.live(
         port: provider.port,
         https: false,
       });
-      provider.createIdentityFixture({
-        email: "fixture@example.test",
-        provider: "GoogleOAuth",
-      });
+      yield* Effect.promise(() =>
+        provider.createIdentityFixture({
+          email: "fixture@example.test",
+          provider: "GoogleOAuth",
+        }),
+      );
       yield* Effect.promise(() =>
         sdk.userManagement.createUser({
           email: "sdk@example.test",
@@ -124,16 +126,18 @@ it.live(
         }),
       );
       for (const email of [" FIXTURE@example.test ", "sdk@example.test"]) {
-        assert.throws(
-          () =>
-            provider.createIdentityFixture({ email, provider: "AppleOAuth" }),
-          (error) => {
-            assert.ok(error instanceof Error);
-            assert.equal(error.message, "Unable to create identity fixture");
-            assert.deepEqual(Object.keys(error), []);
-            assert.equal(error.cause, undefined);
-            return true;
-          },
+        yield* Effect.promise(() =>
+          assert.rejects(
+            () =>
+              provider.createIdentityFixture({ email, provider: "AppleOAuth" }),
+            (error) => {
+              assert.ok(error instanceof Error);
+              assert.equal(error.message, "Unable to create identity fixture");
+              assert.deepEqual(Object.keys(error), []);
+              assert.equal(error.cause, undefined);
+              return true;
+            },
+          ),
         );
       }
       const users = yield* Effect.promise(() => sdk.userManagement.listUsers());
@@ -142,19 +146,21 @@ it.live(
       const competing = new DatabaseSync(options.database);
       try {
         competing.exec("BEGIN IMMEDIATE");
-        assert.throws(
-          () =>
-            provider.createIdentityFixture({
-              email: "new-subject@example.test",
-              provider: "GoogleOAuth",
-            }),
-          (error) => {
-            assert.ok(error instanceof Error);
-            assert.equal(error.message, "Unable to create identity fixture");
-            assert.deepEqual(Object.keys(error), []);
-            assert.equal(error.cause, undefined);
-            return true;
-          },
+        yield* Effect.promise(() =>
+          assert.rejects(
+            () =>
+              provider.createIdentityFixture({
+                email: "new-subject@example.test",
+                provider: "GoogleOAuth",
+              }),
+            (error) => {
+              assert.ok(error instanceof Error);
+              assert.equal(error.message, "Unable to create identity fixture");
+              assert.deepEqual(Object.keys(error), []);
+              assert.equal(error.cause, undefined);
+              return true;
+            },
+          ),
         );
       } finally {
         competing.close();

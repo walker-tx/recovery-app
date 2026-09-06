@@ -21,7 +21,7 @@ it.live(
         Effect.promise(() => startProvider({ database, apiKey })),
         (provider) => Effect.promise(() => provider.close()),
       );
-      const user = yield* Effect.sync(() =>
+      const user = yield* Effect.promise(() =>
         provider.createIdentityFixture({
           email: "response@example.test",
           provider: "GoogleOAuth",
@@ -30,15 +30,13 @@ it.live(
       yield* Effect.sync(() => {
         const inspection = new DatabaseSync(database);
         try {
-          inspection
-            .prepare("UPDATE users SET body=? WHERE id=?")
-            .run(
-              JSON.stringify({
-                ...user,
-                email: { privateValue: "synthetic-private-marker" },
-              }),
-              user.id,
-            );
+          inspection.prepare("UPDATE users SET body=? WHERE id=?").run(
+            JSON.stringify({
+              ...user,
+              email: { privateValue: "synthetic-private-marker" },
+            }),
+            user.id,
+          );
         } finally {
           inspection.close();
         }
@@ -62,15 +60,13 @@ it.live(
       yield* Effect.sync(() => {
         const inspection = new DatabaseSync(database);
         try {
-          inspection
-            .prepare("UPDATE users SET body=? WHERE id=?")
-            .run(
-              JSON.stringify({
-                ...user,
-                privateValue: "synthetic-private-marker",
-              }),
-              user.id,
-            );
+          inspection.prepare("UPDATE users SET body=? WHERE id=?").run(
+            JSON.stringify({
+              ...user,
+              privateValue: "synthetic-private-marker",
+            }),
+            user.id,
+          );
         } finally {
           inspection.close();
         }
