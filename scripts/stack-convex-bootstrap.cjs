@@ -42,7 +42,13 @@ function execute(file, args, options) {
       }
       reject(safe);
     });
-    child.once("close", (code) => resolve({ code }));
+    child.once("close", (code, signal) => {
+      if (signal !== null || code === null) {
+        reject(Object.assign(rejected(), { ambiguous: true }));
+      } else {
+        resolve({ code });
+      }
+    });
   });
 }
 async function bootstrapLocalConvex({
@@ -53,6 +59,7 @@ async function bootstrapLocalConvex({
   fetchImpl = globalThis.fetch,
   exec = execute,
 } = {}) {
+  let environmentWriteStarted = false;
   try {
     if (
       !path.isAbsolute(worktree) ||
@@ -178,6 +185,7 @@ async function bootstrapLocalConvex({
       }
     }
     await verify();
+    environmentWriteStarted = true;
     await request(
       "/api/update_environment_variables",
       {
@@ -235,7 +243,7 @@ async function bootstrapLocalConvex({
     return { environmentSynced: true, functionsPushed: true };
   } catch (error) {
     const safe = rejected();
-    if (error?.ambiguous === true) {
+    if (environmentWriteStarted || error?.ambiguous === true) {
       safe.ambiguous = true;
     }
     throw safe;

@@ -152,7 +152,9 @@ test("rechecks instance before push and sanitizes effect errors", async () => {
     );
   await assert.rejects(
     bootstrapLocalConvex(f),
-    /^Error: Local Convex bootstrap rejected$/,
+    (error) =>
+      error.message === "Local Convex bootstrap rejected" &&
+      error.ambiguous === true,
   );
   assert.equal(calls, 3);
   assert.equal(f.events.length, 0);
@@ -231,4 +233,28 @@ test("rejects mismatched runtime URLs and inherited selectors before effects", a
       process.env.CONVEX_DEPLOY_KEY = saved;
     }
   }
+});
+
+test("signal-terminated deploy is sanitized and ambiguous after environment sync", async (t) => {
+  const childProcess = require("node:child_process");
+  const { EventEmitter } = require("node:events");
+  const modulePath = require.resolve("./stack-convex-bootstrap.cjs");
+  const cached = require.cache[modulePath];
+  t.mock.method(childProcess, "spawn", () => {
+    const child = new EventEmitter();
+    process.nextTick(() => child.emit("close", null, "SIGTERM"));
+    return child;
+  });
+  delete require.cache[modulePath];
+  const isolated = require("./stack-convex-bootstrap.cjs");
+  require.cache[modulePath] = cached;
+  const f = fixture();
+  delete f.exec;
+  await assert.rejects(
+    isolated.bootstrapLocalConvex(f),
+    (error) =>
+      error.message === "Local Convex bootstrap rejected" &&
+      error.ambiguous === true,
+  );
+  assert.equal(f.events.length, 3);
 });

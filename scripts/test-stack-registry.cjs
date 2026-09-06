@@ -62,18 +62,19 @@ test("bounded lock contention never breaks a stale lock based on PID", async (t)
   await assert.rejects(registry.reserve(worktree), /locked.*manual/);
   assert.ok(await fs.stat(path.join(registryPath, "lock")));
 });
-test("release explicit, ownership checked, idempotent and sibling safe", async (t) => {
+test("release stays unavailable even with stopped processes and free ports", async (t) => {
   const { registry, worktree, sibling } = await fixture(t);
-  const a = await registry.reserve(worktree),
-    b = await registry.reserve(sibling);
+  const a = await registry.reserve(worktree);
+  const b = await registry.reserve(sibling);
   await assert.rejects(registry.release(worktree, b.stackId), /ownership/);
-  await registry.release(worktree, a.stackId);
-  await registry.release(worktree, a.stackId);
-  assert.equal((await registry.status(worktree)).state, "absent");
-  assert.equal((await registry.status(sibling)).stackId, b.stackId);
-  const fresh = await registry.reserve(worktree);
-  assert.notEqual(fresh.stackId, a.stackId);
-  await assert.rejects(registry.release(worktree, a.stackId), /ownership/);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await assert.rejects(
+      registry.release(worktree, a.stackId),
+      /release unavailable.*domain teardown/,
+    );
+    assert.equal((await registry.reserve(worktree)).stackId, a.stackId);
+    assert.equal((await registry.status(sibling)).stackId, b.stackId);
+  }
 });
 test("fake ownership permits resume; PID reuse blocks release and resume", async (t) => {
   const processes = new Map(),
@@ -101,7 +102,10 @@ test("fake ownership permits resume; PID reuse blocks release and resume", async
   await assert.rejects(registry.release(worktree, a.stackId), /process/);
   processes.delete(123);
   busy.clear();
-  await registry.release(worktree, a.stackId);
+  await assert.rejects(
+    registry.release(worktree, a.stackId),
+    /release unavailable/,
+  );
 });
 test("corrupt registry fails closed without overwrite", async (t) => {
   const { registry, registryPath, worktree } = await fixture(t);
@@ -262,7 +266,10 @@ test("only explicit null inspection confirms recorded process absence on a free 
     await assert.rejects(registry.release(worktree, a.stackId), /process/);
   }
   actual = null;
-  await registry.release(worktree, a.stackId);
+  await assert.rejects(
+    registry.release(worktree, a.stackId),
+    /release unavailable/,
+  );
 });
 
 test("group ownership transaction rejects conflicts without partially recording endpoints", async (t) => {

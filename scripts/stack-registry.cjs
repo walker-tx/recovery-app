@@ -331,7 +331,7 @@ function createRegistry({
         }
       }),
     release: (worktree, stackId) =>
-      transact(worktree, async (data, record, canonical) => {
+      transact(worktree, async (_data, record) => {
         owned(record, stackId);
         if (!record) {
           return { released: false };
@@ -341,15 +341,17 @@ function createRegistry({
             "Cannot release: process/port remains occupied or ownership mismatched",
           );
         }
-        delete data.stacks[canonical];
-        return { released: true };
+        // Process/port absence is not proof that every owned domain is gone.
+        throw Error(
+          "Reservation release unavailable: complete domain teardown not implemented",
+        );
       }),
   };
 }
 module.exports = { createRegistry, portAvailable };
 
-// These commands manipulate reservations only; release does not destroy stack
-// data or stop services. Integration must verify those domains before release.
+// Release is deliberately unavailable for existing reservations until complete
+// domain teardown can be revalidated, including route ownership.
 if (require.main === module) {
   (async () => {
     const [command, stackId] = process.argv.slice(2);

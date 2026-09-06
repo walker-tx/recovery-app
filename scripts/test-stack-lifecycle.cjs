@@ -323,3 +323,40 @@ test("only Metro receives public config after independent generation validation"
     `${record.stackId}:${record.providerGeneration}`,
   );
 });
+
+for (const phase of ["identity", "record ownership"]) {
+  test(`failed ${phase} after launch retains exclusion and sanitizes errors`, async (t) => {
+    let reads = 0;
+    const f = await fixture(
+      t,
+      phase === "identity"
+        ? {
+            identify: async () => {
+              if (++reads === 1) {
+                return null;
+              }
+              throw Error("private-identity-detail");
+            },
+          }
+        : {},
+    );
+    if (phase === "record ownership") {
+      f.registry.recordProcess = async () => {
+        throw Error("private-identity-detail");
+      };
+    }
+    await assert.rejects(
+      f.lifecycle.start(f.worktree, f.services),
+      (error) =>
+        error.ambiguous === true &&
+        !error.message.includes("private-identity-detail"),
+    );
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.processes.size, 1);
+    await assert.rejects(
+      f.lifecycle.start(f.worktree, f.services),
+      /Lifecycle locked/,
+    );
+    assert.equal(f.calls.length, 1);
+  });
+}
