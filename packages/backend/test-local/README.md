@@ -95,3 +95,74 @@ Run from the repository root through `mise exec -- sh -c`, with subprocess cwd
 
 
 No fixture provisioning, deployment, or native acceptance has been exercised.
+
+## Concrete native driver review checkpoint
+
+Driver: `scripts/native-fixture-run.mjs`. Pure hook/policy regressions:
+`scripts/native-fixture.ts` and `scripts/native-fixture.test.ts`. A standalone
+read-only preflight remains in `scripts/native-fixture-preflight.ts`.
+
+From root `mise exec -- sh -c`, change subprocess cwd to this implementation
+worktree's `packages/backend`, then invoke:
+
+```sh
+node --experimental-strip-types scripts/native-fixture-run.mjs prepare \
+  /absolute/path/to/.worktrees/native-fixture-runtime \
+  /tmp/maestro-pr3496.F7AlwO/maestro-isolated \
+  E0C0F689-DBAD-4E8C-85DB-2E7A9CE03452
+```
+
+`prepare` verifies runtime identity/expiry, nested SDK57 manifest and actual bundle,
+opens the dedicated localhost8082 sign-in deep link, validates fresh empty input
+geometry and clears clipboard. It does not instantiate the SDK or create a fixture.
+Actual prepare passed, with zero full/fragment scan matches and no skipped files.
+
+The concrete `run` branch wires real WorkOS SDK authentication (returns directly),
+post-auth exercise, bounded Convex clients with logging disabled, official CLI
+binding via stdin, fresh native input bounds, clipboard/native Paste, delayed
+password-save dismissal, legitimate onboarding, SDK profile/count verification,
+Counts screenshot, native signout, backend cleanup, and provider absence checks.
+The only supplied synthetic display name is Native Fixture; firstName must be
+omitted and onboardingComplete true. Termination never proves token-store clearing.
+
+**Execution is hard-blocked pending review and artifact-safety work.** Inspection
+of the pinned Maestro ArtifactsGenerator confirms failed/warned commands capture
+screenshots AND hierarchy even without full-artifact mode. Scanning afterwards
+cannot undo forbidden credential capture. The driver has an unconditional run gate
+before SDK construction in addition to the unset parent approval gate. Do not remove
+it until a reviewed credential-phase capture suppression mechanism is implemented.
+No fixture has been created. No claim of native acceptance or full visual inspection.
+The concrete adapters have not been exercised with credentials and require review.
+
+Local overlay preparation: reviewed test-local/fixtureCleanup.ts copied to the
+parent-owned runtime convex/fixtureCleanup.ts with exactly its two ../convex/
+imports rewritten to ./; no generated files touched. WORKOS_STAGING_CLIENT_ID and
+RECOVERY_FIXTURE_DEPLOYMENT set via official CLI stdin; stale binding checked absent.
+Target anonymous-agent at 3220/site3221 only. Watch-deployment completion was not
+independently verified. Phone preview and runtime supervision unchanged.
+
+Checks: `node --check scripts/native-fixture-run.mjs`; Node tests for both
+native-fixture and workos-staging; separate strict TypeScript check including
+native-fixture.ts, native-fixture.test.ts and native-fixture-preflight.ts.
+
+## Task-local automatic-artifact guard
+
+`maestro-automatic-artifacts.patch` preserves the source/test change against
+Mohanad49/Maestro commit `2ebcefb90474f22da0e8d7c76be7d54b4f387b61`.
+It is not a complete Maestro installer: the prior reviewed Swift/HTTP logging
+patches and pinned native resources remain prerequisites.
+
+The isolated wrapper must set `MAESTRO_SUPPRESS_AUTOMATIC_ARTIFACTS=1` inside
+its clean environment. The guard prevents automatic screenshot, hierarchy,
+and full-run-recording acquisition before allocation. Explicit capture/AI
+commands and logging are outside its scope; credential flows must not use
+those commands. The driver pins the reviewed wrapper and three installed JARs
+by SHA-256 before enabling the non-secret probe. This is build continuity,
+not a whole-OS privacy guarantee.
+
+Unit coverage is not native evidence. The real fixture `run` mode retains its
+unconditional safety stop until the device failure-artifact probe and the
+concrete native flow are verified. Do not remove that stop merely because the
+source patch builds or the read-only preparation succeeds. The runtime and
+Maestro installation are explicit task-local prerequisites, not a portable
+one-command bootstrap.

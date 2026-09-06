@@ -1,0 +1,78 @@
+diff --git a/maestro-orchestra/src/main/kotlin/maestro/orchestra/debug/ArtifactsGenerator.kt b/maestro-orchestra/src/main/kotlin/maestro/orchestra/debug/ArtifactsGenerator.kt
+index 33ba29d..37b6962 100644
+--- a/maestro-orchestra/src/main/kotlin/maestro/orchestra/debug/ArtifactsGenerator.kt
++++ b/maestro-orchestra/src/main/kotlin/maestro/orchestra/debug/ArtifactsGenerator.kt
+@@ -46,6 +46,8 @@ internal class ArtifactsGenerator(
+     private val maestro: Maestro,
+     private val captureFullArtifacts: Boolean = false,
+     private val onStepScreenshotCaptured: (sequenceNumber: Int, relativePath: String) -> Unit = { _, _ -> },
++    // Task-local opt-in: explicit command artifacts and metadata/logging remain unchanged.
++    private val suppressAutomaticArtifacts: Boolean = System.getenv("MAESTRO_SUPPRESS_AUTOMATIC_ARTIFACTS") == "1",
+ ) : OrchestraListener {
+
+     val debugOutput = FlowDebugOutput()
+@@ -238,6 +240,7 @@ internal class ArtifactsGenerator(
+     }
+
+     private fun captureStepHierarchy(metadata: CommandDebugMetadata) {
++        if (suppressAutomaticArtifacts) return
+         val collector = collector ?: return
+         try {
+             val tree = runBlocking { maestro.viewHierarchy() }.root
+@@ -274,6 +277,7 @@ internal class ArtifactsGenerator(
+      * never destroys a frame already there), returning the bundle-relative path or null on failure.
+      */
+     private fun captureScreenshot(relativePath: String, sequenceNumber: Int?): String? {
++        if (suppressAutomaticArtifacts) return null
+         val collector = collector ?: return null
+         val destFile = collector.allocate(
+             ArtifactKind.SCREENSHOT,
+@@ -298,6 +302,7 @@ internal class ArtifactsGenerator(
+     }
+
+     private fun startFullRunRecording() {
++        if (suppressAutomaticArtifacts) return
+         val collector = collector ?: return
+         try {
+             val destFile = collector.allocate(ArtifactKind.SCREEN_RECORDING, ArtifactFormat.MP4, BundleLayout.SCREEN_RECORDING)
+diff --git a/maestro-orchestra/src/test/kotlin/maestro/orchestra/debug/ArtifactsGeneratorTest.kt b/maestro-orchestra/src/test/kotlin/maestro/orchestra/debug/ArtifactsGeneratorTest.kt
+index 741bb9d..1d390a6 100644
+--- a/maestro-orchestra/src/test/kotlin/maestro/orchestra/debug/ArtifactsGeneratorTest.kt
++++ b/maestro-orchestra/src/test/kotlin/maestro/orchestra/debug/ArtifactsGeneratorTest.kt
+@@ -50,6 +50,36 @@ class ArtifactsGeneratorTest {
+         coEvery { viewHierarchy(any()) } returns ViewHierarchy(hierarchyRoot)
+     }
+
++    @Test
++    fun `suppression blocks failed and warned automatic captures with either capture mode`() {
++        for (fullCapture in listOf(false, true)) {
++            for (outcome in listOf(CommandOutcome.Failed(RuntimeException("failure")), CommandOutcome.Warned)) {
++                val dir = Files.createTempDirectory(tempDir, "suppressed-")
++                val maestro = mockMaestro()
++                val gen = ArtifactsGenerator(
++                    artifactsDir = dir,
++                    maestro = maestro,
++                    captureFullArtifacts = fullCapture,
++                    suppressAutomaticArtifacts = true,
++                )
++                val cmd = MaestroCommand(scrollCommand = ScrollCommand())
++
++                gen.onFlowStart()
++                gen.onCommandStart(cmd, 0)
++                gen.onCommandFinished(cmd, outcome, 100L, 200L)
++                gen.onFlowEnd()
++
++                coVerify(exactly = 0) { maestro.takeScreenshot(any<Sink>(), any()) }
++                coVerify(exactly = 0) { maestro.viewHierarchy(any()) }
++                coVerify(exactly = 0) { maestro.startScreenRecording(any()) }
++                assertThat(dir.resolve("screenshots").exists()).isFalse()
++                assertThat(dir.resolve("screen-hierarchy").exists()).isFalse()
++                assertThat(dir.resolve("commands.json").exists()).isTrue()
++                assertThat(gen.debugOutput.commands[cmd]!!.duration).isEqualTo(100L)
++            }
++        }
++    }
++
+     @Test
+     fun `populates debugOutput in memory even when artifactsDir is null`() {
+         val gen = ArtifactsGenerator(artifactsDir = null, maestro = mockMaestro())
