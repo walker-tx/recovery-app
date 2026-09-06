@@ -3,6 +3,10 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 [ "$(pwd -P)" = "$ROOT" ] || { echo 'Run this command from the repository root.' >&2; exit 1; }
+if [ "${1-}" = '--isolated' ]; then
+  echo 'Isolated tailnet mode is unavailable pending the authorized route lifecycle in #60/#49.' >&2
+  exit 1
+fi
 ./scripts/migrate-convex-dotenv.sh
 ./scripts/check-no-dotenv.sh
 STATE_DIR=$ROOT/.recovery-tailnet

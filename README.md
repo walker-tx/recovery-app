@@ -75,8 +75,22 @@ mise run stack:stop -- <stack-UUID>
 
 Replace the placeholders (quote paths containing spaces); use the `stackId` from
 startup output for status/stop. No server executable path is inferred. These tasks
-only forward arguments to the runtime; existing `zero`, `zero:tailnet`, `status`,
-and `stop` tasks keep their legacy behavior.
+only forward arguments to the runtime. The existing local entrypoints also accept
+explicit isolated mode as their first argument, from the intended worktree root:
+
+```sh
+mise run zero -- --isolated /absolute/path/to/convex-server
+mise run status -- --isolated <stack-UUID>
+mise run stop -- --isolated <stack-UUID>
+```
+
+These dispatch before any legacy configuration/migration/service work and never
+fall back after an isolated failure. No-argument legacy behavior is unchanged;
+these commands do not adopt or stop existing legacy previews.
+`mise run zero:tailnet -- --isolated` is explicitly unavailable pending the
+separately authorized #60/#49 route lifecycle; it never falls through to legacy
+route publication. The open #28/#34 work and PR33/35 bootstrap exception/readiness
+changes are not altered or reauthorized by this local-only dispatch.
 
 Startup requires the local provider
 package, installed Expo/Convex dependencies, Node, pnpm, Mailpit, and Pitchfork.
