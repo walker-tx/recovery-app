@@ -67,11 +67,8 @@ it.live("lock failures are bounded and corrupt startup can recover", () =>
       "synchronous lock wait must be short",
     );
     db.exec("ROLLBACK");
-    const original = (
-      db.prepare("SELECT body FROM instance").get() as {
-        body: string;
-      }
-    ).body;
+    const original = db.prepare("SELECT body FROM instance").get()?.body;
+    assert.ok(typeof original === "string");
     for (const body of [
       "{",
       "null",

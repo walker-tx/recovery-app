@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/@effect/tsgo/oxlint-schema.json",
+  "extends": [
+    "../../.oxlintrc.json",
+    "./node_modules/@effect/tsgo/oxlint-presets/correctness.json",
+    "./node_modules/@effect/tsgo/oxlint-presets/antipattern.json",
+    "./node_modules/@effect/tsgo/oxlint-presets/effect-native.json"
+  ],
+  "overrides": [
+    {
+      "files": ["tests/**/*.ts"],
+      "rules": {
+        "effecttsgo/node-builtin-import": "off",
+        "effecttsgo/async-function": "off",
+        "effecttsgo/prefer-schema-over-json": "off",
+        "effecttsgo/global-fetch-in-effect": "off",
+        "effecttsgo/new-promise": "off",
+        "effecttsgo/global-date-in-effect": "off",
+        "effecttsgo/global-fetch": "off",
+        "effecttsgo/process-env-in-effect": "off"
+      }
+    }
+  ]
+}

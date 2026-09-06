@@ -81,6 +81,7 @@ it.effect(
           }),
         );
         const scope = yield* Scope.Scope;
+        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test entry point composes its isolated stub service layer.
         const app = yield* makeHttpApp(scope).pipe(Effect.provide(layer));
         const direct = (mode: string) =>
           app.pipe(

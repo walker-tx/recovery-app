@@ -126,7 +126,7 @@ it.live(
       );
       assert.equal(payload.sub, verifiedUser.id);
       assert.equal(payload.client_id, provider.clientId);
-      assert.ok(payload.sid);
+      assert.ok(typeof payload.sid === "string" && payload.sid.length > 0);
       assert.equal(payload.exp! - payload.iat!, 300);
       yield* Effect.promise(() =>
         assert.rejects(
@@ -138,7 +138,8 @@ it.live(
       const databaseInspection = new DatabaseSync(options.database);
       const stored = databaseInspection
         .prepare("SELECT * FROM sessions WHERE id=?")
-        .get(payload.sid as string)!;
+        .get(payload.sid);
+      assert.ok(stored);
       assert.ok(
         Number(stored.expires_at) >= authenticationStartedAt + 7 * 86400000 &&
           Number(stored.expires_at) <= authenticationFinishedAt + 7 * 86400000,
@@ -160,7 +161,7 @@ it.live(
       assert.deepEqual(
         reopenedDatabase
           .prepare("SELECT * FROM sessions WHERE id=?")
-          .get(payload.sid as string),
+          .get(payload.sid),
         stored,
       );
       reopenedDatabase.close();

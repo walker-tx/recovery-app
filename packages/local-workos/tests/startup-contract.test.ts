@@ -64,7 +64,9 @@ it.live(
           startProvider({ ...options, port }),
           (error: unknown) =>
             error instanceof Error &&
-            (error.cause as NodeJS.ErrnoException)?.code === "EADDRINUSE",
+            error.cause instanceof Error &&
+            "code" in error.cause &&
+            error.cause.code === "EADDRINUSE",
         ),
       );
     }),

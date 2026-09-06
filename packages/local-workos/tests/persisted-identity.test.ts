@@ -145,12 +145,14 @@ it.live(
           Effect.tryPromise({
             try: () =>
               provider.createIdentityFixture({ email, provider: "AppleOAuth" }),
-            catch: (error) => error,
+            catch: (error) => new Cause.UnknownError(error),
           }),
         );
         assert.ok(Exit.isFailure(exit));
         if (Exit.isFailure(exit)) {
-          const error: unknown = Cause.squash(exit.cause);
+          const failure = Cause.squash(exit.cause);
+          assert.ok(Cause.isUnknownError(failure));
+          const error = failure.cause;
           assert.ok(error instanceof Error);
           assert.equal(error.message, "Unable to create identity fixture");
           assert.deepEqual(Object.keys(error), []);
@@ -170,12 +172,14 @@ it.live(
                 email: "new-subject@example.test",
                 provider: "GoogleOAuth",
               }),
-            catch: (error) => error,
+            catch: (error) => new Cause.UnknownError(error),
           }),
         );
         assert.ok(Exit.isFailure(exit));
         if (Exit.isFailure(exit)) {
-          const error: unknown = Cause.squash(exit.cause);
+          const failure = Cause.squash(exit.cause);
+          assert.ok(Cause.isUnknownError(failure));
+          const error = failure.cause;
           assert.ok(error instanceof Error);
           assert.equal(error.message, "Unable to create identity fixture");
           assert.deepEqual(Object.keys(error), []);
@@ -205,8 +209,8 @@ it.live(
         (resource) => Effect.sync(() => resource.close()),
       );
       const saved = db.prepare("SELECT body FROM instance").get()?.body;
-      assert.equal(typeof saved, "string");
-      const identity = JSON.parse(saved as string);
+      assert.ok(typeof saved === "string");
+      const identity = JSON.parse(saved);
       const second = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider(options)),
         (p) => Effect.promise(() => p.close()),

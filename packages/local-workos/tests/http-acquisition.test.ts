@@ -31,6 +31,7 @@ it.live(
           bound = resolve;
         });
         let cleaning = false;
+        // oxlint-disable-next-line typescript/unbound-method -- Interception forwards the original method with the captured server receiver.
         const originalListen = Server.prototype.listen;
         const listenSpy = yield* Effect.acquireRelease(
           Effect.sync(() =>
@@ -61,7 +62,7 @@ it.live(
               if (server instanceof Server && server.listening) {
                 server.closeAllConnections();
                 await new Promise<void>((resolve) =>
-                  server!.close(() => resolve()),
+                  server.close(() => resolve()),
                 );
               }
             }),

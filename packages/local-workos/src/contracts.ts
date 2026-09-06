@@ -24,7 +24,7 @@ export class VerificationRequired extends Data.TaggedError(
   "VerificationRequired",
 )<{
   readonly id: string;
-  readonly pending: Redacted.Redacted<string>;
+  readonly pending: Redacted.Redacted;
 }> {}
 export type RequestFailure = RequestRejected | VerificationRequired;
 const uuid =
@@ -56,6 +56,8 @@ export const CreateUserRequestSchema = Schema.Struct({
   ),
   password: Schema.String.check(
     Schema.makeFilter(
+      // Password limits intentionally count Unicode code points, not grapheme clusters.
+      // oxlint-disable-next-line typescript/no-misused-spread
       (value) => [...value].length >= 12 && [...value].length <= 128,
     ),
   ),

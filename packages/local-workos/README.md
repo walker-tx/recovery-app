@@ -11,6 +11,36 @@ mise exec -- pnpm --filter @recovery/local-workos test
 mise exec -- pnpm --filter @recovery/local-workos check
 ```
 
+## Effect linting
+
+`check` runs TypeScript and then Oxlint with zero warnings allowed. `.oxlintrc.json`
+inherits the repository lint rules and adds the Effect correctness, antipattern,
+and Effect-native presets for source and tests; the Effect style preset is
+intentionally not enabled. Unused suppression comments also fail lint.
+
+Workspace `lint` delegates this package to its own type-aware lint command while
+checking other packages normally. This is necessary because nested Oxlint configs
+do not activate type-aware mode for a non-type-aware root invocation. No package
+is excluded from the combined check.
+
+The pinned `@effect/tsgo`, `oxlint`, and `oxlint-tsgolint` versions are a compatible
+set. The package `prepare` script patches only Oxlint after installation, leaving
+TypeScript unchanged. Upgrade these three together and rerun `prepare`, `check`,
+and `test`; the patcher rejects unsupported versions. If lifecycle scripts were
+skipped during installation, run:
+
+```sh
+mise exec -- pnpm --filter @recovery/local-workos run prepare
+mise exec -- pnpm --filter @recovery/local-workos run lint
+```
+
+Tests retain native Node, Promise, fetch, JSON, environment, and date APIs to
+exercise real SDK/HTTP/subprocess boundaries. Only those native-API preference
+rules have test-only overrides; correctness and antipattern checks remain enabled.
+Source exceptions are local, explained suppression comments for deliberate
+interop/security boundaries (for example, the shutdown watchdog must work even
+when Effect cleanup cannot finish). Do not suppress a finding merely to pass lint.
+
 ## Effect implementation and tests
 
 The CLI uses the pinned Effect 4 `effect/unstable/cli` command and flag APIs.

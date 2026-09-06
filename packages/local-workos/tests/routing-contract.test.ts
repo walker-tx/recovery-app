@@ -187,6 +187,11 @@ it.live("canonical raw paths ignore query dot segments", () =>
       ),
     );
     assert.equal(response.status, 200);
-    assert.equal((response.body as { id: string }).id, user.id);
+    assert.ok(
+      typeof response.body === "object" &&
+        response.body !== null &&
+        "id" in response.body,
+    );
+    assert.equal(response.body.id, user.id);
   }),
 );

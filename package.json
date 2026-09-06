@@ -14,8 +14,8 @@
     "doctor": "pnpm --filter @recovery/mobile run doctor",
     "format": "oxfmt --write \"**/*.{js,jsx,ts,tsx,mjs,cjs,json,jsonc}\"",
     "format:check": "oxfmt --check \"**/*.{js,jsx,ts,tsx,mjs,cjs,json,jsonc}\"",
-    "lint": "oxlint --deny-warnings --report-unused-disable-directives .",
-    "lint:fix": "pnpm run lint --fix",
+    "lint": "oxlint --deny-warnings --report-unused-disable-directives --ignore-pattern 'packages/local-workos/**' . && pnpm --filter @recovery/local-workos run lint",
+    "lint:fix": "oxlint --deny-warnings --report-unused-disable-directives --ignore-pattern 'packages/local-workos/**' --fix . && pnpm --filter @recovery/local-workos run lint --fix",
     "test:style": "sh scripts/test-code-style.sh"
   },
   "devDependencies": {

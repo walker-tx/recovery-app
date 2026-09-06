@@ -48,6 +48,7 @@ it.live(
     Effect.gen(function* () {
       const dir = yield* directory;
       const connections = new Set<DatabaseSync>();
+      // oxlint-disable-next-line typescript/unbound-method -- The interceptor explicitly forwards the native database receiver.
       const originalExec = DatabaseSync.prototype.exec;
       yield* Effect.acquireRelease(
         Effect.sync(() =>
@@ -106,6 +107,7 @@ it.live(
   () =>
     Effect.gen(function* () {
       const dir = yield* directory;
+      // oxlint-disable-next-line typescript/unbound-method -- The interceptor explicitly forwards the native database receiver.
       const originalExec = DatabaseSync.prototype.exec;
       yield* Effect.acquireRelease(
         Effect.sync(() =>
@@ -234,6 +236,7 @@ it.live("interrupted signing cannot continue into a session write", () =>
           n: number;
         }>`SELECT count(*) AS n FROM sessions`;
         assert.equal(row.n, 0);
+        // oxlint-disable-next-line typescript/unbound-method -- Access the installed spy for restoration, not invocation.
         vi.mocked(SignJWT.prototype.sign).mockRestore();
         const clock = yield* Clock.Clock;
         const now = 1700000000123;
@@ -247,6 +250,7 @@ it.live("interrupted signing cannot continue into a session write", () =>
           })
           .pipe(
             Effect.provideService(Clock.Clock, {
+              // oxlint-disable-next-line typescript/no-misused-spread -- The clock stub copies instance state and explicitly delegates every required prototype method below.
               ...clock,
               currentTimeMillis: Effect.succeed(now),
               currentTimeMillisUnsafe: () => now,
@@ -286,7 +290,7 @@ it.live("interrupting the owning scope closes its SQLite connection", () =>
           scope,
         );
         yield* Deferred.succeed(acquired, undefined);
-        yield* Effect.never;
+        return yield* Effect.never;
       }),
     ).pipe(Effect.forkScoped);
     yield* Deferred.await(acquired);
@@ -310,7 +314,7 @@ it.live(
             apiKey: `sk_test_local_${"08".repeat(32)}`,
           });
           yield* Deferred.succeed(acquired, provider.port);
-          yield* Effect.never;
+          return yield* Effect.never;
         }),
       ).pipe(Effect.forkScoped);
       const port = yield* Deferred.await(acquired);

@@ -47,6 +47,7 @@ function launch(args: string[], credential = key) {
   child.stderr.on("data", (chunk) => {
     stderr += chunk;
   });
+  // oxlint-disable-next-line effecttsgo/global-timers -- Native child-process watchdog must run independently of the test Effect runtime.
   const deadline = setTimeout(() => child.kill("SIGKILL"), 10000);
   const exited = new Promise<number | null>((resolve) =>
     child.on("close", (code) => {
@@ -58,7 +59,7 @@ function launch(args: string[], credential = key) {
     child.stdout.on("data", () => {
       if (stdout.includes("\n")) {
         try {
-          resolve(JSON.parse(stdout.split("\n")[0]!));
+          resolve(JSON.parse(stdout.split("\n")[0]));
         } catch (e) {
           reject(e);
         }
@@ -76,7 +77,9 @@ async function reservePort(port = 0): Promise<number> {
     server.once("error", reject);
     server.listen(port, "127.0.0.1", resolve);
   });
-  const reserved = (server.address() as { port: number }).port;
+  const address = server.address();
+  assert.ok(address !== null && typeof address === "object");
+  const reserved = address.port;
   await new Promise<void>((resolve, reject) =>
     server.close((error) => (error ? reject(error) : resolve())),
   );
@@ -87,7 +90,11 @@ async function portAvailable(port: number): Promise<boolean> {
     await reservePort(port);
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "EADDRINUSE"
+    ) {
       return false;
     }
     throw error;
@@ -173,8 +180,10 @@ it.live(
           ready.issuer,
           `https://local-workos.invalid/instances/${generation}`,
         );
+        const clientId = ready.clientId;
+        assert.ok(typeof clientId === "string");
         const jwksResponse = yield* Effect.promise(() =>
-          fetch(`http://127.0.0.1:${port}/sso/jwks/${ready.clientId}`),
+          fetch(`http://127.0.0.1:${port}/sso/jwks/${clientId}`),
         );
         assert.equal(jwksResponse.status, 200);
         p.child.kill(signal);
@@ -325,7 +334,9 @@ it.live("readiness probes a forced occupied port before retrying", () =>
             ),
         ),
     );
-    const occupied = (collision.address() as { port: number }).port;
+    const address = collision.address();
+    assert.ok(address !== null && typeof address === "object");
+    const occupied = address.port;
     let reservations = 0;
     const attempts: number[] = [];
     const port = yield* Effect.promise(() =>

@@ -142,6 +142,7 @@ it.live("request validation preserves ordering and never echoes secrets", () =>
 it.live("declared schemas validate supported request fields", () =>
   Effect.sync(() => {
     assert.equal(
+      // oxlint-disable-next-line effecttsgo/schema-sync-in-effect -- Exercise the synchronous schema contract alongside the throw assertions below.
       Schema.decodeUnknownSync(PasswordAuthenticationRequestSchema)({
         client_id: "client",
         client_secret: "key",
@@ -153,6 +154,7 @@ it.live("declared schemas validate supported request fields", () =>
       "password",
     );
     assert.equal(
+      // oxlint-disable-next-line effecttsgo/schema-sync-in-effect -- Exercise the synchronous schema contract alongside the throw assertions below.
       Schema.decodeUnknownSync(CreateUserRequestSchema)({
         email: " valid@example.test ",
         password: "😀".repeat(128),
@@ -161,6 +163,7 @@ it.live("declared schemas validate supported request fields", () =>
       "😀".repeat(128),
     );
     assert.equal(
+      // oxlint-disable-next-line effecttsgo/schema-sync-in-effect -- Exercise the synchronous schema contract alongside the throw assertions below.
       Schema.decodeUnknownSync(CreateUserRequestSchema)({
         email: "valid@example.test",
         password: "SENTINEL_PASSWORD_12345",
