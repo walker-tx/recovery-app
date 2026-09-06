@@ -40,11 +40,26 @@ test("rejects noncanonical identity and non-origin backend destinations", () => 
     getWorkOSAuthConfig(id, "http://localhost:3210/"),
     getWorkOSAuthConfig(id, "http://localhost:3210"),
   );
-  for (const suffix of ["/path", "?mode=local", "#fragment"]) {
+  for (const suffix of ["/path", "?mode=local", "#fragment", "?", "#"]) {
     assert.equal(
       getWorkOSAuthConfig(id, `http://localhost:3210${suffix}`),
       null,
     );
+  }
+});
+test("requires UUIDv4 version and variant for both identity parts", () => {
+  for (const part of [0, 1]) {
+    for (const invalid of [
+      "12345678-1234-1234-8234-123456789abc",
+      "12345678-1234-4234-7234-123456789abc",
+    ]) {
+      const parts = id.split(":");
+      parts[part] = invalid;
+      assert.equal(
+        getWorkOSAuthConfig(parts.join(":"), "http://localhost:3210"),
+        null,
+      );
+    }
   }
 });
 test("scope includes supplied identity and destination without guessing identity", () => {
