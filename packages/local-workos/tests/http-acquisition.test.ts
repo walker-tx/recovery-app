@@ -74,18 +74,15 @@ it.live(
         // Registered after forkScoped: release the gate before its interrupt finalizer.
         yield* Effect.addFinalizer(() => Effect.sync(release));
         yield* Effect.promise(() => pending).pipe(Effect.timeout("2 seconds"));
-        const interrupted = yield* Fiber.interrupt(owner).pipe(
-          Effect.forkScoped,
-        );
-        // Let the interruption run while listen is still held behind the gate.
-        yield* Effect.promise(
-          () => new Promise<void>((resolve) => setImmediate(resolve)),
-        );
+        // rc.112's interruptUnsafe synchronously records the request. This
+        // handshake must not await cleanup: masked acquisition needs the gate
+        // released before interruption can finish. Fiber.interrupt waits for both.
+        yield* Effect.sync(() => owner.interruptUnsafe());
         release();
         yield* Effect.promise(() => listening).pipe(
           Effect.timeout("2 seconds"),
         );
-        yield* Fiber.join(interrupted).pipe(Effect.timeout("2 seconds"));
+        yield* Fiber.await(owner).pipe(Effect.timeout("2 seconds"));
         assert.equal(
           server?.listening,
           false,
