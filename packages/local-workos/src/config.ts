@@ -37,13 +37,14 @@ const LifetimesSchema = Schema.Struct({
   accessTokenSeconds: LifetimeSeconds,
   sessionSeconds: LifetimeSeconds,
   verificationSeconds: LifetimeSeconds,
+  passwordResetSeconds: LifetimeSeconds,
 });
 export type ProviderOptions = {
   database: string;
   apiKey: string;
   port?: number;
   providerGeneration?: string;
-  lifetimes?: Partial<{ accessTokenSeconds: number; sessionSeconds: number; verificationSeconds: number }>;
+  lifetimes?: Partial<{ accessTokenSeconds: number; sessionSeconds: number; verificationSeconds: number; passwordResetSeconds: number }>;
 };
 export const decodeProviderConfig = (options: ProviderOptions) =>
   Effect.gen(function* () {
@@ -88,7 +89,7 @@ export const decodeProviderConfig = (options: ProviderOptions) =>
             ),
           );
     const lifetimes = yield* Schema.decodeUnknownEffect(LifetimesSchema)({
-      accessTokenSeconds: 300, sessionSeconds: 7 * 86400, verificationSeconds: 600,
+      accessTokenSeconds: 300, sessionSeconds: 7 * 86400, verificationSeconds: 600, passwordResetSeconds: 1800,
       ...options.lifetimes,
     }).pipe(Effect.mapError(() => new ConfigurationError({ message: "Invalid provider lifetimes" })));
     if (lifetimes.accessTokenSeconds > lifetimes.sessionSeconds)

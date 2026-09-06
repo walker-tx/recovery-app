@@ -10,6 +10,7 @@ export type RejectionReason =
   | "invalid_client"
   | "unsupported_grant_type"
   | "invalid_grant"
+  | "invalid_reset_token"
   | "invalid_user"
   | "email_exists"
   | "unsupported_pagination"
@@ -57,18 +58,24 @@ export const VerificationAuthenticationRequestSchema = Schema.Struct({
 export const AuthenticationRequestSchema = Schema.Union([
   PasswordAuthenticationRequestSchema, VerificationAuthenticationRequestSchema,
 ]);
-export const CreateUserRequestSchema = Schema.Struct({
-  email: Schema.String.check(
+export const EmailSchema = Schema.String.check(
     Schema.makeFilter((value) => {
       const email = value.trim().toLowerCase();
       return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     }),
-  ),
-  password: Schema.String.check(
+  );
+export const PasswordSchema = Schema.String.check(
     Schema.makeFilter(
       (value) => [...value].length >= 12 && [...value].length <= 128,
     ),
-  ),
+  );
+export const CreatePasswordResetRequestSchema = Schema.Struct({ email: EmailSchema });
+export const ResetPasswordRequestSchema = Schema.Struct({
+  token: Schema.String.check(Schema.isMaxLength(128)), new_password: PasswordSchema,
+});
+export const CreateUserRequestSchema = Schema.Struct({
+  email: EmailSchema,
+  password: PasswordSchema,
   email_verified: Schema.optional(Schema.Boolean),
   first_name: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
   last_name: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
@@ -102,6 +109,13 @@ export const EmailVerificationSchema = Schema.Struct({
   updated_at: Schema.String,
 });
 export type EmailVerification = typeof EmailVerificationSchema.Type;
+export const PasswordResetSchema = Schema.Struct({
+  object: Schema.Literal("password_reset"), id: Schema.String, user_id: UserId,
+  email: Schema.String, password_reset_token: Schema.String, password_reset_url: Schema.String,
+  expires_at: Schema.String, created_at: Schema.String,
+});
+export type PasswordReset = typeof PasswordResetSchema.Type;
+export const ResetPasswordResponseSchema = Schema.Struct({ user: UserSchema });
 export const AuthenticationSchema = Schema.Struct({
   user: UserSchema,
   access_token: Schema.String,

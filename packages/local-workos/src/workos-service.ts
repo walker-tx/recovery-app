@@ -18,6 +18,7 @@ import {
   equal,
   PasswordAuthenticationRequestSchema,
   CreateUserRequestSchema,
+  CreatePasswordResetRequestSchema, ResetPasswordRequestSchema, type PasswordReset,
   type User,
   type Authentication,
   type UserList,
@@ -54,6 +55,8 @@ export class WorkOSService extends Context.Service<
     readonly listUsers: (
       url: string,
     ) => Effect.Effect<UserList, RequestFailure>;
+    readonly createPasswordReset: (body: Record<string, unknown>) => Effect.Effect<PasswordReset, RequestFailure>;
+    readonly resetPassword: (body: Record<string, unknown>) => Effect.Effect<{ user: User }, RequestFailure>;
     readonly getUser: (id: string) => Effect.Effect<User, RequestFailure>;
     readonly getEmailVerification: (id: string) => Effect.Effect<EmailVerification, RequestFailure>;
     readonly getIdentities: (
@@ -175,9 +178,14 @@ export const workosLayer = Layer.effect(
           return yield* Effect.fail(
             new RequestRejected({ reason: "invalid_grant" }),
           );
+        // Scrypt runs outside SQLite; revalidate its exact credential snapshot
+        // inside the same transaction that issues a session or challenge.
+        const result = yield* sql.withTransaction(Effect.gen(function* () {
+          const fresh = yield* getUser(row.id);
+          if (!fresh || fresh.salt !== row.salt || fresh.verifier !== row.verifier) return null;
         const now = yield* Clock.currentTimeMillis;
         const user = yield* Schema.decodeUnknownEffect(UserSchema)(
-          JSON.parse(row.body),
+          JSON.parse(fresh.body),
         ).pipe(Effect.orDie);
         if (!user.email_verified) {
           const id = `email_verification_${randomUUID()}`,
@@ -189,16 +197,63 @@ export const workosLayer = Layer.effect(
             expires_at: new Date(now + lifetimes.verificationSeconds * 1000).toISOString(),
             created_at: timestamp, updated_at: timestamp,
           };
-          yield* sql.withTransaction(Effect.gen(function* () {
-            yield* sql`INSERT INTO challenges VALUES(${id},${user.id},${digest(pending)},${now + lifetimes.verificationSeconds * 1000})`;
-            yield* sql`INSERT INTO email_verifications (challenge_id, body) VALUES(${id},${JSON.stringify(verification)})`;
-          }));
-          return yield* Effect.fail(
-            new VerificationRequired({ id, pending: Redacted.make(pending) }),
-          );
+          yield* sql`INSERT INTO challenges VALUES(${id},${user.id},${digest(pending)},${now + lifetimes.verificationSeconds * 1000})`;
+          yield* sql`INSERT INTO email_verifications (challenge_id, body) VALUES(${id},${JSON.stringify(verification)})`;
+          return new VerificationRequired({ id, pending: Redacted.make(pending) });
         }
         return yield* issueSession(user, now);
+        }));
+        if (result instanceof VerificationRequired) return yield* Effect.fail(result);
+        return result ?? (yield* Effect.fail(new RequestRejected({ reason: "invalid_grant" })));
       }).pipe(Effect.catch(operationFailure));
+    const createPasswordReset = (body: Record<string, unknown>) => Effect.gen(function* () {
+      const payload = yield* Schema.decodeUnknownEffect(CreatePasswordResetRequestSchema)(body).pipe(
+        Effect.mapError(() => new RequestRejected({ reason: "invalid_user" })),
+      );
+      return yield* sql.withTransaction(Effect.gen(function* () {
+        const email = payload.email.trim().toLowerCase();
+        const [row] = yield* sql<Row>`SELECT * FROM users WHERE email=${email}`;
+        if (!row) return yield* Effect.fail(new RequestRejected({ reason: "not_found" }));
+        const user = yield* Schema.decodeUnknownEffect(UserSchema)(JSON.parse(row.body)).pipe(Effect.orDie);
+        const now = yield* Clock.currentTimeMillis;
+        const expires = now + lifetimes.passwordResetSeconds * 1000;
+        const id = `password_reset_${randomUUID()}`;
+        const token = randomBytes(32).toString("base64url");
+        yield* sql`INSERT INTO challenges VALUES(${id},${user.id},${digest(token)},${expires})`;
+        yield* sql`INSERT INTO password_resets VALUES(${id})`;
+        return { object: "password_reset" as const, id, user_id: user.id, email: user.email,
+          password_reset_token: token,
+          // Compatibility field only: reserved issuer has no hosted reset page.
+          // Recovery owns the native link, templates and delivery.
+          password_reset_url: `${issuer}/password-reset?token=${token}`,
+          expires_at: new Date(expires).toISOString(), created_at: new Date(now).toISOString() };
+      }));
+    }).pipe(Effect.catch(operationFailure));
+    const resetPassword = (body: Record<string, unknown>) => Effect.gen(function* () {
+      const payload = yield* Schema.decodeUnknownEffect(ResetPasswordRequestSchema)(body).pipe(
+        Effect.mapError(() => new RequestRejected({ reason: "invalid_user" })),
+      );
+      const salt = randomBytes(16).toString("hex");
+      const verifier = ((yield* Effect.tryPromise(() => derive(payload.new_password, salt, 64))) as Buffer).toString("hex");
+      const result = yield* sql.withTransaction(Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        const [reset] = yield* sql<{ id: string; user_id: string; expires_at: number }>`SELECT c.id,c.user_id,c.expires_at FROM challenges c JOIN password_resets r ON r.challenge_id=c.id WHERE c.pending_hash=${digest(payload.token)}`;
+        if (!reset) return null;
+        if (reset.expires_at <= now) {
+          yield* sql`DELETE FROM challenges WHERE id=${reset.id}`;
+          return null;
+        }
+        const row = yield* getUser(reset.user_id);
+        if (!row) return null;
+        const saved = yield* Schema.decodeUnknownEffect(UserSchema)(JSON.parse(row.body)).pipe(Effect.orDie);
+        const user = { ...saved, email_verified: true, updated_at: new Date(now).toISOString() };
+        yield* sql`UPDATE users SET body=${JSON.stringify(user)},salt=${salt},verifier=${verifier} WHERE id=${user.id}`;
+        yield* sql`DELETE FROM sessions WHERE user_id=${user.id}`;
+        yield* sql`DELETE FROM challenges WHERE user_id=${user.id}`;
+        return { user };
+      }));
+      return result ?? (yield* Effect.fail(new RequestRejected({ reason: "invalid_reset_token" })));
+    }).pipe(Effect.catch(operationFailure));
     const createUser = (body: Record<string, unknown>) =>
       Effect.gen(function* () {
         const payload = yield* Schema.decodeUnknownEffect(
@@ -315,6 +370,7 @@ export const workosLayer = Layer.effect(
       apiKey,
       authenticate,
       createUser,
+      createPasswordReset, resetPassword,
       listUsers,
       getEmailVerification: (id) => Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;

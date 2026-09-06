@@ -139,6 +139,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
       yield* sql`ALTER TABLE email_verifications ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0`;
     yield* sql`CREATE INDEX IF NOT EXISTS challenges_pending_hash ON challenges(pending_hash)`;
   }));
+  yield* sql`CREATE TABLE IF NOT EXISTS password_resets (challenge_id TEXT PRIMARY KEY REFERENCES challenges(id) ON DELETE CASCADE)`;
   let [saved] = yield* sql<{
     body: string;
   }>`SELECT body FROM instance WHERE id=1`;
