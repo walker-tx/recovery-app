@@ -1,6 +1,5 @@
 import { httpClientId } from "./config.ts";
-import { createHash, timingSafeEqual } from "node:crypto";
-import { Effect, Scope, FileSystem, Layer, Schema } from "effect";
+import { Effect, Scope, FileSystem, Layer, Schema, Redacted } from "effect";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { HttpServerRequest } from "effect/unstable/http/HttpServerRequest";
 import { MaxBodySize } from "effect/unstable/http/HttpIncomingMessage";
@@ -12,75 +11,20 @@ import {
   HttpApiBuilder,
 } from "effect/unstable/httpapi";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
-const digest = (s: string) => createHash("sha256").update(s).digest("hex");
-export const equal = (a: string, b: string) =>
-  timingSafeEqual(Buffer.from(digest(a)), Buffer.from(digest(b)));
-export class HttpError extends Error {
-  readonly status: number;
-  readonly body: object;
-  constructor(status: number, body: object) {
-    super("Provider request rejected");
-    this.status = status;
-    this.body = body;
-  }
-}
-export const reject = (status: number, code: string): never => {
-  throw new HttpError(status, { code, message: code });
-};
-
-const UserSchema = Schema.Struct({
-  id: Schema.String,
-  email: Schema.String,
-  email_verified: Schema.Boolean,
-  first_name: Schema.NullOr(Schema.String),
-  last_name: Schema.NullOr(Schema.String),
-  created_at: Schema.String,
-  updated_at: Schema.String,
-  object: Schema.Literal("user"),
-  profile_picture_url: Schema.Null,
-  external_id: Schema.Null,
-  metadata: Schema.JsonObject,
-});
-export type User = typeof UserSchema.Type;
-const AuthenticationSchema = Schema.Struct({
-  user: UserSchema,
-  access_token: Schema.String,
-  refresh_token: Schema.String,
-  authentication_method: Schema.Literal("Password"),
-  organization_id: Schema.Null,
-});
-export type Authentication = typeof AuthenticationSchema.Type;
-const UserListSchema = Schema.Struct({
-  object: Schema.Literal("list"),
-  data: Schema.Array(UserSchema),
-  list_metadata: Schema.Struct({
-    before: Schema.Null,
-    after: Schema.NullOr(Schema.String),
-  }),
-});
-export type UserList = typeof UserListSchema.Type;
-const IdentitiesSchema = Schema.Array(
-  Schema.Struct({
-    object: Schema.Literal("identity"),
-    id: Schema.String,
-    type: Schema.Literals(["GoogleOAuth", "AppleOAuth"]),
-    provider: Schema.Literals(["GoogleOAuth", "AppleOAuth"]),
-  }),
-);
-export type Identities = typeof IdentitiesSchema.Type;
-const JwksSchema = Schema.Struct({
-  keys: Schema.Array(
-    Schema.Struct({
-      kty: Schema.Literal("RSA"),
-      n: Schema.String,
-      e: Schema.String,
-      kid: Schema.String,
-      alg: Schema.Literal("RS256"),
-      use: Schema.Literal("sig"),
-    }),
-  ),
-});
-export type Jwks = typeof JwksSchema.Type;
+import {
+  HttpError,
+  reject,
+  equal,
+  PasswordAuthenticationRequestSchema,
+  CreateUserRequestSchema,
+  UserSchema,
+  AuthenticationSchema,
+  UserListSchema,
+  IdentitiesSchema,
+  JwksSchema,
+} from "./contracts.ts";
+export * from "./contracts.ts";
+import { WorkOSService } from "./workos-service.ts";
 const MAX_BODY_BYTES = 16 * 1024;
 function requireBearer(authorization: string | undefined, apiKey: string) {
   if (!authorization || !equal(authorization, `Bearer ${apiKey}`)) {
@@ -120,11 +64,11 @@ function makeApi(clientId: string) {
         success: JwksSchema,
       }),
       HttpApiEndpoint.post("authenticate", "/user_management/authenticate", {
-        payload: Schema.Unknown,
+        payload: PasswordAuthenticationRequestSchema,
         success: AuthenticationSchema,
       }),
       HttpApiEndpoint.post("createUser", "/user_management/users", {
-        payload: Schema.Unknown,
+        payload: CreateUserRequestSchema,
         success: UserSchema,
       }),
       HttpApiEndpoint.get("listUsers", "/user_management/users", {
@@ -143,11 +87,11 @@ function makeApi(clientId: string) {
   );
 }
 function workosResponse<A>(
-  apiKey: string,
+  apiKey: Redacted.Redacted<string>,
   run: (
     body: Record<string, unknown>,
     request: HttpServerRequest,
-  ) => A | Promise<A>,
+  ) => Effect.Effect<A, HttpError>,
   options: {
     access?: "bearer";
     path?: string;
@@ -158,28 +102,40 @@ function workosResponse<A>(
     if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES)
       return Response.jsonUnsafe({ code: "invalid_request" }, { status: 413 });
     const body = request.method === "POST" ? yield* request.json : {};
-    return yield* Effect.promise(async () => {
-      try {
-        if (body === null || typeof body !== "object" || Array.isArray(body))
-          return Response.jsonUnsafe(
-            { code: "invalid_request" },
-            { status: 422 },
-          );
-        if (options.access === "bearer")
-          requireBearer(request.headers.authorization, apiKey);
-        if (options.path && !matchesRawPath(request.url, options.path)) {
-          requireBearer(request.headers.authorization, apiKey);
-          return reject(404, "unsupported_operation");
-        }
-        // Raw handlers skip payload decoding, but plain successes are schema-encoded.
-        return await run(body as Record<string, unknown>, request);
-      } catch (e) {
+    return yield* Effect.gen(function* () {
+      if (body === null || typeof body !== "object" || Array.isArray(body))
         return Response.jsonUnsafe(
-          e instanceof HttpError ? e.body : { code: "internal_error" },
-          { status: e instanceof HttpError ? e.status : 500 },
+          { code: "invalid_request" },
+          { status: 422 },
         );
-      }
-    });
+      yield* Effect.try({
+        try: () => {
+          if (options.access === "bearer")
+            requireBearer(
+              request.headers.authorization,
+              Redacted.value(apiKey),
+            );
+          if (options.path && !matchesRawPath(request.url, options.path)) {
+            requireBearer(
+              request.headers.authorization,
+              Redacted.value(apiKey),
+            );
+            reject(404, "unsupported_operation");
+          }
+        },
+        catch: (error) =>
+          error instanceof HttpError
+            ? error
+            : new HttpError(500, { code: "internal_error" }),
+      });
+      return yield* run(body as Record<string, unknown>, request);
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.succeed(
+          Response.jsonUnsafe(error.body, { status: error.status }),
+        ),
+      ),
+    );
   }).pipe(
     Effect.catchCause(() =>
       Effect.succeed(
@@ -190,49 +146,24 @@ function workosResponse<A>(
 }
 
 // Concrete HTTP boundary; database and server lifecycle remain in provider.ts.
-export function makeHttpApp(
-  options: {
-    apiKey: string;
-    issuer: string;
-    providerGeneration: string;
-    port: number;
-    authenticate: (body: Record<string, unknown>) => Promise<Authentication>;
-    createUser: (body: Record<string, unknown>) => Promise<User>;
-    listUsers: (url: string) => Promise<UserList>;
-    getUser: (id: string) => User;
-    getIdentities: (id: string) => Identities;
-    jwks: Jwks;
-  },
-  scope: Scope.Scope,
-) {
+export function makeHttpApp(scope: Scope.Scope) {
   return Effect.gen(function* () {
     const clientId = yield* httpClientId;
     const {
       apiKey,
-      issuer,
-      providerGeneration,
-      port,
+      instanceInfo,
       authenticate,
       createUser,
       listUsers,
       getUser,
       getIdentities,
       jwks,
-    } = options;
+    } = yield* WorkOSService;
     const api = makeApi(clientId);
     const handlers = HttpApiBuilder.group(api, "workos", (handlers) =>
       handlers
         .handleRaw("instanceInfo", ({ endpoint }) =>
-          workosResponse(
-            apiKey,
-            () => ({
-              providerGeneration,
-              issuer,
-              clientId,
-              port,
-            }),
-            { path: endpoint.path },
-          ),
+          workosResponse(apiKey, () => instanceInfo, { path: endpoint.path }),
         )
         .handleRaw("jwks", ({ endpoint }) =>
           workosResponse(apiKey, () => jwks, { path: endpoint.path }),
@@ -284,7 +215,13 @@ export function makeHttpApp(
     );
     const unsupported = workosResponse(
       apiKey,
-      () => reject(404, "unsupported_operation"),
+      () =>
+        Effect.fail(
+          new HttpError(404, {
+            code: "unsupported_operation",
+            message: "unsupported_operation",
+          }),
+        ),
       { access: "bearer" },
     );
     const app = Effect.gen(function* () {
