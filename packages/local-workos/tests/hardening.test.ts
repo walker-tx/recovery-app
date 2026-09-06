@@ -234,7 +234,10 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
     let after: string | undefined;
     do {
       const page = yield* Effect.promise(() =>
-        sdk.userManagement.listUsers({ limit: 1, after }),
+        sdk.userManagement.listUsers({
+          limit: 1,
+          ...(after === undefined ? {} : { after }),
+        }),
       );
       ids.push(...page.data.map((user) => user.id));
       after = page.listMetadata.after ?? undefined;
