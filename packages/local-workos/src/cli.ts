@@ -1,7 +1,8 @@
 import { isAbsolute } from "node:path";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Exit, Redacted, Schema } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
+import { consumeBootstrapApiKey } from "./config.ts";
 import { startProvider } from "./provider.ts";
 
 const command = Command.make(
@@ -26,19 +27,7 @@ const command = Command.make(
   },
   (options) =>
     Effect.gen(function* () {
-      // Bootstrap credentials have exactly one source and never enter argv or readiness.
-      const apiKey = yield* Effect.sync(() => {
-        const value = process.env.LOCAL_WORKOS_API_KEY;
-        delete process.env.LOCAL_WORKOS_API_KEY;
-        return value;
-      });
-      if (
-        !apiKey ||
-        apiKey.length !== 78 ||
-        !/^sk_test_local_[0-9a-f]{64}$/.test(apiKey)
-      ) {
-        return yield* Effect.fail(new Error("Invalid bootstrap inputs"));
-      }
+      const apiKey = yield* consumeBootstrapApiKey;
       // NodeRuntime owns interruption. This watchdog also bounds an in-flight
       // uninterruptible acquisition or a Promise finalizer that never settles.
       yield* Effect.acquireRelease(
@@ -58,7 +47,9 @@ const command = Command.make(
         (cleanup) => Effect.sync(cleanup),
       );
       const provider = yield* Effect.acquireRelease(
-        Effect.tryPromise(() => startProvider({ ...options, apiKey })),
+        Effect.tryPromise(() =>
+          startProvider({ ...options, apiKey: Redacted.value(apiKey) }),
+        ),
         (provider) => Effect.promise(() => provider.close()),
       );
       yield* Effect.sync(() =>

@@ -11,7 +11,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { generateKeyPair, exportJWK, importJWK, SignJWT } from "jose";
-import { Effect, Scope, Exit } from "effect";
+import { ConfigProvider, Effect, Scope, Exit } from "effect";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import {
   makeHttpApp,
@@ -318,21 +318,28 @@ export async function startProvider(options: {
         port: options.port ?? 0,
       }).pipe(Effect.provideService(Scope.Scope, scope)),
     );
-    const app = await makeHttpApp(
-      {
-        apiKey: options.apiKey,
-        clientId,
-        issuer,
-        providerGeneration: identity.generation,
-        port: server.address._tag === "TcpAddress" ? server.address.port : 0,
-        jwks,
-        authenticate,
-        createUser,
-        listUsers,
-        getUser: (id) => readUser(id, "body"),
-        getIdentities: (id) => readUser(id, "identities"),
-      },
-      scope,
+    const app = await Effect.runPromise(
+      makeHttpApp(
+        {
+          apiKey: options.apiKey,
+          issuer,
+          providerGeneration: identity.generation,
+          port: server.address._tag === "TcpAddress" ? server.address.port : 0,
+          jwks,
+          authenticate,
+          createUser,
+          listUsers,
+          getUser: (id) => readUser(id, "body"),
+          getIdentities: (id) => readUser(id, "identities"),
+        },
+        scope,
+      ).pipe(
+        // Persisted generation owns identity; never fall back to ambient env.
+        Effect.provideService(
+          ConfigProvider.ConfigProvider,
+          ConfigProvider.fromUnknown({ clientId }),
+        ),
+      ),
     );
     await Effect.runPromise(
       server.serve(app).pipe(Effect.provideService(Scope.Scope, scope)),
