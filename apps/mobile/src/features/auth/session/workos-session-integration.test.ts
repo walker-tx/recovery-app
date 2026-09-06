@@ -12,7 +12,7 @@ const credentials = (suffix: string): SessionCredentials => ({
   accessToken: `access-${suffix}`,
   refreshToken: `refresh-${suffix}`,
 });
-const encoded = (suffix: string) => JSON.stringify({ version: 1, ...credentials(suffix) });
+const encoded = (suffix: string) => JSON.stringify({ version: 2, environmentId: "environment-a", ...credentials(suffix) });
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 function deferred<T>() {
@@ -51,7 +51,7 @@ test("restoration refreshes persisted credentials without a protected-route flas
   const refresh = deferred<{ status: "success"; accessToken: string; refreshToken: string }>();
   const secureStore = fakeSecureStore(encoded("stored"));
   const owner = createWorkOSSessionOwner({
-    storage: createWorkOSSessionStorage(secureStore.adapter),
+    storage: createWorkOSSessionStorage(secureStore.adapter, "environment-a"),
     actions: actions({ async refreshSession() { return refresh.promise; } }),
   });
   const published = [owner.getSnapshot()];
@@ -65,7 +65,7 @@ test("restoration refreshes persisted credentials without a protected-route flas
   await restoring;
 
   assert.equal(owner.getSnapshot().isAuthenticated, true);
-  assert.deepEqual(JSON.parse(secureStore.value!), { version: 1, ...credentials("restored") });
+  assert.deepEqual(JSON.parse(secureStore.value!), { version: 2, environmentId: "environment-a", ...credentials("restored") });
 });
 
 test("forced concurrent token requests serialize one refresh and share its result", async () => {
@@ -73,7 +73,7 @@ test("forced concurrent token requests serialize one refresh and share its resul
   let refreshCalls = 0;
   const secureStore = fakeSecureStore(encoded("stored"));
   const owner = createWorkOSSessionOwner({
-    storage: createWorkOSSessionStorage(secureStore.adapter),
+    storage: createWorkOSSessionStorage(secureStore.adapter, "environment-a"),
     actions: actions({
       async refreshSession() {
         refreshCalls += 1;
@@ -97,7 +97,7 @@ test("transient restoration failure retains SecureStore credentials and retries"
   const secureStore = fakeSecureStore(encoded("stored"));
   let fail = true;
   const owner = createWorkOSSessionOwner({
-    storage: createWorkOSSessionStorage(secureStore.adapter),
+    storage: createWorkOSSessionStorage(secureStore.adapter, "environment-a"),
     actions: actions({
       async refreshSession() {
         if (fail) throw new Error("offline");
@@ -119,7 +119,7 @@ test("transient restoration failure retains SecureStore credentials and retries"
 test("terminal restoration invalidation clears SecureStore and settles unauthenticated", async () => {
   const secureStore = fakeSecureStore(encoded("expired"));
   const owner = createWorkOSSessionOwner({
-    storage: createWorkOSSessionStorage(secureStore.adapter),
+    storage: createWorkOSSessionStorage(secureStore.adapter, "environment-a"),
     actions: actions({ async refreshSession() { return { status: "invalid" }; } }),
   });
 
@@ -137,7 +137,7 @@ test("terminal restoration invalidation clears SecureStore and settles unauthent
 test("successful sign-out revokes before clearing the persisted session", async () => {
   const secureStore = fakeSecureStore(null);
   const events: string[] = [];
-  const storage = createWorkOSSessionStorage(secureStore.adapter);
+  const storage = createWorkOSSessionStorage(secureStore.adapter, "environment-a");
   const owner = createWorkOSSessionOwner({
     storage: {
       ...storage,
@@ -162,7 +162,7 @@ test("successful sign-out revokes before clearing the persisted session", async 
 test("failed sign-out retains the local session for a safe retry", async () => {
   const secureStore = fakeSecureStore(null);
   const owner = createWorkOSSessionOwner({
-    storage: createWorkOSSessionStorage(secureStore.adapter),
+    storage: createWorkOSSessionStorage(secureStore.adapter, "environment-a"),
     actions: actions({ async signOutSession() { throw new Error("offline"); } }),
   });
   await owner.restore();
@@ -178,7 +178,7 @@ test("an interrupted sign-out response retains credentials until an already-revo
   const secureStore = fakeSecureStore(null);
   let attempts = 0;
   const owner = createWorkOSSessionOwner({
-    storage: createWorkOSSessionStorage(secureStore.adapter),
+    storage: createWorkOSSessionStorage(secureStore.adapter, "environment-a"),
     actions: actions({
       async signOutSession() {
         attempts += 1;
@@ -204,7 +204,7 @@ test("corrupt SecureStore data restores unauthenticated without contacting refre
   const secureStore = fakeSecureStore("{not-json");
   let refreshCalls = 0;
   const owner = createWorkOSSessionOwner({
-    storage: createWorkOSSessionStorage(secureStore.adapter),
+    storage: createWorkOSSessionStorage(secureStore.adapter, "environment-a"),
     actions: actions({
       async refreshSession() {
         refreshCalls += 1;
@@ -217,4 +217,159 @@ test("corrupt SecureStore data restores unauthenticated without contacting refre
   assert.equal(refreshCalls, 0);
   assert.equal(owner.getSnapshot().isLoading, false);
   assert.equal(owner.getSnapshot().isAuthenticated, false);
+});
+
+for (const record of [
+  JSON.stringify({ version: 1, ...credentials("legacy") }),
+  JSON.stringify({ version: 2, environmentId: "environment-b", ...credentials("other") }),
+  "malformed",
+]) {
+  test(`incompatible storage never refreshes, including failed erasure: ${record}`, async () => {
+    const secureStore = fakeSecureStore(record);
+    const erase = secureStore.adapter.deleteItemAsync;
+    let failErase = true;
+    let refreshCalls = 0;
+    secureStore.adapter.deleteItemAsync = async () => {
+      if (failErase) throw new Error("erase failed");
+      await erase();
+    };
+    const owner = createWorkOSSessionOwner({
+      storage: createWorkOSSessionStorage(secureStore.adapter, "environment-a"),
+      actions: actions({ async refreshSession() {
+        refreshCalls += 1;
+        return { status: "success", ...credentials("unexpected") };
+      } }),
+    });
+    await assert.rejects(owner.restore(), /erase failed/);
+    assert.equal(secureStore.value, record);
+    assert.equal(owner.getSnapshot().isAuthenticated, false);
+    assert.deepEqual(owner.getSnapshot().retry, { operation: "restore" });
+    assert.equal(await owner.fetchAccessToken({ forceRefreshToken: true }), null);
+    await assert.rejects(owner.retryRestore(), /erase failed/);
+    assert.equal(refreshCalls, 0);
+    failErase = false;
+    await owner.retryRestore();
+    assert.equal(secureStore.value, null);
+    assert.equal(owner.getSnapshot().isAuthenticated, false);
+    assert.equal(owner.getSnapshot().retry, null);
+    assert.equal(refreshCalls, 0);
+  });
+}
+
+test("unknown environment leaves credentials untouched and never contacts refresh", async () => {
+  const secureStore = fakeSecureStore(encoded("stored"));
+  let refreshCalls = 0;
+  const owner = createWorkOSSessionOwner({
+    storage: createWorkOSSessionStorage(secureStore.adapter, undefined as unknown as string),
+    actions: actions({ async refreshSession() {
+      refreshCalls += 1;
+      return { status: "success", ...credentials("unexpected") };
+    } }),
+  });
+  await assert.rejects(owner.restore(), /environment/i);
+  await assert.rejects(owner.retryRestore(), /environment/i);
+  assert.equal(await owner.fetchAccessToken({ forceRefreshToken: true }), null);
+  assert.equal(refreshCalls, 0);
+  assert.equal(secureStore.value, encoded("stored"));
+  assert.equal(owner.getSnapshot().isAuthenticated, false);
+  assert.deepEqual(owner.getSnapshot().retry, { operation: "restore" });
+});
+
+
+test("new paired owner restores same identity across destinations but erases a different identity", async () => {
+  const first = { environmentId: "stack:provider-a", backendUrl: "http://localhost:3210" };
+  for (const next of [
+    { ...first, environmentId: "stack:provider-b" },
+    { ...first, backendUrl: "http://localhost:3211" },
+    { ...first, backendUrl: "https://recovery.example.ts.net" },
+  ]) {
+    const secureStore = fakeSecureStore(null);
+    const previous = createWorkOSSessionOwner({
+      storage: createWorkOSSessionStorage(secureStore.adapter, first.environmentId),
+      actions: actions(),
+    });
+    await previous.signIn({ email: "person@example.com", password: "test" });
+    let refreshCalls = 0;
+    const owner = createWorkOSSessionOwner({
+      storage: createWorkOSSessionStorage(secureStore.adapter, next.environmentId),
+      actions: actions({ async refreshSession({ refreshToken }) {
+        assert.equal(refreshToken, "refresh-signed-in");
+        refreshCalls++;
+        return { status: "success", ...credentials("restored") };
+      } }),
+    });
+    assert.equal(owner.getSnapshot().isAuthenticated, false);
+    await owner.restore();
+    const sameIdentity = next.environmentId === first.environmentId;
+    assert.equal(await owner.fetchAccessToken({ forceRefreshToken: false }), sameIdentity ? "access-restored" : null);
+    assert.equal(refreshCalls, sameIdentity ? 1 : 0);
+    if (!sameIdentity) assert.equal(secureStore.value, null);
+  }
+});
+
+for (const operation of ["signIn", "completeSignup", "refresh", "invalid", "signOut"] as const) {
+  test(`retired owner's deferred ${operation} cannot replace new credentials`, async () => {
+    const gate = deferred<any>();
+    const store = fakeSecureStore(null);
+    const old = createWorkOSSessionOwner({
+      storage: createWorkOSSessionStorage(store.adapter, "environment-a"),
+      actions: actions({
+        ...(operation === "signIn" ? { signIn: () => gate.promise } : {}),
+        ...(operation === "completeSignup" ? { completeSignup: () => gate.promise } : {}),
+        ...(["refresh", "invalid"].includes(operation) ? { refreshSession: () => gate.promise } : {}),
+        ...(operation === "signOut" ? { signOutSession: () => gate.promise } : {}),
+      }),
+    });
+    if (!["signIn", "completeSignup"].includes(operation)) await old.signIn({ email: "old", password: "test" });
+    const pending = operation === "signIn" ? old.signIn({ email: "old", password: "test" })
+      : operation === "completeSignup" ? old.completeSignup({ intentId: "old", code: "test" })
+      : operation === "signOut" ? old.signOut() : old.refresh();
+    await tick();
+    old.dispose();
+    const replacement = createWorkOSSessionOwner({ storage: createWorkOSSessionStorage(store.adapter, "environment-a"), actions: actions() });
+    await replacement.signIn({ email: "new", password: "test" });
+    gate.resolve(operation === "invalid" ? { status: "invalid" } : { status: "success", revoked: true, ...credentials("old") });
+    await pending;
+    assert.equal(store.value, encoded("signed-in"));
+  });
+}
+
+test("started storage writes settle before replacement writes", async () => {
+  const gate = deferred<void>();
+  const store = fakeSecureStore(null);
+  const set = store.adapter.setItemAsync;
+  let first = true;
+  store.adapter.setItemAsync = async (key, value) => {
+    if (first) { first = false; await gate.promise; }
+    await set(key, value);
+  };
+  const old = createWorkOSSessionOwner({ storage: createWorkOSSessionStorage(store.adapter, "environment-a"), actions: actions() });
+  const pending = old.completeSignup({ intentId: "old", code: "test" });
+  await tick();
+  old.dispose();
+  const replacement = createWorkOSSessionOwner({ storage: createWorkOSSessionStorage(store.adapter, "environment-a"), actions: actions() });
+  const next = replacement.signIn({ email: "new", password: "test" });
+  await tick();
+  assert.equal(store.value, null);
+  gate.resolve();
+  await Promise.all([pending, next]);
+  assert.equal(store.value, encoded("signed-in"));
+});
+
+test("strict-effect cleanup and setup cannot revive old refresh work", async () => {
+  const gate = deferred<{ status: "invalid" }>();
+  const store = fakeSecureStore(encoded("stored"));
+  let calls = 0;
+  const owner = createWorkOSSessionOwner({
+    storage: createWorkOSSessionStorage(store.adapter, "environment-a"),
+    actions: actions({ refreshSession: async () => ++calls === 1 ? gate.promise : { status: "success", ...credentials("replayed") } }),
+  });
+  const firstSetup = owner.activate();
+  await tick();
+  owner.dispose();
+  await owner.activate();
+  gate.resolve({ status: "invalid" });
+  await firstSetup;
+  assert.equal(store.value, encoded("replayed"));
+  assert.equal(await owner.fetchAccessToken({ forceRefreshToken: false }), "access-replayed");
 });

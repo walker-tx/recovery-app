@@ -281,3 +281,18 @@ describe("WorkOSGateway contract", () => {
     }
   });
 });
+
+import { resolveWorkOSExpectations } from './workosAuthConfig';
+it('pins SDK staging options to real WorkOS', () => {
+  expect(resolveWorkOSExpectations({ mode: 'staging', workosClientId: 'client_01ABC123' }).sdkOptions).toEqual({ apiHostname: 'api.workos.com', https: true, port: 443 });
+});
+it('maps a validated local target to installed WorkOS SDK options', () => {
+  const generation = '12345678-1234-4234-8234-123456789abc';
+  const client = `client_local${generation.replaceAll('-', '')}`;
+  expect(resolveWorkOSExpectations({ mode: 'local', workosClientId: client,
+    stackId: '87654321-1234-4234-8234-123456789abc', providerGeneration: generation,
+    issuer: `https://local-workos.invalid/instances/${generation}`, audience: client,
+    jwks: 'http://127.0.0.1:6100/jwks', apiUrl: 'http://127.0.0.1:6100',
+    convexUrl: 'http://127.0.0.1:6101', convexSiteUrl: 'http://127.0.0.1:6102',
+  }).sdkOptions).toEqual({ apiHostname: '127.0.0.1', https: false, port: 6100 });
+});

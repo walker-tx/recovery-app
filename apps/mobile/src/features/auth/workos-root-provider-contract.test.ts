@@ -7,7 +7,7 @@ const source = await readFile(new URL("./workos-root-provider.tsx", import.meta.
 test("WorkOS root nests session, Convex custom auth hook, signup flow, and protected routes", () => {
   assert.match(
     source,
-    /<WorkOSSessionProvider client=\{client\}>[\s\S]*?<ConvexProviderWithAuth client=\{client\} useAuth=\{useWorkOSConvexAuth\}>[\s\S]*?<SignupFlowProvider>[\s\S]*?<WorkOSProtectedRoutes \/>[\s\S]*?<\/SignupFlowProvider>[\s\S]*?<\/ConvexProviderWithAuth>[\s\S]*?<\/WorkOSSessionProvider>/,
+    /<WorkOSSessionProvider key=\{getWorkOSSessionScope\(config\)\} client=\{client\} config=\{config\}>[\s\S]*?<ConvexProviderWithAuth client=\{client\} useAuth=\{useWorkOSConvexAuth\}>[\s\S]*?<SignupFlowProvider>[\s\S]*?<WorkOSProtectedRoutes \/>[\s\S]*?<\/SignupFlowProvider>[\s\S]*?<\/ConvexProviderWithAuth>[\s\S]*?<\/WorkOSSessionProvider>/,
   );
 });
 

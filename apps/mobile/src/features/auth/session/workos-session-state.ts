@@ -24,6 +24,8 @@ export type WorkOSSessionActions = {
 };
 
 export type WorkOSSessionOwner = {
+  activate(): Promise<void>;
+  dispose(): void;
   getSnapshot(): WorkOSSessionSnapshot;
   subscribe(listener: () => void): () => void;
   restore(): Promise<void>;
@@ -90,11 +92,22 @@ export function workOSSessionReducer(
   }
 }
 
+// All owners share one SecureStore slot. Include reads: validation may delete it.
+let storageTail: Promise<unknown> = Promise.resolve();
+
 export function createWorkOSSessionOwner(dependencies: {
   storage: WorkOSSessionStorage;
   actions: WorkOSSessionActions;
 }): WorkOSSessionOwner {
   const { storage, actions } = dependencies;
+  let lifetime = 0;
+  let active = true;
+  const current = (id: number) => active && id === lifetime;
+  const accessStorage = <T>(id: number, operation: () => Promise<T>): Promise<T | undefined> => {
+    const result = storageTail.then(() => current(id) ? operation() : undefined);
+    storageTail = result.catch(() => undefined);
+    return result;
+  };
   let session: SessionCredentials | null = null;
   let snapshot = initialSnapshot;
   let refreshPromise: Promise<string | null> | null = null;
@@ -108,13 +121,16 @@ export function createWorkOSSessionOwner(dependencies: {
     publish(workOSSessionReducer(snapshot, event));
   };
 
-  const establish = async (credentials: SessionCredentials) => {
-    await storage.write(credentials);
+  const establish = async (credentials: SessionCredentials, id: number) => {
+    await accessStorage(id, () => storage.write(credentials));
+    if (!current(id)) return;
     session = credentials;
     transition({ type: "sessionEstablished" });
   };
 
   const runRefresh = (mode: "restore" | "authenticated"): Promise<string | null> => {
+    const id = lifetime;
+    if (!current(id)) return Promise.resolve(null);
     if (refreshPromise !== null) return refreshPromise;
     if (session === null || snapshot.isSigningOut) return Promise.resolve(null);
 
@@ -123,8 +139,10 @@ export function createWorkOSSessionOwner(dependencies: {
       transition({ type: mode === "restore" ? "restoreStarted" : "refreshStarted" });
       try {
         const result = await actions.refreshSession({ refreshToken });
+        if (!current(id)) return null;
         if (result.status === "invalid") {
-          await storage.clear();
+          await accessStorage(id, () => storage.clear());
+          if (!current(id)) return null;
           session = null;
           transition({ type: "sessionInvalidated" });
           return null;
@@ -133,15 +151,17 @@ export function createWorkOSSessionOwner(dependencies: {
           accessToken: result.accessToken,
           refreshToken: result.refreshToken,
         };
-        await storage.write(credentials);
+        await accessStorage(id, () => storage.write(credentials));
+        if (!current(id)) return null;
         session = credentials;
         transition({ type: "sessionEstablished" });
         return credentials.accessToken;
       } catch (error) {
+        if (!current(id)) return null;
         transition({ type: mode === "restore" ? "restoreFailed" : "refreshFailed" });
         throw error;
       } finally {
-        refreshPromise = null;
+        if (current(id)) refreshPromise = null;
       }
     })();
     refreshPromise = operation;
@@ -149,15 +169,20 @@ export function createWorkOSSessionOwner(dependencies: {
   };
 
   const restore = async () => {
+    const id = lifetime;
+    if (!current(id)) return;
     transition({ type: "restoreStarted" });
     try {
-      session = await storage.read();
+      const restored = await accessStorage(id, () => storage.read());
+      if (!current(id)) return;
+      session = restored ?? null;
       if (session === null) {
         transition({ type: "restoredEmpty" });
         return;
       }
       await runRefresh("restore");
     } catch (error) {
+      if (!current(id)) return;
       if (snapshot.retry?.operation !== "restore") transition({ type: "restoreFailed" });
       throw error;
     }
@@ -172,14 +197,20 @@ export function createWorkOSSessionOwner(dependencies: {
   };
 
   const signIn = async (input: { email: string; password: string }) => {
-    await establish(await actions.signIn(input));
+    const id = lifetime;
+    if (!current(id)) return;
+    await establish(await actions.signIn(input), id);
   };
   const completeSignup = async (input: { intentId: string; code: string }) => {
-    await establish(await actions.completeSignup(input));
+    const id = lifetime;
+    if (!current(id)) return;
+    await establish(await actions.completeSignup(input), id);
   };
   const refresh = () => runRefresh(snapshot.isLoading ? "restore" : "authenticated");
 
   const signOut = async () => {
+    const id = lifetime;
+    if (!current(id)) return;
     if (refreshPromise !== null) {
       try {
         await refreshPromise;
@@ -187,25 +218,40 @@ export function createWorkOSSessionOwner(dependencies: {
         // Revoke the last persisted token even when refresh failed.
       }
     }
-    if (session === null) return;
+    if (!current(id) || session === null) return;
     transition({ type: "signOutStarted" });
     try {
       await actions.signOutSession({ refreshToken: session.refreshToken });
-      await storage.clear();
+      await accessStorage(id, () => storage.clear());
+      if (!current(id)) return;
       session = null;
       transition({ type: "revoked" });
     } catch (error) {
+      if (!current(id)) return;
       transition({ type: "signOutFailed" });
       throw error;
     }
   };
 
   const fetchAccessToken = ({ forceRefreshToken }: { forceRefreshToken: boolean }) => {
+    if (!active) return Promise.resolve(null);
     if (forceRefreshToken) return refresh();
     return Promise.resolve(snapshot.isAuthenticated ? session?.accessToken ?? null : null);
   };
 
   return {
+    activate() {
+      lifetime += 1;
+      active = true;
+      session = null;
+      refreshPromise = null;
+      return restore();
+    },
+    dispose() {
+      active = false;
+      lifetime += 1;
+      session = null;
+    },
     getSnapshot: () => snapshot,
     subscribe(listener) {
       listeners.add(listener);
