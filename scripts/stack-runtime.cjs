@@ -231,6 +231,12 @@ async function createRuntime({
             service, `${service === "mailpitSmtp" ? "smtp" : "http"}://127.0.0.1:${port}`,
           ])),
           readiness: observations,
+          guidance: status.state === "reserved" && Object.entries(status.services).every(
+            ([service, state]) => state === "stopped" ||
+              (state === "running" && observations[service]?.state === "ready")
+          )
+            ? "To explicitly resume when authorized, run from the reported worktree: mise run zero -- --isolated <absolute-backend-executable>. Replace the placeholder with your verified executable; its path is not inferred. Startup still enforces ownership and lock checks. Never clear locks or reset state to retry."
+            : "Resume refused: process ownership or readiness is conflicted, unknown, or not ready. Inspect the reported services and scoped logs; status cannot prescribe a safe repair. Never clear locks, kill unknown processes, or reset state to retry.",
           // Paired endpoints share one daemon; do not invent filesystem log paths.
           logs: Object.fromEntries(["mailpitHttp", "provider", "convexCloud", "metro"].map(service => [
             service, { manager: "pitchfork", name: processName(status, service) },
@@ -354,6 +360,7 @@ async function runCli(
           worktree: result.worktree,
           urls: result.urls,
           readiness: result.readiness,
+          guidance: result.guidance,
           logs: result.logs,
         } : {}),
       }),

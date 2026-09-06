@@ -106,6 +106,15 @@ mapping still matches. Stopped, conflicted, or unknown endpoints stay
 `unknown/not-probed`. Each eligible endpoint gets one bounded probe; failures are
 sanitized as `not-ready/probe-failed`, without changing process ownership state.
 `ready` reports protocol evidence, not application health or process identity.
+Status also reports resume guidance using the supported isolated command and an
+explicit `<absolute-backend-executable>` parameter, never an inferred path. Run
+it only when authorized, from the reported worktree, with your verified executable.
+This is guidance, not an executed action or proof that lifecycle locks are clear;
+startup still performs its existing ownership and lock checks. Conflicted or
+unknown ownership, or unknown/failed readiness for a running process, instead
+reports refusal and directs inspection of the reported services/scoped logs.
+There is no automatic repair command: never clear locks, kill unknown processes,
+or reset state to bypass refusal.
 SMTP readiness uses its own greeting; Convex site readiness reports `transport`
 evidence for its own TCP listener only, not application health.
 Ambiguous command/publication timeouts

@@ -57,6 +57,8 @@ test("status exposes configured URLs, unchecked readiness and scoped log referen
   const record = await f.runtime.reserve();
   const status = await f.runtime.status(record.stackId);
   assert.equal(status.worktree, await fs.realpath(f.worktree));
+  assert.match(status.guidance, /mise run zero -- --isolated <absolute-backend-executable>/);
+  assert.match(status.guidance, /Never clear locks/);
   for (const [service, port] of Object.entries(record.ports)) {
     assert.equal(status.urls[service], `${service === "mailpitSmtp" ? "smtp" : "http"}://127.0.0.1:${port}`);
     assert.deepEqual(status.readiness[service], { state: "unknown", reason: "not-probed" });
@@ -81,6 +83,8 @@ test("occupied listeners remain conflicts, never readiness evidence", async (t) 
   available = false;
   const status = await f.runtime.status(record.stackId);
   assert.equal(status.state, "conflict");
+  assert.match(status.guidance, /Resume refused/);
+  assert.doesNotMatch(status.guidance, /mise run zero/);
   assert.ok(Object.values(status.services).every(state => state === "occupied"));
   assert.ok(Object.values(status.readiness).every(value => value.state === "unknown"));
   assert.deepEqual(f.calls, []);

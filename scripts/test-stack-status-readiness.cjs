@@ -66,6 +66,8 @@ test('status probes verified original daemons once and labels site transport onl
   const status = await f.runtime.status(f.record.stackId);
   assert.equal(f.probes.length, 6);
   assert.equal(f.mappings.length, 4);
+  assert.match(status.guidance, /mise run zero -- --isolated <absolute-backend-executable>/);
+  assert.match(status.guidance, /not inferred/);
   for (const service of Object.keys(f.record.ports)) assert.deepEqual(status.readiness[service], {
     state: 'ready', evidence: service === 'convexSite' ? 'transport' : 'protocol',
   });
@@ -74,6 +76,8 @@ for (const mode of ['replacement', 'mapping-failed']) test(`status leaves ${mode
   const f = await fixture(t, mode);
   const status = await f.runtime.status(f.record.stackId);
   assert.equal(f.probes.length, 0);
+  assert.match(status.guidance, /Resume refused/);
+  assert.doesNotMatch(status.guidance, /mise run zero/);
   assert.ok(Object.values(status.readiness).every(value => value.state === 'unknown'));
 });
 test('status refuses both endpoints of a split daemon pair', async t => {
@@ -88,6 +92,8 @@ for (const mode of ['failed', 'timeout']) test(`status sanitizes ${mode} probes 
   const status = await f.runtime.status(f.record.stackId);
   assert.equal(f.probes.length, 6);
   assert.equal(status.services.provider, 'running');
+  assert.match(status.guidance, /Resume refused/);
+  assert.doesNotMatch(status.guidance, /mise run zero/);
   assert.deepEqual(status.readiness.provider, { state: 'not-ready', reason: 'probe-failed' });
   assert.equal(JSON.stringify(status).includes('secret'), false);
   if (mode === 'timeout') assert.ok(f.signals.every(signal => signal.aborted));
