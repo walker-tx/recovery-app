@@ -11,7 +11,7 @@ test("text fields support filled treatment and an accessible trailing control", 
   assert.match(source, /endAdornment\?: ReactNode/);
   assert.match(
     source,
-    /appearance === "filled" \? "border-transparent" : "border-line"/,
+    /appearance\s+===\s+"filled"\s+\?\s+"border-transparent"\s+:\s+"border-line"/,
   );
   assert.match(source, /className=\{`min-h-touch flex-row/);
   assert.match(source, /className=\{`min-h-touch flex-1/);

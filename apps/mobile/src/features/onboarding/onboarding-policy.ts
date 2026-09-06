@@ -11,15 +11,21 @@ type ProfileValidation = {
 export function getFirstInvalidProfileField(
   errors: ProfileValidation,
 ): keyof ProfileValidation | null {
-  if (errors.displayName !== undefined) return "displayName";
-  if (errors.firstName !== undefined) return "firstName";
+  if (errors.displayName !== undefined) {
+    return "displayName";
+  }
+  if (errors.firstName !== undefined) {
+    return "firstName";
+  }
   return null;
 }
 
 export function getAuthenticatedDestination(
   profile: ProfileSummary,
 ): "onboarding" | "app" | null {
-  if (profile === undefined) return null;
+  if (profile === undefined) {
+    return null;
+  }
   return profile?.onboardingComplete === true ? "app" : "onboarding";
 }
 

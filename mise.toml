@@ -43,8 +43,16 @@ run = "./scripts/test-zero.sh && ./scripts/test-zero-tailnet.sh"
 description = "Install workspace dependencies from the lockfile"
 run = "pnpm install --frozen-lockfile"
 
+[tasks.format]
+description = "Format owned JavaScript, TypeScript, and JSON files"
+run = "pnpm run format"
+
+[tasks.lint]
+description = "Run strict Oxlint checks with zero warnings"
+run = "pnpm run lint"
+
 [tasks.check]
-description = "Run workspace static checks"
+description = "Check formatting, lint, and workspace types"
 run = "pnpm run check"
 
 [tasks.doctor]

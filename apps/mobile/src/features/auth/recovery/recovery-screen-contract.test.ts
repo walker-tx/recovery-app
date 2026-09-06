@@ -2,10 +2,19 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const requestSourceUrl = new URL("./forgot-password-screen.tsx", import.meta.url);
+const requestSourceUrl = new URL(
+  "./forgot-password-screen.tsx",
+  import.meta.url,
+);
 const resetSourceUrl = new URL("./reset-password-screen.tsx", import.meta.url);
-const requestRouteSourceUrl = new URL("../../../app/(auth)/forgot-password.tsx", import.meta.url);
-const resetRouteSourceUrl = new URL("../../../app/(auth)/reset-password.tsx", import.meta.url);
+const requestRouteSourceUrl = new URL(
+  "../../../app/(auth)/forgot-password.tsx",
+  import.meta.url,
+);
+const resetRouteSourceUrl = new URL(
+  "../../../app/(auth)/reset-password.tsx",
+  import.meta.url,
+);
 
 test("recovery request matches the password-reset hierarchy", async () => {
   const source = await readFile(requestSourceUrl, "utf8");
@@ -15,7 +24,7 @@ test("recovery request matches the password-reset hierarchy", async () => {
   assert.match(source, /Reset it/);
   assert.match(
     source,
-    /Tell us the address on the account and we'll send a reset token\. Your groups and your counts aren't touched\./,
+    /Tell\s+us\s+the\s+address\s+on\s+the\s+account\s+and\s+we'll\s+send\s+a\s+reset\s+token\.\s+Your\s+groups\s+and\s+your\s+counts\s+aren't\s+touched\./,
   );
   assert.match(source, /appearance="filled"[\s\S]*?label="Email"/);
   assert.match(source, /Send reset token/);
@@ -30,15 +39,24 @@ test("accepted recovery shows enumeration-safe submitted-email confirmation", as
   assert.match(source, /Check your email/);
   assert.match(source, /submittedEmail/);
   assert.match(source, /If there is an account for/);
-  assert.match(source, /a reset token is on its way and is good for one hour\./);
+  assert.match(
+    source,
+    /a\s+reset\s+token\s+is\s+on\s+its\s+way\s+and\s+is\s+good\s+for\s+one\s+hour\./,
+  );
   assert.match(source, /startRecovery/);
   assert.match(source, /Resend reset token/);
   assert.match(source, /cooldownSeconds/);
   assert.match(source, /onEnterResetToken/);
   assert.match(source, /Enter reset token/);
   assert.match(source, /Didn't arrive\? Check spam, then/);
-  assert.ok(source.indexOf("Didn't arrive? Check spam, then") < source.indexOf("Resend reset token"));
-  const sentState = source.slice(source.indexOf("{state.submittedEmail ? ("), source.indexOf(") : ("));
+  assert.ok(
+    source.indexOf("Didn't arrive? Check spam, then") <
+      source.indexOf("Resend reset token"),
+  );
+  const sentState = source.slice(
+    source.indexOf("{state.submittedEmail ? ("),
+    source.indexOf(") : ("),
+  );
   assert.doesNotMatch(sentState, />PASSWORD</);
   assert.doesNotMatch(source, /onRecoveryStarted/);
   assert.doesNotMatch(source, /reset link|another link/i);
@@ -62,10 +80,19 @@ test("reset preserves token and confirmation checks in an open artifact-aligned 
 test("sent-state transition is announced once without making cooldown ticks live", async () => {
   const source = await readFile(requestSourceUrl, "utf8");
 
-  assert.match(source, /AccessibilityInfo\.announceForAccessibility\("Check your email"\)/);
+  assert.match(
+    source,
+    /AccessibilityInfo\.announceForAccessibility\("Check your email"\)/,
+  );
   assert.match(source, /\[state\.submittedEmail\]/);
-  assert.doesNotMatch(source, /AccessibilityInfo\.announceForAccessibility\([^)]*cooldownSeconds/);
-  assert.doesNotMatch(source, /cooldownSeconds > 0 \? <Typography accessibilityLiveRegion/);
+  assert.doesNotMatch(
+    source,
+    /AccessibilityInfo\.announceForAccessibility\([^)]*cooldownSeconds/,
+  );
+  assert.doesNotMatch(
+    source,
+    /cooldownSeconds > 0\s+\?\s*\(?\s*<Typography\b[^>]*\baccessibilityLiveRegion/,
+  );
 });
 
 test("recovery route controls pop when possible, fall back safely, and preserve the real reset path", async () => {
@@ -74,9 +101,15 @@ test("recovery route controls pop when possible, fall back safely, and preserve 
     readFile(resetRouteSourceUrl, "utf8"),
   ]);
 
-  assert.match(requestRoute, /if \(router\.canGoBack\(\)\) router\.back\(\);[\s\S]*?else router\.replace\("\.\/sign-in"\)/);
+  assert.match(
+    requestRoute,
+    /if \(router\.canGoBack\(\)\)\s*\{\s*router\.back\(\);\s*\}\s*else\s*\{\s*router\.replace\("\.\/sign-in"\);\s*\}/,
+  );
   assert.match(requestRoute, /onBack=\{handleBack\}/);
-  assert.match(requestRoute, /onEnterResetToken=\{\(\) => router\.push\("\.\/reset-password"\)\}/);
+  assert.match(
+    requestRoute,
+    /onEnterResetToken=\{\(\) => router\.push\("\.\/reset-password"\)\}/,
+  );
   assert.match(resetRoute, /router\.canGoBack\(\)/);
   assert.match(resetRoute, /router\.replace\("\.\/sign-in"\)/);
 });
@@ -84,7 +117,10 @@ test("recovery route controls pop when possible, fall back safely, and preserve 
 test("new password visibility control is explicit and accessible", async () => {
   const source = await readFile(resetSourceUrl, "utf8");
 
-  assert.match(source, /accessibilityLabel=\{isPasswordVisible \? "Hide password" : "Show password"\}/);
+  assert.match(
+    source,
+    /accessibilityLabel=\{\s*isPasswordVisible\s+\?\s+"Hide password"\s+:\s+"Show password"\s*\}/,
+  );
   assert.match(source, /\{isPasswordVisible \? "HIDE" : "SHOW"\}/);
   assert.match(source, /secureTextEntry=\{!isPasswordVisible\}/);
 });

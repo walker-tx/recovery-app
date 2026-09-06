@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "jsxSingleQuote": false,
+  "trailingComma": "all",
+  "arrowParens": "always",
+  "bracketSpacing": true,
+  "bracketSameLine": false,
+  "singleAttributePerLine": true,
+  "objectWrap": "preserve",
+  "endOfLine": "lf",
+  "insertFinalNewline": true,
+  "sortImports": false,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/.agents/**",
+    "**/_generated/**",
+    "**/.expo/**",
+    "**/.convex/**",
+    "**/dist/**",
+    ".worktrees/**",
+    "pnpm-lock.yaml"
+  ]
+}

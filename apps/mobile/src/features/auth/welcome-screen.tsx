@@ -17,19 +17,30 @@ export function WelcomeScreen({ onSignIn, onSignUp }: WelcomeScreenProps) {
     >
       <View className="gap-md">
         <Typography variant="overline">RECOVERY TRACKER</Typography>
-        <Typography accessibilityRole="header" variant="display">
+        <Typography
+          accessibilityRole="header"
+          variant="display"
+        >
           Count the days,{"\n"}not alone
         </Typography>
         <Typography className="text-ink-muted">
-          Nothing is public. You choose a name, and you choose what the group sees.
+          Nothing is public. You choose a name, and you choose what the group
+          sees.
         </Typography>
       </View>
 
       <View className="gap-sm">
-        <Button className="w-full" onPress={onSignUp}>
+        <Button
+          className="w-full"
+          onPress={onSignUp}
+        >
           Create account
         </Button>
-        <Button className="w-full" onPress={onSignIn} variant="secondary">
+        <Button
+          className="w-full"
+          onPress={onSignIn}
+          variant="secondary"
+        >
           Sign in
         </Button>
       </View>

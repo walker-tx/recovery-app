@@ -1,0 +1,51 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "react"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "rules": {
+    "curly": ["error", "all"],
+    "eqeqeq": ["error", "always"],
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-debugger": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/consistent-type-imports": [
+      "error",
+      {
+        "prefer": "type-imports",
+        "fixStyle": "inline-type-imports"
+      }
+    ],
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "react/react-in-jsx-scope": "off",
+    "react/style-prop-object": "off",
+    "react/purity": "off",
+    "react/hooks": "off",
+    "react/use-memo": "off",
+    "react/set-state-in-effect": "off",
+    "react/exhaustive-effect-dependencies": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "no-underscore-dangle": [
+      "error",
+      {
+        "allow": ["_id", "_creationTime"]
+      }
+    ]
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/.agents/**",
+    "**/_generated/**",
+    "**/.expo/**",
+    "**/.convex/**",
+    "**/dist/**",
+    ".worktrees/**",
+    "pnpm-lock.yaml"
+  ]
+}

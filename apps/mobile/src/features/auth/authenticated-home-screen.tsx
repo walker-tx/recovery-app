@@ -7,7 +7,8 @@ import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
 import { useWorkOSSession } from "./session/workos-session-provider";
 
-const signOutError = "Sign out was not completed. Your session is still active. Try again.";
+const signOutError =
+  "Sign out was not completed. Your session is still active. Try again.";
 
 export function AuthenticatedHomeScreen() {
   const router = useRouter();
@@ -27,14 +28,18 @@ export function AuthenticatedHomeScreen() {
   return (
     <Screen contentClassName="w-full max-w-[520px] self-center">
       <Typography variant="overline">YOUR SPACE</Typography>
-      <Typography accessibilityRole="header" variant="display">
+      <Typography
+        accessibilityRole="header"
+        variant="display"
+      >
         Welcome back.
       </Typography>
       <Card.Root elevation="sm">
         <Card.Header>
           <Card.Title>Start where you are</Card.Title>
           <Card.Description>
-            There is nothing to complete yet. This foundation is intentionally quiet.
+            There is nothing to complete yet. This foundation is intentionally
+            quiet.
           </Card.Description>
         </Card.Header>
         <Card.Footer className="flex-col items-stretch">

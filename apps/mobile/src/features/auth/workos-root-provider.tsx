@@ -1,4 +1,8 @@
-import { ConvexProviderWithAuth, type ConvexReactClient, useQuery } from "convex/react";
+import {
+  ConvexProviderWithAuth,
+  type ConvexReactClient,
+  useQuery,
+} from "convex/react";
 import { Stack } from "expo-router/stack";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, View } from "react-native";
@@ -20,11 +24,16 @@ type WorkOSRootProviderProps = {
 };
 
 export function WorkOSRootProvider({ client }: WorkOSRootProviderProps) {
-  if (client === null) return <WorkOSMissingConfiguration />;
+  if (client === null) {
+    return <WorkOSMissingConfiguration />;
+  }
 
   return (
     <WorkOSSessionProvider client={client}>
-      <ConvexProviderWithAuth client={client} useAuth={useWorkOSConvexAuth}>
+      <ConvexProviderWithAuth
+        client={client}
+        useAuth={useWorkOSConvexAuth}
+      >
         <SignupFlowProvider>
           <StatusBar style="dark" />
           <WorkOSProtectedRoutes />
@@ -36,15 +45,23 @@ export function WorkOSRootProvider({ client }: WorkOSRootProviderProps) {
 
 export function WorkOSProtectedRoutes() {
   const session = useWorkOSSession();
-  const profile = useQuery(api.profiles.getMine, session.isAuthenticated ? {} : "skip");
+  const profile = useQuery(
+    api.profiles.getMine,
+    session.isAuthenticated ? {} : "skip",
+  );
   const destination = getWorkOSRouteDestination(session, profile);
 
   if (destination === "retry") {
-    const retry = session.retry?.operation === "restore" ? session.retryRestore : session.refresh;
+    const retry =
+      session.retry?.operation === "restore"
+        ? session.retryRestore
+        : session.refresh;
     return <WorkOSRetryState onRetry={retry} />;
   }
 
-  if (destination === "loading") return <WorkOSRestorationLoading />;
+  if (destination === "loading") {
+    return <WorkOSRestorationLoading />;
+  }
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -71,7 +88,9 @@ function WorkOSRestorationLoading() {
         className="items-center gap-md"
       >
         <ActivityIndicator />
-        <Typography className="text-ink-muted">Loading your account…</Typography>
+        <Typography className="text-ink-muted">
+          Loading your account…
+        </Typography>
       </View>
     </Screen>
   );
@@ -88,7 +107,9 @@ function WorkOSRetryState({ onRetry }: { onRetry: () => Promise<unknown> }) {
         >
           We couldn't finish loading your account. Try again.
         </Typography>
-        <Button onPress={() => void onRetry().catch(() => undefined)}>Try again</Button>
+        <Button onPress={() => void onRetry().catch(() => undefined)}>
+          Try again
+        </Button>
       </View>
     </Screen>
   );
@@ -101,9 +122,15 @@ function WorkOSMissingConfiguration() {
       <Screen contentClassName="w-full max-w-[520px] self-center">
         <View className="gap-md">
           <Typography variant="overline">RECOVERY</Typography>
-          <Typography accessibilityRole="header" variant="display">Connect your backend.</Typography>
+          <Typography
+            accessibilityRole="header"
+            variant="display"
+          >
+            Connect your backend.
+          </Typography>
           <Typography className="text-ink-muted">
-            Run mise run zero from the repository root to configure and start the backend.
+            Run mise run zero from the repository root to configure and start
+            the backend.
           </Typography>
         </View>
       </Screen>

@@ -32,7 +32,9 @@ export function sourceUsesGetUserIdentity(source: string): boolean {
       return;
     }
 
-    if (!found) ts.forEachChild(node, visit);
+    if (!found) {
+      ts.forEachChild(node, visit);
+    }
   }
 
   visit(sourceFile);
@@ -54,7 +56,9 @@ export function findGetUserIdentityUsages({
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name !== "_generated") visitDirectory(path);
+        if (entry.name !== "_generated") {
+          visitDirectory(path);
+        }
         continue;
       }
 

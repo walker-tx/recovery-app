@@ -2,13 +2,25 @@
   "name": "recovery-app",
   "private": true,
   "packageManager": "pnpm@11.19.0",
-  "engines": { "node": "24.16.0", "pnpm": "11.19.0" },
+  "engines": {
+    "node": "24.16.0",
+    "pnpm": "11.19.0"
+  },
   "scripts": {
     "dev": "turbo dev",
     "dev:mobile": "pnpm --filter @recovery/mobile start",
     "dev:backend": "pnpm --filter @recovery/backend dev",
-    "check": "turbo check",
-    "doctor": "pnpm --filter @recovery/mobile run doctor"
+    "check": "pnpm run format:check && pnpm run lint && turbo check",
+    "doctor": "pnpm --filter @recovery/mobile run doctor",
+    "format": "oxfmt --write \"**/*.{js,jsx,ts,tsx,mjs,cjs,json,jsonc}\"",
+    "format:check": "oxfmt --check \"**/*.{js,jsx,ts,tsx,mjs,cjs,json,jsonc}\"",
+    "lint": "oxlint --deny-warnings --report-unused-disable-directives .",
+    "lint:fix": "pnpm run lint --fix",
+    "test:style": "sh scripts/test-code-style.sh"
   },
-  "devDependencies": { "turbo": "2.10.11" }
+  "devDependencies": {
+    "oxfmt": "0.66.0",
+    "oxlint": "1.81.0",
+    "turbo": "2.10.11"
+  }
 }

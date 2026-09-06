@@ -25,7 +25,9 @@ describe("auth email templates", () => {
     });
     const { credential, ...outsideCredentialSlot } = rendered;
     expect(credential.value).toBe("123456");
-    expect(JSON.stringify(outsideCredentialSlot)).not.toContain("person@example.net");
+    expect(JSON.stringify(outsideCredentialSlot)).not.toContain(
+      "person@example.net",
+    );
     expect(JSON.stringify(outsideCredentialSlot)).not.toContain("123456");
   });
 
@@ -45,12 +47,17 @@ describe("auth email templates", () => {
     });
     const { credential, ...outsideCredentialSlot } = rendered;
     expect(credential.value).toBe("reset-secret");
-    expect(JSON.stringify(outsideCredentialSlot)).not.toContain("reset@example.net");
+    expect(JSON.stringify(outsideCredentialSlot)).not.toContain(
+      "reset@example.net",
+    );
     expect(JSON.stringify(outsideCredentialSlot)).not.toContain("reset-secret");
   });
 
   it.each([
-    ["passwordSignInOrRecovery", "Sign in with your password or recover the account."],
+    [
+      "passwordSignInOrRecovery",
+      "Sign in with your password or recover the account.",
+    ],
     ["googleSignIn", "Sign in with Google to continue."],
     ["appleSignIn", "Sign in with Apple to continue."],
   ] as const)("renders fixed private guidance for %s", (category, guidance) => {
@@ -70,13 +77,16 @@ describe("auth email templates", () => {
   });
 
   it("ignores arbitrary provider messages rather than interpolating them", () => {
-    const providerMessage = "raw provider response with password and session-token";
+    const providerMessage =
+      "raw provider response with password and session-token";
     const rendered = renderPrivateGuidance({
       email: "person@example.net",
       category: "googleSignIn",
       expiresAt,
       providerMessage,
-    } as Parameters<typeof renderPrivateGuidance>[0] & { providerMessage: string });
+    } as Parameters<typeof renderPrivateGuidance>[0] & {
+      providerMessage: string;
+    });
 
     expect(JSON.stringify(rendered)).not.toContain(providerMessage);
     expect(rendered.guidance.value).toBe("Sign in with Google to continue.");

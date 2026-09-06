@@ -63,5 +63,38 @@ kit tui --root .
 ## Checks
 
 - `mise run bootstrap-test` — test the secure bootstrap and documentation contract
-- `mise run check` — run workspace static checks
+- `mise run format` — apply Oxfmt formatting to owned JS/TS/TSX and JSON files
+- `mise run lint` — run strict Oxlint checks (warnings and unused suppressions fail)
+- `mise run check` — check formatting, lint, then workspace types
+- `mise exec -- pnpm run lint:fix` — apply safe lint fixes; review the diff
+- `mise exec -- pnpm run test:style` — verify bad code is rejected and formatting repairs it
 - `mise run doctor` — run Expo Doctor
+
+### Code style
+
+Pinned Oxfmt and Oxlint versions give agents and editors the same rules. Oxfmt uses
+an 80-column target, two spaces, semicolons, double quotes, trailing commas, and
+one JSX attribute per line. Import and package-key sorting are disabled. Preserve
+blank lines between logical steps: formatting cannot decide semantic grouping.
+
+Oxlint enables correctness and suspicious rules as errors, plus mandatory braces,
+strict equality, `const`/no `var`, type-only imports, no explicit `any`, and React
+hook/dependency checks. TypeScript remains the type checker; Oxlint's experimental
+type checking is not enabled. All warnings and unused disable directives fail.
+
+Explicit rule exclusions keep checks appropriate for this repository:
+
+- The automatic JSX runtime needs no React import; React Native style props are
+  not DOM style objects.
+- React Compiler-specific purity, hooks, memoization, synchronous-effect state,
+  and effect-dependency rules are not adopted in this tooling-only change.
+  Standard rules-of-hooks and exhaustive-deps remain errors.
+- In-place array sorting/reversing and locally scoped helper functions are valid;
+  this setup does not force immutable-array rewrites or helper extraction.
+- Convex's `_id` and `_creationTime` are allowed by the underscore naming rule.
+
+Generated Convex files, vendored skills, dependencies, build output, and lockfiles
+are excluded. Formatting is limited to JS/TS and JSON rather than rewriting prose.
+For the quickest edit loop, pass changed paths directly to `pnpm exec oxlint` or
+`pnpm exec oxfmt`; run the full `mise run check` before delivery. Do not use unsafe
+lint fixes or blanket suppressions to make checks pass.

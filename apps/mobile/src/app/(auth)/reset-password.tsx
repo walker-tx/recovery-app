@@ -6,9 +6,17 @@ export default function ResetPasswordRoute() {
   const router = useRouter();
 
   function handleBack() {
-    if (router.canGoBack()) router.back();
-    else router.replace("./sign-in");
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("./sign-in");
+    }
   }
 
-  return <ResetPasswordScreen onBack={handleBack} onPasswordReset={() => router.replace("./sign-in")} />;
+  return (
+    <ResetPasswordScreen
+      onBack={handleBack}
+      onPasswordReset={() => router.replace("./sign-in")}
+    />
+  );
 }

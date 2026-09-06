@@ -7,7 +7,10 @@ import {
   renderVerificationCode,
 } from "./authEmailTemplates";
 
-type MailpitFetch = (url: string, init: RequestInit) => Promise<Pick<Response, "ok" | "status">>;
+type MailpitFetch = (
+  url: string,
+  init: RequestInit,
+) => Promise<Pick<Response, "ok" | "status">>;
 
 type MailpitDeliveryConfig = {
   cloudUrl?: string;
@@ -28,12 +31,18 @@ function assertLocalDeliveryRuntime(
 }
 
 function isLoopbackUrl(value: string | undefined): boolean {
-  if (value === undefined) return false;
+  if (value === undefined) {
+    return false;
+  }
   try {
     const url = new URL(value);
     const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-    return (url.protocol === "http:" || url.protocol === "https:")
-      && (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1");
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        hostname === "::1")
+    );
   } catch {
     return false;
   }
@@ -42,7 +51,11 @@ function isLoopbackUrl(value: string | undefined): boolean {
 export function createMailpitAuthEmailDelivery(config: MailpitDeliveryConfig) {
   assertLocalDeliveryRuntime(config);
 
-  const send = async (email: string, subject: string, text: string): Promise<void> => {
+  const send = async (
+    email: string,
+    subject: string,
+    text: string,
+  ): Promise<void> => {
     const response = await config.fetch(config.deliveryUrl, {
       method: "POST",
       redirect: "error",
@@ -55,12 +68,16 @@ export function createMailpitAuthEmailDelivery(config: MailpitDeliveryConfig) {
       }),
     });
     if (!response.ok) {
-      throw new Error(`Mailpit auth delivery failed with status ${response.status}`);
+      throw new Error(
+        `Mailpit auth delivery failed with status ${response.status}`,
+      );
     }
   };
 
   return {
-    verification: async (input: VerificationCodeTemplateInput): Promise<void> => {
+    verification: async (
+      input: VerificationCodeTemplateInput,
+    ): Promise<void> => {
       const message = renderVerificationCode(input);
       await send(
         input.email,
@@ -96,11 +113,14 @@ function productionDelivery() {
   });
 }
 
-export const deliverVerificationCode = (input: VerificationCodeTemplateInput): Promise<void> =>
-  productionDelivery().verification(input);
+export const deliverVerificationCode = (
+  input: VerificationCodeTemplateInput,
+): Promise<void> => productionDelivery().verification(input);
 
-export const deliverResetToken = (input: ResetTokenTemplateInput): Promise<void> =>
-  productionDelivery().reset(input);
+export const deliverResetToken = (
+  input: ResetTokenTemplateInput,
+): Promise<void> => productionDelivery().reset(input);
 
-export const deliverPrivateGuidance = (input: PrivateGuidanceTemplateInput): Promise<void> =>
-  productionDelivery().guidance(input);
+export const deliverPrivateGuidance = (
+  input: PrivateGuidanceTemplateInput,
+): Promise<void> => productionDelivery().guidance(input);

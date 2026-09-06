@@ -12,7 +12,9 @@ import {
 } from "./recovery-state.ts";
 
 test("recovery validates and normalizes a public email without revealing account state", () => {
-  assert.deepEqual(getRecoveryValidation("missing-at-sign"), { email: "Enter a valid email address." });
+  assert.deepEqual(getRecoveryValidation("missing-at-sign"), {
+    email: "Enter a valid email address.",
+  });
   assert.deepEqual(getRecoveryValidation(" person@example.com "), {});
 });
 
@@ -24,8 +26,14 @@ test("accepted recovery initiation retains the normalized submitted email and st
     submittedEmail: "person@example.com",
   });
   assert.equal(accepted.submittedEmail, "person@example.com");
-  assert.equal(recoveryResendSecondsRemaining(accepted.cooldownUntil, acceptedAt), 60);
-  assert.equal(recoveryResendSecondsRemaining(accepted.cooldownUntil, acceptedAt + 60_000), 0);
+  assert.equal(
+    recoveryResendSecondsRemaining(accepted.cooldownUntil, acceptedAt),
+    60,
+  );
+  assert.equal(
+    recoveryResendSecondsRemaining(accepted.cooldownUntil, acceptedAt + 60_000),
+    0,
+  );
 });
 
 test("manual reset requires a token, ten-character password, and confirmation", () => {
@@ -34,11 +42,16 @@ test("manual reset requires a token, ten-character password, and confirmation", 
     password: "Use at least 10 characters.",
     confirmation: "Passwords do not match.",
   });
-  assert.deepEqual(getResetValidation("opaque-token", "long-password", "long-password"), {});
+  assert.deepEqual(
+    getResetValidation("opaque-token", "long-password", "long-password"),
+    {},
+  );
 });
 
 test("recovery and reset pending states unlock after success or safe failure", () => {
-  const recoveryPending = reduceRecoveryState(initialRecoveryState, { type: "submissionStarted" });
+  const recoveryPending = reduceRecoveryState(initialRecoveryState, {
+    type: "submissionStarted",
+  });
   assert.equal(recoveryPending.isPending, true);
   assert.equal(
     reduceRecoveryState(recoveryPending, {
@@ -49,8 +62,20 @@ test("recovery and reset pending states unlock after success or safe failure", (
     false,
   );
 
-  const resetPending = reduceResetState(initialResetState, { type: "submissionStarted" });
-  const resetFailed = reduceResetState(resetPending, { type: "submissionFailed", message: "Safe" });
-  assert.deepEqual({ isPending: resetFailed.isPending, formError: resetFailed.formError }, { isPending: false, formError: "Safe" });
-  assert.equal(reduceResetState(resetFailed, { type: "tokenChanged", value: "new" }).formError, null);
+  const resetPending = reduceResetState(initialResetState, {
+    type: "submissionStarted",
+  });
+  const resetFailed = reduceResetState(resetPending, {
+    type: "submissionFailed",
+    message: "Safe",
+  });
+  assert.deepEqual(
+    { isPending: resetFailed.isPending, formError: resetFailed.formError },
+    { isPending: false, formError: "Safe" },
+  );
+  assert.equal(
+    reduceResetState(resetFailed, { type: "tokenChanged", value: "new" })
+      .formError,
+    null,
+  );
 });

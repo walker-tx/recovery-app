@@ -1,7 +1,10 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-const authInitiationPurpose = v.union(v.literal("signup"), v.literal("recovery"));
+const authInitiationPurpose = v.union(
+  v.literal("signup"),
+  v.literal("recovery"),
+);
 const encryptedPendingToken = v.object({
   ciphertext: v.string(),
   nonce: v.string(),
@@ -20,7 +23,11 @@ export default defineSchema({
     purpose: v.literal("signup"),
     encryptedPendingToken: v.optional(encryptedPendingToken),
     privateGuidanceCategory: v.optional(privateGuidanceCategory),
-    state: v.union(v.literal("pending"), v.literal("inFlight"), v.literal("consumed")),
+    state: v.union(
+      v.literal("pending"),
+      v.literal("inFlight"),
+      v.literal("consumed"),
+    ),
     leaseExpiresAt: v.optional(v.number()),
     expiresAt: v.number(),
     consumedAt: v.optional(v.number()),
@@ -33,7 +40,10 @@ export default defineSchema({
     purpose: authInitiationPurpose,
     expiresAt: v.number(),
   })
-    .index("by_fingerprint_purpose_and_creation", ["emailFingerprint", "purpose"])
+    .index("by_fingerprint_purpose_and_creation", [
+      "emailFingerprint",
+      "purpose",
+    ])
     .index("by_expiry", ["expiresAt"]),
   profiles: defineTable({
     ownerSubject: v.string(),

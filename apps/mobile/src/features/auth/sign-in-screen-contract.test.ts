@@ -35,7 +35,7 @@ test("password visibility is explicit and accessible", async () => {
   assert.match(source, /secureTextEntry=\{!isPasswordVisible\}/);
   assert.match(
     source,
-    /accessibilityLabel=\{isPasswordVisible \? "Hide password" : "Show password"\}/,
+    /accessibilityLabel=\{\s*isPasswordVisible\s+\?\s+"Hide password"\s+:\s+"Show password"\s*\}/,
   );
   assert.match(source, /accessibilityRole="button"/);
   assert.match(source, /accessibilityState=\{\{ disabled: isPending \}\}/);

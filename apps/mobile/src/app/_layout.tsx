@@ -15,7 +15,9 @@ const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
 export default function RootLayout() {
-  if (convexUrl === undefined) return <WorkOSRootProvider client={null} />;
+  if (convexUrl === undefined) {
+    return <WorkOSRootProvider client={null} />;
+  }
 
   return (
     <LegacyConvexAuthMigrationGate convexUrl={convexUrl}>
@@ -31,7 +33,9 @@ function LegacyConvexAuthMigrationGate({
   children: ReactNode;
   convexUrl: string;
 }) {
-  const [migrationState, setMigrationState] = useState<"pending" | "error" | "complete">("pending");
+  const [migrationState, setMigrationState] = useState<
+    "pending" | "error" | "complete"
+  >("pending");
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -39,10 +43,14 @@ function LegacyConvexAuthMigrationGate({
     setMigrationState("pending");
     void migrateLegacyConvexAuthStorage(SecureStore, migrationConvexUrl)
       .then(() => {
-        if (active) setMigrationState("complete");
+        if (active) {
+          setMigrationState("complete");
+        }
       })
       .catch(() => {
-        if (active) setMigrationState("error");
+        if (active) {
+          setMigrationState("error");
+        }
       });
     return () => {
       active = false;
@@ -53,13 +61,18 @@ function LegacyConvexAuthMigrationGate({
     setAttempt((current) => current + 1);
   }
 
-  if (migrationState === "complete") return children;
+  if (migrationState === "complete") {
+    return children;
+  }
 
   if (migrationState === "error") {
     return (
       <Screen contentClassName="w-full max-w-[520px] self-center">
         <View className="gap-md">
-          <Typography accessibilityLiveRegion="polite" accessibilityRole="alert">
+          <Typography
+            accessibilityLiveRegion="polite"
+            accessibilityRole="alert"
+          >
             Secure sign in could not be prepared. Try again.
           </Typography>
           <Button onPress={retryMigration}>Try again</Button>
@@ -77,7 +90,9 @@ function LegacyConvexAuthMigrationGate({
         className="items-center gap-md"
       >
         <ActivityIndicator />
-        <Typography className="text-ink-muted">Preparing secure sign in…</Typography>
+        <Typography className="text-ink-muted">
+          Preparing secure sign in…
+        </Typography>
       </View>
     </Screen>
   );
