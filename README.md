@@ -65,7 +65,20 @@ kit tui --root .
 `scripts/stack-runtime.cjs` provides ownership-checked `reserve`, `status <stack-UUID>`,
 `stop <stack-UUID>`, and `start <absolute-backend-executable>` commands. Run through
 `mise exec -- node` from the intended worktree. The executable is the local Convex
-server, not the Recovery backend functions. Startup requires the local provider
+server, not the Recovery backend functions. Opt in explicitly from that worktree:
+
+```sh
+mise run stack:start -- /absolute/path/to/convex-server
+mise run stack:status -- <stack-UUID>
+mise run stack:stop -- <stack-UUID>
+```
+
+Replace the placeholders (quote paths containing spaces); use the `stackId` from
+startup output for status/stop. No server executable path is inferred. These tasks
+only forward arguments to the runtime; existing `zero`, `zero:tailnet`, `status`,
+and `stop` tasks keep their legacy behavior.
+
+Startup requires the local provider
 package, installed Expo/Convex dependencies, Node, pnpm, Mailpit, and Pitchfork.
 
 The runtime reserves separate ports/state, prepares private bootstrap values,
