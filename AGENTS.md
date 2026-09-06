@@ -43,6 +43,13 @@
 - Keep vendored Superpowers skills unchanged. Before ordinary `writing-plans`, use the repository-owned `planning-project-work` wrapper so planning discipline produces approved issue-backed work instead of a Markdown plan. Use `executing-project-work` for authorized issue-backed delivery.
 - Project identity and supported workflow values live in `.github/project-workflow.yml`. Resolve opaque GitHub IDs at runtime.
 
+## Agent GitHub identity
+
+- Preserve the repository owner's commit author and committer attribution. Do not add AI co-author trailers.
+- Authenticate agent-created GitHub activity and agent pushes using the designated GitHub App; authentication must not change commit attribution.
+- Keep authentication configuration local. Before GitHub operations, read `AGENTS.local.md` if present. If app authentication is unavailable, stop rather than falling back to personal credentials or separately authenticated tools.
+- Never print credentials or enable credential tracing. Existing review and deployment safeguards still apply; app credentials do not authorize merges, deployments, production changes, or safeguard bypasses.
+
 ## Working agreement
 
 - Inspect before editing and make the smallest coherent change. Avoid speculative abstractions.
