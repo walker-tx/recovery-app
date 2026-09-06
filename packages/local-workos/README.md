@@ -68,7 +68,9 @@ The same explicit local credential is supplied to the paired backend; no staging
 credential fallback is permitted.
 
 After the loopback server is serving, stdout emits one JSON readiness record with
-`providerGeneration`, `issuer`, `clientId`, and `port`. Startup failures emit a
+`providerGeneration`, `issuer`, `clientId`, and `port`. The loopback-only
+`GET /instance-info` endpoint returns those same public fields, allowing a launcher
+to independently revalidate identity on resume without reading daemon logs. Startup failures emit a
 generic diagnostic without input values. SIGINT/SIGTERM close the listener and
 state, with a three-second shutdown deadline. The launcher still owns state paths,
 credential persistence, process identity checks, and public-configuration publishing.

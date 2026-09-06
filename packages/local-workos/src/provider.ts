@@ -102,6 +102,8 @@ export async function startProvider(options: {
         async function route(method: string, rawUrl: string, authorization: string | undefined, body: Record<string, unknown>) {
             const url = new URL(rawUrl, "http://127.0.0.1");
             const path = url.pathname;
+            if (method === "GET" && path === "/instance-info" && server.address._tag === "TcpAddress")
+                return { providerGeneration: identity.generation, issuer, clientId, port: server.address.port };
             if (method === "GET" && path === `/sso/jwks/${clientId}`)
                 return jwks;
             if (path === "/user_management/authenticate" && method === "POST") {
