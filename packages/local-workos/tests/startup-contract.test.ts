@@ -12,8 +12,8 @@ it.live(
     Effect.gen(function* () {
       const dir = yield* Effect.acquireRelease(
         Effect.promise(() => mkdtemp(join(tmpdir(), "workos-startup-"))),
-        (dir) =>
-          Effect.promise(() => rm(dir, { recursive: true, force: true })),
+        (resource) =>
+          Effect.promise(() => rm(resource, { recursive: true, force: true })),
       );
       const generation = randomUUID();
       const options = {
@@ -23,7 +23,7 @@ it.live(
       };
       let provider = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider(options)),
-        (provider) => Effect.promise(() => provider.close()),
+        (resource) => Effect.promise(() => resource.close()),
       );
       assert.equal(
         provider.issuer,
@@ -52,7 +52,7 @@ it.live(
       );
       provider = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider({ ...options, port })),
-        (provider) => Effect.promise(() => provider.close()),
+        (resource) => Effect.promise(() => resource.close()),
       );
       assert.equal(provider.port, port);
       assert.equal(
@@ -73,7 +73,8 @@ it.live("invalid explicit startup generation and ports are rejected", () =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
       Effect.promise(() => mkdtemp(join(tmpdir(), "workos-startup-invalid-"))),
-      (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
+      (resource) =>
+        Effect.promise(() => rm(resource, { recursive: true, force: true })),
     );
     const options = {
       database: join(dir, "state.sqlite"),

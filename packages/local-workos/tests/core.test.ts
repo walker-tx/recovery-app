@@ -14,8 +14,8 @@ it.live(
     Effect.gen(function* () {
       const dir = yield* Effect.acquireRelease(
         Effect.promise(() => mkdtemp(join(tmpdir(), "local-workos-"))),
-        (dir) =>
-          Effect.promise(() => rm(dir, { recursive: true, force: true })),
+        (resource) =>
+          Effect.promise(() => rm(resource, { recursive: true, force: true })),
       );
       const options = {
         database: join(dir, "state.sqlite"),
@@ -23,7 +23,7 @@ it.live(
       };
       let provider = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider(options)),
-        (provider) => Effect.promise(() => provider.close()),
+        (resource) => Effect.promise(() => resource.close()),
       );
       const sdk = () =>
         new WorkOS(options.apiKey, {
@@ -70,7 +70,11 @@ it.live(
             email: unverifiedUser.email,
             password: "Synthetic-password-42",
           }),
-          (e: any) => e.code === "email_verification_required",
+          (e: unknown) =>
+            typeof e === "object" &&
+            e !== null &&
+            "code" in e &&
+            e.code === "email_verification_required",
         ),
       );
       yield* Effect.promise(() =>
@@ -150,7 +154,7 @@ it.live(
       yield* Effect.promise(() => provider.close());
       provider = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider(options)),
-        (provider) => Effect.promise(() => provider.close()),
+        (resource) => Effect.promise(() => resource.close()),
       );
       const reopenedDatabase = new DatabaseSync(options.database);
       assert.deepEqual(
@@ -181,7 +185,7 @@ it.live(
         Effect.promise(() =>
           startProvider({ ...options, database: join(dir, "sibling.sqlite") }),
         ),
-        (provider) => Effect.promise(() => provider.close()),
+        (resource) => Effect.promise(() => resource.close()),
       );
       assert.notEqual(sibling.issuer, provider.issuer);
       const siblingSdk = new WorkOS(options.apiKey, {

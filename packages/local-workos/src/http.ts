@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import {
   Effect,
   Scope,
@@ -40,7 +41,7 @@ function requireBearer(authorization: string | undefined, apiKey: string) {
     : Effect.fail(new RequestRejected({ reason: "unauthorized" }));
 }
 function domainResponse(error: RequestFailure) {
-  if (error instanceof VerificationRequired)
+  if (error instanceof VerificationRequired) {
     return Response.jsonUnsafe(
       {
         code: "email_verification_required",
@@ -50,13 +51,16 @@ function domainResponse(error: RequestFailure) {
       },
       { status: 400 },
     );
-  if (error.reason === "invalid_grant")
+  }
+  if (error.reason === "invalid_grant") {
     return Response.jsonUnsafe(
       { error: "invalid_grant", error_description: "Invalid credentials" },
       { status: 400 },
     );
-  if (error.reason === "invalid_request")
+  }
+  if (error.reason === "invalid_request") {
     return Response.jsonUnsafe({ code: "invalid_request" }, { status: 422 });
+  }
   const status = {
     unauthorized: 401,
     unsupported_operation: 404,
@@ -158,8 +162,9 @@ function workosResponse<A>(
 ) {
   return Effect.gen(function* () {
     const request = yield* HttpServerRequest;
-    if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES)
+    if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES) {
       return Response.jsonUnsafe({ code: "invalid_request" }, { status: 413 });
+    }
     const raw =
       request.method === "POST"
         ? yield* request.json.pipe(
@@ -173,11 +178,12 @@ function workosResponse<A>(
     )(raw).pipe(
       Effect.mapError(() => new RequestRejected({ reason: "invalid_request" })),
     );
-    if (options.access === "bearer")
+    if (options.access === "bearer") {
       yield* requireBearer(
         request.headers.authorization,
         Redacted.value(apiKey),
       );
+    }
     if (options.path && !matchesRawPath(request.url, options.path)) {
       yield* requireBearer(
         request.headers.authorization,
@@ -208,8 +214,8 @@ export function makeHttpApp(scope: Scope.Scope) {
       jwks,
     } = yield* WorkOSService;
     const { clientId } = yield* instanceInfo;
-    const handlers = HttpApiBuilder.group(api, "workos", (handlers) =>
-      handlers
+    const handlers = HttpApiBuilder.group(api, "workos", (group) =>
+      group
         .handleRaw("instanceInfo", ({ endpoint }) =>
           workosResponse(apiKey, () => instanceInfo, { path: endpoint.path }),
         )
@@ -279,11 +285,12 @@ export function makeHttpApp(scope: Scope.Scope) {
     const app = Effect.gen(function* () {
       const request = yield* HttpServerRequest;
       // HttpRouter otherwise implicitly serves GET endpoints for HEAD.
-      if (request.method !== "GET" && request.method !== "POST")
+      if (request.method !== "GET" && request.method !== "POST") {
         return yield* unsupported;
+      }
       return yield* routed.pipe(
         Effect.catch((error) =>
-          error.reason._tag === "RouteNotFound"
+          Predicate.isTagged(error.reason, "RouteNotFound")
             ? unsupported
             : Effect.die(error),
         ),

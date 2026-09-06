@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { lstatSync, openSync, closeSync, constants } from "node:fs";
@@ -63,8 +64,9 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
         !parent.isDirectory() ||
         parent.uid !== process.getuid?.() ||
         (parent.mode & 0o077) !== 0
-      )
+      ) {
         throw new Error("State parent must be an owner-only directory");
+      }
       for (const path of [
         options.database,
         options.database + "-journal",
@@ -77,10 +79,13 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
             !file.isFile() ||
             file.uid !== process.getuid?.() ||
             (file.mode & 0o077) !== 0
-          )
+          ) {
             throw new Error("State must be an owner-only regular file");
+          }
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw error;
+          }
         }
       }
       closeSync(
@@ -134,7 +139,9 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
         const [winner] = yield* sql<{
           body: string;
         }>`SELECT body FROM instance WHERE id=1`;
-        if (winner) return winner;
+        if (winner) {
+          return winner;
+        }
         yield* sql`INSERT INTO instance VALUES(1,${body})`;
         return { body };
       }),
@@ -142,35 +149,36 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
   }
   const identity = yield* Effect.try({
     try: () => {
-      const identity: {
+      const persistedIdentity: {
         generation: string;
         privateKey: JWK;
         publicKey: JWK;
       } = JSON.parse(saved.body);
       if (
-        !identity ||
-        typeof identity.generation !== "string" ||
-        !generationPattern.test(identity.generation) ||
-        identity.privateKey?.kty !== "RSA" ||
-        identity.publicKey?.kty !== "RSA" ||
-        typeof identity.privateKey.d !== "string" ||
-        typeof identity.publicKey.n !== "string" ||
-        typeof identity.publicKey.e !== "string" ||
-        identity.privateKey.n !== identity.publicKey.n ||
-        identity.privateKey.e !== identity.publicKey.e ||
+        !persistedIdentity ||
+        typeof persistedIdentity.generation !== "string" ||
+        !generationPattern.test(persistedIdentity.generation) ||
+        persistedIdentity.privateKey?.kty !== "RSA" ||
+        persistedIdentity.publicKey?.kty !== "RSA" ||
+        typeof persistedIdentity.privateKey.d !== "string" ||
+        typeof persistedIdentity.publicKey.n !== "string" ||
+        typeof persistedIdentity.publicKey.e !== "string" ||
+        persistedIdentity.privateKey.n !== persistedIdentity.publicKey.n ||
+        persistedIdentity.privateKey.e !== persistedIdentity.publicKey.e ||
         ["d", "p", "q", "dp", "dq", "qi", "oth"].some(
-          (field) => field in identity.publicKey,
+          (field) => field in persistedIdentity.publicKey,
         )
-      )
+      ) {
         throw new ProviderStartupError({
           message: "Invalid persisted signing identity",
         });
+      }
       return {
-        ...identity,
+        ...persistedIdentity,
         publicKey: {
-          ...identity.publicKey,
-          n: identity.publicKey.n,
-          e: identity.publicKey.e,
+          ...persistedIdentity.publicKey,
+          n: persistedIdentity.publicKey.n,
+          e: persistedIdentity.publicKey.e,
         },
       };
     },
@@ -183,16 +191,16 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
     const publicKey = yield* Effect.tryPromise(() =>
       importJWK(identity.publicKey, "RS256"),
     );
-    const key = yield* Effect.tryPromise(() =>
+    const privateKey = yield* Effect.tryPromise(() =>
       importJWK(identity.privateKey, "RS256"),
     );
     const signature = yield* Effect.tryPromise(() =>
       new CompactSign(new Uint8Array())
         .setProtectedHeader({ alg: "RS256" })
-        .sign(key),
+        .sign(privateKey),
     );
     yield* Effect.tryPromise(() => compactVerify(signature, publicKey));
-    return { key };
+    return { key: privateKey };
   }).pipe(
     Effect.mapError(
       () =>
@@ -204,12 +212,13 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
   if (
     options.providerGeneration !== undefined &&
     identity.generation !== options.providerGeneration
-  )
+  ) {
     return yield* Effect.fail(
       new ProviderStartupError({
         message: "Provider generation does not match persisted state",
       }),
     );
+  }
   const providerGeneration = yield* Schema.decodeUnknownEffect(
     ProviderGeneration,
   )(identity.generation);
@@ -247,18 +256,20 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
             clientId,
             providerGeneration,
             issuer,
-            port:
-              server.address._tag === "TcpAddress" ? server.address.port : 0,
+            port: Predicate.isTagged(server.address, "TcpAddress")
+              ? server.address.port
+              : 0,
           }),
         ),
       ),
     ),
   );
   yield* server.serve(app);
-  if (server.address._tag !== "TcpAddress")
+  if (!Predicate.isTagged(server.address, "TcpAddress")) {
     return yield* Effect.fail(
       new ProviderStartupError({ message: "Expected loopback TCP address" }),
     );
+  }
   return {
     port: server.address.port,
     providerGeneration: identity.generation,
@@ -274,10 +285,11 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
           !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
           email.length > 254 ||
           !["GoogleOAuth", "AppleOAuth"].includes(input.provider)
-        )
+        ) {
           return yield* Effect.fail(
             new FixtureError({ message: "Invalid fixture" }),
           );
+        }
         const now = new Date(yield* Clock.currentTimeMillis).toISOString();
         const user: User = {
           id: yield* Schema.decodeUnknownEffect(UserId)(
