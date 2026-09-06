@@ -153,8 +153,8 @@ It is not a complete Maestro installer: the prior reviewed Swift/HTTP logging
 patches and pinned native resources remain prerequisites.
 
 The isolated wrapper must set `MAESTRO_SUPPRESS_AUTOMATIC_ARTIFACTS=1` inside
-its clean environment. The guard prevents automatic screenshot, hierarchy,
-and full-run-recording acquisition before allocation. Explicit capture/AI
+its clean environment. The source guard prevents automatic screenshot, hierarchy,
+full-run-recording, and device-log/crash collection before acquisition. Explicit capture/AI
 commands and logging are outside its scope; credential flows must not use
 those commands. The driver pins the reviewed wrapper and three installed JARs
 by SHA-256 before enabling the non-secret probe. This is build continuity,
@@ -166,3 +166,27 @@ concrete native flow are verified. Do not remove that stop merely because the
 source patch builds or the read-only preparation succeeds. The runtime and
 Maestro installation are explicit task-local prerequisites, not a portable
 one-command bootstrap.
+
+### Native privacy boundary discovered by the benign probe
+
+The corrected integer-coordinate probe reached Paste and its intended failed
+assertion. It produced no automatic image/hierarchy captures, but the previous
+installed build collected two simulator-log files containing the nonsecret
+canary. The source patch now prevents `DeviceArtifactCapturer` from starting
+(including its temporary log stream), with Failed/Warned and default-mode tests.
+This extension is source-tested only: installed binaries and approved hashes
+have deliberately not been updated. Do not infer installed protection.
+
+The canary producer was XCTest `testmanagerd` during post-Paste hierarchy
+snapshots used for selector evaluation. Suppressing Maestro collection does not
+suppress those framework diagnostics. Neither password plaintext exposure nor
+independent OS on-disk retention was established, but no supported scoped
+producer suppression was found. Credential execution remains unconditionally
+blocked pending a validated route that avoids sensitive-state snapshots; a clean
+artifact scan alone is insufficient.
+
+Backspace-based erase also failed fresh Email-empty verification. A later
+nonsecret cleanup attempt refused ambiguous field identity before manipulation.
+Simulator app termination and independently empty clipboard were containment,
+not proof of field or SecureStore erasure. Do not promote these results to native
+sign-in, onboarding, Counts, signout, or complete cleanup acceptance.

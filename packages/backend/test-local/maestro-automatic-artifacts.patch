@@ -1,5 +1,5 @@
 diff --git a/maestro-orchestra/src/main/kotlin/maestro/orchestra/debug/ArtifactsGenerator.kt b/maestro-orchestra/src/main/kotlin/maestro/orchestra/debug/ArtifactsGenerator.kt
-index 33ba29d..37b6962 100644
+index 33ba29d..d42179a 100644
 --- a/maestro-orchestra/src/main/kotlin/maestro/orchestra/debug/ArtifactsGenerator.kt
 +++ b/maestro-orchestra/src/main/kotlin/maestro/orchestra/debug/ArtifactsGenerator.kt
 @@ -46,6 +46,8 @@ internal class ArtifactsGenerator(
@@ -11,7 +11,18 @@ index 33ba29d..37b6962 100644
  ) : OrchestraListener {
 
      val debugOutput = FlowDebugOutput()
-@@ -238,6 +240,7 @@ internal class ArtifactsGenerator(
+@@ -74,7 +76,9 @@ internal class ArtifactsGenerator(
+             logCapture = ScopedLogCapture.start(logFile)
+             flowStartMs = System.currentTimeMillis()
+             appUnderTest = null
+-            capturer = DeviceArtifactCapturer(maestro, artifactsDir.resolve(BundleLayout.LOGS_DIR)).also { it.start() }
++            if (!suppressAutomaticArtifacts) {
++                capturer = DeviceArtifactCapturer(maestro, artifactsDir.resolve(BundleLayout.LOGS_DIR)).also { it.start() }
++            }
+         } catch (e: Exception) {
+             logger.warn("Failed to set up artifacts directory at $artifactsDir", e)
+         }
+@@ -238,6 +242,7 @@ internal class ArtifactsGenerator(
      }
 
      private fun captureStepHierarchy(metadata: CommandDebugMetadata) {
@@ -19,7 +30,7 @@ index 33ba29d..37b6962 100644
          val collector = collector ?: return
          try {
              val tree = runBlocking { maestro.viewHierarchy() }.root
-@@ -274,6 +277,7 @@ internal class ArtifactsGenerator(
+@@ -274,6 +279,7 @@ internal class ArtifactsGenerator(
       * never destroys a frame already there), returning the bundle-relative path or null on failure.
       */
      private fun captureScreenshot(relativePath: String, sequenceNumber: Int?): String? {
@@ -27,7 +38,7 @@ index 33ba29d..37b6962 100644
          val collector = collector ?: return null
          val destFile = collector.allocate(
              ArtifactKind.SCREENSHOT,
-@@ -298,6 +302,7 @@ internal class ArtifactsGenerator(
+@@ -298,6 +304,7 @@ internal class ArtifactsGenerator(
      }
 
      private fun startFullRunRecording() {
@@ -36,10 +47,10 @@ index 33ba29d..37b6962 100644
          try {
              val destFile = collector.allocate(ArtifactKind.SCREEN_RECORDING, ArtifactFormat.MP4, BundleLayout.SCREEN_RECORDING)
 diff --git a/maestro-orchestra/src/test/kotlin/maestro/orchestra/debug/ArtifactsGeneratorTest.kt b/maestro-orchestra/src/test/kotlin/maestro/orchestra/debug/ArtifactsGeneratorTest.kt
-index 741bb9d..1d390a6 100644
+index 741bb9d..1fab420 100644
 --- a/maestro-orchestra/src/test/kotlin/maestro/orchestra/debug/ArtifactsGeneratorTest.kt
 +++ b/maestro-orchestra/src/test/kotlin/maestro/orchestra/debug/ArtifactsGeneratorTest.kt
-@@ -50,6 +50,36 @@ class ArtifactsGeneratorTest {
+@@ -50,6 +50,39 @@ class ArtifactsGeneratorTest {
          coEvery { viewHierarchy(any()) } returns ViewHierarchy(hierarchyRoot)
      }
 
@@ -65,6 +76,9 @@ index 741bb9d..1d390a6 100644
 +                coVerify(exactly = 0) { maestro.takeScreenshot(any<Sink>(), any()) }
 +                coVerify(exactly = 0) { maestro.viewHierarchy(any()) }
 +                coVerify(exactly = 0) { maestro.startScreenRecording(any()) }
++                coVerify(exactly = 0) { maestro.startDeviceLogCapture() }
++                coVerify(exactly = 0) { maestro.stopAndCollectDeviceLogs(any()) }
++                coVerify(exactly = 0) { maestro.collectCrashArtifacts(any(), any(), any()) }
 +                assertThat(dir.resolve("screenshots").exists()).isFalse()
 +                assertThat(dir.resolve("screen-hierarchy").exists()).isFalse()
 +                assertThat(dir.resolve("commands.json").exists()).isTrue()
@@ -76,3 +90,14 @@ index 741bb9d..1d390a6 100644
      @Test
      fun `populates debugOutput in memory even when artifactsDir is null`() {
          val gen = ArtifactsGenerator(artifactsDir = null, maestro = mockMaestro())
+@@ -291,6 +324,10 @@ class ArtifactsGeneratorTest {
+
+         val byKind = gen.artifactManifest.entries.associateBy { it.kind }
+
++        coVerify(exactly = 1) { maestro.startDeviceLogCapture() }
++        coVerify(exactly = 1) { maestro.stopAndCollectDeviceLogs(any()) }
++        coVerify(exactly = 1) { maestro.collectCrashArtifacts(any(), any(), any()) }
++
+         val logEntry = byKind[ArtifactKind.DEVICE_LOG]
+         assertThat(logEntry).isNotNull()
+         // Device artifacts nest under logs/, alongside maestro.log, so the whole
