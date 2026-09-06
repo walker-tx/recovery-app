@@ -1,12 +1,11 @@
 import { expect, it, vi } from 'vitest';
-const observed = vi.hoisted(() => ({ ports: [] as number[] }));
-vi.mock('@workos-inc/node', () => ({
-  WorkOS: class {
-    constructor(options: { port: number }) { observed.ports.push(options.port); }
-    userManagement = { getUser: async () => ({ id: 'user_fixture', email: 'fixture@example.test', emailVerified: true }) };
-  },
-}));
-it('does not reuse a prior SDK destination after validated local configuration changes', async () => {
+// Keep the installed SDK real; replace only transport so no network is contacted.
+it('routes real SDK requests to each validated local destination without retaining the prior destination', async () => {
+  const urls: string[] = [];
+  vi.stubGlobal('fetch', async (url: string) => {
+    urls.push(url);
+    return Response.json({ id: 'user_fixture', email: 'fixture@example.test', email_verified: true });
+  });
   const generation = '12345678-1234-4234-8234-123456789abc';
   const clientId = `client_local${generation.replaceAll('-', '')}`;
   const config = {
@@ -21,9 +20,20 @@ it('does not reuse a prior SDK destination after validated local configuration c
   try {
     for (const [name, value] of Object.entries(config)) vi.stubEnv(name, value);
     const { workosGateway } = await import('./workos.ts');
-    await workosGateway.getUserById('user_fixture');
+    expect(await workosGateway.getUserById('user_fixture')).toEqual({
+      id: 'user_fixture', email: 'fixture@example.test', emailVerified: true,
+    });
     vi.stubEnv('WORKOS_API_URL', 'http://127.0.0.1:6200');
     await workosGateway.getUserById('user_fixture');
-    expect(observed.ports.join(',') === '6100,6200').toBe(true);
-  } finally { vi.unstubAllEnvs(); }
+    expect(urls).toEqual([
+      'http://127.0.0.1:6100/user_management/users/user_fixture',
+      'http://127.0.0.1:6200/user_management/users/user_fixture',
+    ]);
+    vi.stubEnv('WORKOS_API_URL', 'https://api.workos.com');
+    await expect(workosGateway.getUserById('user_fixture')).rejects.toThrow();
+    expect(urls).toHaveLength(2);
+  } finally {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  }
 });
