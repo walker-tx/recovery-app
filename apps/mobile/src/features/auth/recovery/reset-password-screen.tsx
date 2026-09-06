@@ -9,11 +9,22 @@ import { Screen } from "@/components/ui/screen";
 import { Typography } from "@/components/ui/text";
 import { toSafeAuthError } from "../auth-error-policy";
 import { createSubmissionGuard } from "../auth-submission";
-import { getFirstInvalidResetField, getResetValidation, initialResetState, reduceResetState } from "./recovery-state";
+import {
+  getFirstInvalidResetField,
+  getResetValidation,
+  initialResetState,
+  reduceResetState,
+} from "./recovery-state";
 
 type FieldErrors = ReturnType<typeof getResetValidation>;
 
-export function ResetPasswordScreen({ onBack, onPasswordReset }: { onBack: () => void; onPasswordReset: () => void }) {
+export function ResetPasswordScreen({
+  onBack,
+  onPasswordReset,
+}: {
+  onBack: () => void;
+  onPasswordReset: () => void;
+}) {
   const resetPassword = useAction(api.workosAuth.resetPassword);
   const guard = useRef(createSubmissionGuard()).current;
   const tokenInput = useRef<TextInput>(null);
@@ -24,24 +35,38 @@ export function ResetPasswordScreen({ onBack, onPasswordReset }: { onBack: () =>
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   async function handleSubmit() {
-    const errors = getResetValidation(state.token, state.password, state.confirmation);
+    const errors = getResetValidation(
+      state.token,
+      state.password,
+      state.confirmation,
+    );
     setFieldErrors(errors);
     const firstInvalid = getFirstInvalidResetField(errors);
     if (firstInvalid !== null) {
-      ({ token: tokenInput, password: passwordInput, confirmation: confirmationInput }[firstInvalid]).current?.focus();
+      ({
+        token: tokenInput,
+        password: passwordInput,
+        confirmation: confirmationInput,
+      })[firstInvalid].current?.focus();
       return;
     }
 
-    await guard.run({ token: state.token.trim(), newPassword: state.password }, async (values) => {
-      dispatch({ type: "submissionStarted" });
-      try {
-        await resetPassword(values);
-        dispatch({ type: "submissionSucceeded" });
-        onPasswordReset();
-      } catch (error) {
-        dispatch({ type: "submissionFailed", message: toSafeAuthError("reset", error) });
-      }
-    });
+    await guard.run(
+      { token: state.token.trim(), newPassword: state.password },
+      async (values) => {
+        dispatch({ type: "submissionStarted" });
+        try {
+          await resetPassword(values);
+          dispatch({ type: "submissionSucceeded" });
+          onPasswordReset();
+        } catch (error) {
+          dispatch({
+            type: "submissionFailed",
+            message: toSafeAuthError("reset", error),
+          });
+        }
+      },
+    );
   }
 
   return (
@@ -63,8 +88,15 @@ export function ResetPasswordScreen({ onBack, onPasswordReset }: { onBack: () =>
 
       <View className="gap-sm">
         <Typography variant="overline">PASSWORD</Typography>
-        <Typography accessibilityRole="header" variant="display">Set a new password</Typography>
-        <Typography className="text-ink-muted">Enter the one-time reset token from your recovery email.</Typography>
+        <Typography
+          accessibilityRole="header"
+          variant="display"
+        >
+          Set a new password
+        </Typography>
+        <Typography className="text-ink-muted">
+          Enter the one-time reset token from your recovery email.
+        </Typography>
       </View>
 
       <View className="gap-lg">
@@ -94,14 +126,19 @@ export function ResetPasswordScreen({ onBack, onPasswordReset }: { onBack: () =>
             editable={!state.isPending}
             endAdornment={
               <Pressable
-                accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
+                accessibilityLabel={
+                  isPasswordVisible ? "Hide password" : "Show password"
+                }
                 accessibilityRole="button"
                 accessibilityState={{ disabled: state.isPending }}
                 className="min-h-touch min-w-touch items-center justify-center px-md"
                 disabled={state.isPending}
                 onPress={() => setIsPasswordVisible((current) => !current)}
               >
-                <Typography className="text-blueprint-pressed" variant="overline">
+                <Typography
+                  className="text-blueprint-pressed"
+                  variant="overline"
+                >
                   {isPasswordVisible ? "HIDE" : "SHOW"}
                 </Typography>
               </Pressable>
@@ -110,7 +147,10 @@ export function ResetPasswordScreen({ onBack, onPasswordReset }: { onBack: () =>
             label="New password"
             onChangeText={(value) => {
               dispatch({ type: "passwordChanged", value });
-              setFieldErrors((current) => ({ ...current, password: undefined }));
+              setFieldErrors((current) => ({
+                ...current,
+                password: undefined,
+              }));
             }}
             onSubmitEditing={() => confirmationInput.current?.focus()}
             ref={passwordInput}
@@ -130,7 +170,10 @@ export function ResetPasswordScreen({ onBack, onPasswordReset }: { onBack: () =>
           label="Confirm new password"
           onChangeText={(value) => {
             dispatch({ type: "confirmationChanged", value });
-            setFieldErrors((current) => ({ ...current, confirmation: undefined }));
+            setFieldErrors((current) => ({
+              ...current,
+              confirmation: undefined,
+            }));
           }}
           onSubmitEditing={handleSubmit}
           ref={confirmationInput}
@@ -140,12 +183,20 @@ export function ResetPasswordScreen({ onBack, onPasswordReset }: { onBack: () =>
           value={state.confirmation}
         />
         {state.formError ? (
-          <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
+          <Typography
+            accessibilityLiveRegion="polite"
+            accessibilityRole="alert"
+            className="text-danger"
+            selectable
+            variant="caption"
+          >
             {state.formError}
           </Typography>
         ) : null}
         <Button
-          accessibilityLabel={state.isPending ? "Saving password" : "Save password"}
+          accessibilityLabel={
+            state.isPending ? "Saving password" : "Save password"
+          }
           className="w-full"
           loading={state.isPending}
           onPress={handleSubmit}

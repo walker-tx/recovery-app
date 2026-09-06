@@ -54,7 +54,10 @@ class FakeWorkOSGateway implements WorkOSGateway {
 
   async authenticatePassword(input: { email: string; password: string }) {
     const entry = this.#users.get(input.email);
-    if (entry?.password !== input.password || entry.classification.kind === "new") {
+    if (
+      entry?.password !== input.password ||
+      entry.classification.kind === "new"
+    ) {
       throw new Error("invalidCredentials");
     }
     if (entry.classification.kind === "unverifiedPassword") {
@@ -69,17 +72,26 @@ class FakeWorkOSGateway implements WorkOSGateway {
 
   async getEmailVerification(id: string) {
     const verification = this.#verifications.get(id);
-    if (!verification) throw new Error("invalidVerification");
+    if (!verification) {
+      throw new Error("invalidVerification");
+    }
     return verification;
   }
 
-  async completeEmailVerification(input: { pendingAuthenticationToken: string; code: string }) {
+  async completeEmailVerification(input: {
+    pendingAuthenticationToken: string;
+    code: string;
+  }) {
     const userId = input.pendingAuthenticationToken.replace(/^pending-/, "");
     const entry = [...this.#users.values()].find(
       ({ classification }) =>
         classification.kind !== "new" && classification.user.id === userId,
     );
-    if (!entry || input.code !== "123456" || entry.classification.kind === "new") {
+    if (
+      !entry ||
+      input.code !== "123456" ||
+      entry.classification.kind === "new"
+    ) {
       throw new Error("invalidVerification");
     }
     const user = { ...entry.classification.user, emailVerified: true };
@@ -100,7 +112,9 @@ class FakeWorkOSGateway implements WorkOSGateway {
 
   async createPasswordReset(email: string) {
     const classification = await this.lookupUserByEmail(email);
-    if (classification.kind === "new") throw new Error("invalidReset");
+    if (classification.kind === "new") {
+      throw new Error("invalidReset");
+    }
     const reset = {
       id: `reset-${classification.user.id}`,
       userId: classification.user.id,
@@ -112,13 +126,20 @@ class FakeWorkOSGateway implements WorkOSGateway {
   }
 
   async completePasswordReset(input: { token: string; newPassword: string }) {
-    const reset = [...this.#resets.values()].find(({ token }) => token === input.token);
-    if (!reset) throw new Error("invalidReset");
+    const reset = [...this.#resets.values()].find(
+      ({ token }) => token === input.token,
+    );
+    if (!reset) {
+      throw new Error("invalidReset");
+    }
     const entry = [...this.#users.values()].find(
       ({ classification }) =>
-        classification.kind !== "new" && classification.user.id === reset.userId,
+        classification.kind !== "new" &&
+        classification.user.id === reset.userId,
     );
-    if (!entry || entry.classification.kind === "new") throw new Error("invalidReset");
+    if (!entry || entry.classification.kind === "new") {
+      throw new Error("invalidReset");
+    }
     const user = { ...entry.classification.user, emailVerified: true };
     this.seed({ kind: "password", user }, input.newPassword);
     return user;
@@ -126,7 +147,9 @@ class FakeWorkOSGateway implements WorkOSGateway {
 
   async refreshSession(refreshToken: string) {
     const session = this.#sessions.get(refreshToken);
-    if (!session) throw new Error("invalidSession");
+    if (!session) {
+      throw new Error("invalidSession");
+    }
     return { ...session, accessToken: `${session.accessToken}-refreshed` };
   }
 
@@ -134,7 +157,9 @@ class FakeWorkOSGateway implements WorkOSGateway {
     const matching = [...this.#sessions.entries()].find(
       ([, session]) => session.sessionId === sessionId,
     );
-    if (!matching) throw new Error("invalidSession");
+    if (!matching) {
+      throw new Error("invalidSession");
+    }
     this.#sessions.delete(matching[0]);
   }
 
@@ -143,7 +168,9 @@ class FakeWorkOSGateway implements WorkOSGateway {
       ({ classification }) =>
         classification.kind !== "new" && classification.user.id === userId,
     );
-    if (!entry || entry.classification.kind === "new") throw new Error("providerUnavailable");
+    if (!entry || entry.classification.kind === "new") {
+      throw new Error("providerUnavailable");
+    }
     return entry.classification.user;
   }
 
@@ -172,16 +199,24 @@ describe("WorkOSGateway contract", () => {
     ["googleOnly", true],
     ["appleOnly", true],
     ["unknownRecovery", true],
-  ] as const)("classifies %s users without exposing SDK objects", async (kind, verified) => {
-    const gateway = new FakeWorkOSGateway();
-    const user = userFor(`${kind}@example.com`, verified);
-    gateway.seed({ kind, user });
+  ] as const)(
+    "classifies %s users without exposing SDK objects",
+    async (kind, verified) => {
+      const gateway = new FakeWorkOSGateway();
+      const user = userFor(`${kind}@example.com`, verified);
+      gateway.seed({ kind, user });
 
-    await expect(gateway.lookupUserByEmail(user.email)).resolves.toEqual({ kind, user });
-  });
+      await expect(gateway.lookupUserByEmail(user.email)).resolves.toEqual({
+        kind,
+        user,
+      });
+    },
+  );
 
   it("classifies an unknown email as new", async () => {
-    await expect(new FakeWorkOSGateway().lookupUserByEmail("new@example.com")).resolves.toEqual({
+    await expect(
+      new FakeWorkOSGateway().lookupUserByEmail("new@example.com"),
+    ).resolves.toEqual({
       kind: "new",
     });
   });
@@ -192,8 +227,12 @@ describe("WorkOSGateway contract", () => {
       const gateway = new FakeWorkOSGateway();
       gateway.failNextWith(category);
 
-      await expect(gateway.lookupUserByEmail("person@example.com")).rejects.toThrow(category);
-      await expect(gateway.lookupUserByEmail("person@example.com")).resolves.toEqual({
+      await expect(
+        gateway.lookupUserByEmail("person@example.com"),
+      ).rejects.toThrow(category);
+      await expect(
+        gateway.lookupUserByEmail("person@example.com"),
+      ).resolves.toEqual({
         kind: "new",
       });
     },
@@ -207,13 +246,17 @@ describe("WorkOSGateway contract", () => {
     });
     const verification = gateway.createVerification(created.id);
 
-    await expect(gateway.getEmailVerification(verification.id)).resolves.toEqual(verification);
+    await expect(
+      gateway.getEmailVerification(verification.id),
+    ).resolves.toEqual(verification);
     const challenge = await gateway.authenticatePassword({
       email: created.email,
       password: "initial-password",
     });
     expect(challenge.kind).toBe("verificationRequired");
-    if (challenge.kind !== "verificationRequired") throw new Error("expected challenge");
+    if (challenge.kind !== "verificationRequired") {
+      throw new Error("expected challenge");
+    }
     const session = await gateway.completeEmailVerification({
       pendingAuthenticationToken: challenge.pendingAuthenticationToken,
       code: verification.code,
@@ -222,12 +265,15 @@ describe("WorkOSGateway contract", () => {
     expect(refreshed.user).toEqual({ ...created, emailVerified: true });
     expect(refreshed.refreshToken).toBe(session.refreshToken);
     await gateway.revokeSession(refreshed.sessionId);
-    await expect(gateway.refreshSession(refreshed.refreshToken)).rejects.toThrow(
-      "invalidSession",
-    );
+    await expect(
+      gateway.refreshSession(refreshed.refreshToken),
+    ).rejects.toThrow("invalidSession");
 
     const reset = await gateway.createPasswordReset(created.email);
-    await gateway.completePasswordReset({ token: reset.token, newPassword: "next-password" });
+    await gateway.completePasswordReset({
+      token: reset.token,
+      newPassword: "next-password",
+    });
     await expect(gateway.getUserById(created.id)).resolves.toEqual({
       ...created,
       emailVerified: true,
@@ -238,7 +284,10 @@ describe("WorkOSGateway contract", () => {
     const gateway: WorkOSGateway = new FakeWorkOSGateway();
     expect("mintApplicationJwt" in gateway).toBe(false);
 
-    const authConfig = await readFile(new URL("./auth.config.ts", import.meta.url), "utf8");
+    const authConfig = await readFile(
+      new URL("./auth.config.ts", import.meta.url),
+      "utf8",
+    );
     expect(authConfig).toMatch(/buildWorkOSAuthConfig/);
     expect(authConfig).not.toMatch(/FakeWorkOSGateway|emulat/i);
   });
@@ -262,7 +311,9 @@ describe("WorkOSGateway contract", () => {
         rawData: {},
       }),
     ).toThrow("providerUnavailable");
-    expect(parseStagingVerificationRequiredChallenge({ code: "invalid_password" })).toBeUndefined();
+    expect(
+      parseStagingVerificationRequiredChallenge({ code: "invalid_password" }),
+    ).toBeUndefined();
   });
 
   it("loads without WorkOS configuration and fails closed only when invoked", async () => {
@@ -272,7 +323,9 @@ describe("WorkOSGateway contract", () => {
     try {
       const { workosGateway } = await import("./workos.ts");
 
-      await expect(workosGateway.getUserById("user_test")).rejects.toMatchObject({
+      await expect(
+        workosGateway.getUserById("user_test"),
+      ).rejects.toMatchObject({
         category: "providerUnavailable",
         message: "providerUnavailable",
       });

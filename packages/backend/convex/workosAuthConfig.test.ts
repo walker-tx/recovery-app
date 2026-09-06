@@ -25,8 +25,7 @@ describe("buildWorkOSAuthConfig", () => {
       providers: [
         {
           type: "customJwt",
-          issuer:
-            "https://api.workos.com/user_management/client_01ABC123",
+          issuer: "https://api.workos.com/user_management/client_01ABC123",
           jwks: "https://api.workos.com/sso/jwks/client_01ABC123",
           algorithm: "RS256",
         },

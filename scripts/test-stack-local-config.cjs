@@ -169,7 +169,7 @@ for (const key of [
   "CONVEX_DEPLOYMENT",
   "CONVEX_SELF_HOSTED_ADMIN_KEY",
   "WORKOS_ADMIN_API_KEY",
-])
+]) {
   test(`rejects existing quoted ${key} before temporary mutation`, (t) => {
     const { file, run, dir } = fixture(t);
     persistLocalConfig({ file, owned, run });
@@ -186,6 +186,7 @@ for (const key of [
     assert.ok(!temporarySeen);
     assert.ok(fs.readFileSync(file).equals(before));
   });
+}
 test("unexpected forbidden-key read failure fails closed without temporary mutation", (t) => {
   const { file, run, dir } = fixture(t);
   persistLocalConfig({ file, owned, run });
@@ -210,7 +211,9 @@ for (const existing of [false, true]) {
   test(`elapsed preparation deadline prevents publication (existing=${existing})`, (t) => {
     const { file, dir } = fixture(t);
     const before = Buffer.from("[env]\n# unchanged\n");
-    if (existing) fs.writeFileSync(file, before, { mode: 0o600 });
+    if (existing) {
+      fs.writeFileSync(file, before, { mode: 0o600 });
+    }
     let clock = 0;
     const values = {
       RECOVERY_STACK_ID: stackId,
@@ -223,8 +226,9 @@ for (const existing of [false, true]) {
         clock = 10;
         return { status: 0, stdout: "" };
       }
-      if (Object.hasOwn(values, key))
+      if (Object.hasOwn(values, key)) {
         return { status: 0, stdout: values[key] + "\n" };
+      }
       return {
         status: 1,
         stdout: "",
@@ -244,8 +248,11 @@ for (const existing of [false, true]) {
         error.ambiguousTimeout === true &&
         error.message === "Local stack config persistence rejected",
     );
-    if (existing) assert.deepEqual(fs.readFileSync(file), before);
-    else assert.equal(fs.existsSync(file), false);
+    if (existing) {
+      assert.deepEqual(fs.readFileSync(file), before);
+    } else {
+      assert.equal(fs.existsSync(file), false);
+    }
     assert.deepEqual(fs.readdirSync(dir), existing ? ["mise.local.toml"] : []);
   });
 }

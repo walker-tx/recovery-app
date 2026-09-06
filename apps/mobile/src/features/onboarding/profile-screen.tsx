@@ -29,15 +29,20 @@ export function ProfileScreen() {
   const [isPending, setIsPending] = useState(false);
 
   async function handleSubmit() {
-    if (submissionRunning.current) return;
+    if (submissionRunning.current) {
+      return;
+    }
 
     const errors = getProfileValidation(displayName, firstName);
     setFieldErrors(errors);
     setFormError(null);
     const firstInvalidField = getFirstInvalidProfileField(errors);
     if (firstInvalidField !== null) {
-      if (firstInvalidField === "displayName") displayNameRef.current?.focus();
-      else firstNameRef.current?.focus();
+      if (firstInvalidField === "displayName") {
+        displayNameRef.current?.focus();
+      } else {
+        firstNameRef.current?.focus();
+      }
       return;
     }
 
@@ -45,7 +50,7 @@ export function ProfileScreen() {
     setIsPending(true);
     try {
       await completeProfile(normalizeProfileInput(displayName, firstName));
-    } catch (_error) {
+    } catch {
       setFormError("We couldn't save your profile. Please try again.");
     } finally {
       submissionRunning.current = false;
@@ -61,11 +66,15 @@ export function ProfileScreen() {
     >
       <View className="gap-sm">
         <Typography variant="overline">LAST STEP</Typography>
-        <Typography accessibilityRole="header" variant="display">
+        <Typography
+          accessibilityRole="header"
+          variant="display"
+        >
           What should we call you?
         </Typography>
         <Typography className="text-ink-muted">
-          This is the only name your groups see. Make one up if you'd rather — you can change it any time.
+          This is the only name your groups see. Make one up if you'd rather —
+          you can change it any time.
         </Typography>
       </View>
 
@@ -80,7 +89,10 @@ export function ProfileScreen() {
           maxLength={DISPLAY_NAME_MAX_LENGTH}
           onChangeText={(value) => {
             setDisplayName(value);
-            setFieldErrors((current) => ({ ...current, displayName: undefined }));
+            setFieldErrors((current) => ({
+              ...current,
+              displayName: undefined,
+            }));
             setFormError(null);
           }}
           onSubmitEditing={() => firstNameRef.current?.focus()}

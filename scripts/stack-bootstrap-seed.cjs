@@ -23,15 +23,18 @@ function prepareBootstrapSeed({
       fs.realpathSync(registry.worktree) !== registry.worktree ||
       file !== path.join(registry.worktree, "mise.local.toml") ||
       !path.isAbsolute(backendBinary)
-    )
+    ) {
       throw Error();
+    }
     const existing = readLocalSeed({
       file,
       stackId: registry.stackId,
       providerGeneration: registry.providerGeneration,
       run,
     });
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
     const seed = {
       RECOVERY_STACK_ID: registry.stackId,
       RECOVERY_PROVIDER_GENERATION: registry.providerGeneration,
@@ -67,8 +70,9 @@ function prepareBootstrapSeed({
       result.status !== 0 ||
       result.error ||
       typeof result.stdout !== "string"
-    )
+    ) {
       throw Error();
+    }
     seed.LOCAL_CONVEX_ADMIN_KEY = result.stdout.endsWith("\n")
       ? result.stdout.slice(0, -1)
       : result.stdout;

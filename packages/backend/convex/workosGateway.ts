@@ -44,7 +44,10 @@ export type WorkOSPasswordReset = {
 
 export interface WorkOSGateway {
   lookupUserByEmail(email: string): Promise<WorkOSUserClassification>;
-  createPasswordUser(input: { email: string; password: string }): Promise<WorkOSGatewayUser>;
+  createPasswordUser(input: {
+    email: string;
+    password: string;
+  }): Promise<WorkOSGatewayUser>;
   authenticatePassword(input: {
     email: string;
     password: string;
@@ -55,7 +58,10 @@ export interface WorkOSGateway {
     code: string;
   }): Promise<WorkOSGatewaySession>;
   createPasswordReset(email: string): Promise<WorkOSPasswordReset>;
-  completePasswordReset(input: { token: string; newPassword: string }): Promise<WorkOSGatewayUser>;
+  completePasswordReset(input: {
+    token: string;
+    newPassword: string;
+  }): Promise<WorkOSGatewayUser>;
   refreshSession(refreshToken: string): Promise<WorkOSGatewaySession>;
   revokeSession(sessionId: string): Promise<void>;
   getUserById(userId: string): Promise<WorkOSGatewayUser>;

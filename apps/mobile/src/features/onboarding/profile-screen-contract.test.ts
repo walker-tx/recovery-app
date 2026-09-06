@@ -8,15 +8,14 @@ const source = await readFile(
 );
 
 function getTextField(label: string) {
-  return Array.from(source.matchAll(/<TextField\b[\s\S]*?\/>/g), ([field]) =>
-    field,
+  return Array.from(
+    source.matchAll(/<TextField\b[\s\S]*?\/>/g),
+    ([field]) => field,
   ).find((field) => field.includes(`label="${label}"`));
 }
 
 function getOnChangeText(field: string) {
-  return field.match(
-    /onChangeText=\{\(value\) => \{([\s\S]*?)\n\s*\}\}/,
-  )?.[1];
+  return field.match(/onChangeText=\{\(value\) => \{([\s\S]*?)\n\s*\}\}/)?.[1];
 }
 
 test("the display-name return key advances to the first-name field", () => {
@@ -36,10 +35,19 @@ test("profile follows the artifact's open final-step composition", () => {
   assert.doesNotMatch(source, /<Card\./);
   assert.match(source, />LAST STEP</);
   assert.match(source, />\s*What should we call you\?\s*</);
-  assert.match(source, /contentContainerStyle=\{\{ justifyContent: "flex-start" \}\}/);
+  assert.match(
+    source,
+    /contentContainerStyle=\{\{ justifyContent: "flex-start" \}\}/,
+  );
   assert.equal(source.match(/appearance="filled"/g)?.length, 2);
-  assert.match(source, /Only shown if you turn it on later\. Nobody is told it's missing\./);
-  assert.match(source, /accessibilityLabel=\{isPending \? "Saving profile" : "Done"\}/);
+  assert.match(
+    source,
+    /Only shown if you turn it on later\. Nobody is told it's missing\./,
+  );
+  assert.match(
+    source,
+    /accessibilityLabel=\{isPending \? "Saving profile" : "Done"\}/,
+  );
   assert.match(source, /\{isPending \? "Saving" : "Done"\}/);
 });
 

@@ -14,85 +14,92 @@ const assertBootstrapConsumed = `data:text/javascript,${encodeURIComponent(`
   });
 `)}`;
 
-it.live("bootstrap observer overrides natural and explicit error exits without reflecting secrets", () =>
-  Effect.gen(function* () {
-    const credential = "synthetic-bootstrap-observer-secret";
-    for (const source of ["process.exitCode = 1", "process.exit(1)"]) {
-      for (const present of [true, false]) {
-        const result = yield* Effect.tryPromise(
-          () =>
-            new Promise<{
-              code: number | string | null | undefined;
-              output: string;
-            }>((resolve) => {
-              execFile(
-                process.execPath,
-                ["--import", assertBootstrapConsumed, "--eval", source],
-                {
-                  env: present ? { LOCAL_WORKOS_API_KEY: credential } : {},
-                  timeout: 5000,
-                },
-                (error, stdout, stderr) => {
-                  resolve({ code: error?.code, output: stdout + stderr });
-                },
-              );
-            }),
-        );
-        expect(result.code).toBe(present ? 97 : 1);
-        expect(result.output).not.toContain(credential);
-        expect(result.output).toBe("");
+it.live(
+  "bootstrap observer overrides natural and explicit error exits without reflecting secrets",
+  () =>
+    Effect.gen(function* () {
+      const credential = "synthetic-bootstrap-observer-secret";
+      for (const source of ["process.exitCode = 1", "process.exit(1)"]) {
+        for (const present of [true, false]) {
+          const result = yield* Effect.tryPromise(
+            () =>
+              new Promise<{
+                code: number | string | null | undefined;
+                output: string;
+              }>((resolve) => {
+                execFile(
+                  process.execPath,
+                  ["--import", assertBootstrapConsumed, "--eval", source],
+                  {
+                    env: present ? { LOCAL_WORKOS_API_KEY: credential } : {},
+                    timeout: 5000,
+                  },
+                  (error, stdout, stderr) => {
+                    resolve({ code: error?.code, output: stdout + stderr });
+                  },
+                );
+              }),
+          );
+          expect(result.code).toBe(present ? 97 : 1);
+          expect(result.output).not.toContain(credential);
+          expect(result.output).toBe("");
+        }
       }
-    }
-  }),
+    }),
 );
 
-it.live("Effect CLI help consumes supplied credentials without requiring them", () =>
-  Effect.gen(function* () {
-    const dir = yield* Effect.acquireRelease(
-      Effect.promise(() => mkdtemp(join(tmpdir(), "local-workos-cli-path-"))),
-      (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
-    );
-    const packagePath = join(dir, "provider spaces # % ü");
-    yield* Effect.promise(() =>
-      symlink(
-        fileURLToPath(new URL("../", import.meta.url)),
-        packagePath,
-        process.platform === "win32" ? "junction" : "dir",
-      ),
-    );
-    const cliUrl = new URL("src/cli.ts", pathToFileURL(packagePath + "/"));
-    for (const credential of [
-      undefined,
-      "sk_test_local_" + "a".repeat(64),
-      "private-invalid-bootstrap-key",
-    ]) {
-      const result = yield* Effect.tryPromise(() =>
-        promisify(execFile)(
-          process.execPath,
-          [
-            "--experimental-strip-types",
-            "--import",
-            assertBootstrapConsumed,
-            fileURLToPath(cliUrl),
-            "--help",
-          ],
-          {
-            env:
-              credential === undefined ? {} : { LOCAL_WORKOS_API_KEY: credential },
-            timeout: 5000,
-          },
+it.live(
+  "Effect CLI help consumes supplied credentials without requiring them",
+  () =>
+    Effect.gen(function* () {
+      const dir = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "local-workos-cli-path-"))),
+        (resource) =>
+          Effect.promise(() => rm(resource, { recursive: true, force: true })),
+      );
+      const packagePath = join(dir, "provider spaces # % ü");
+      yield* Effect.promise(() =>
+        symlink(
+          fileURLToPath(new URL("../", import.meta.url)),
+          packagePath,
+          process.platform === "win32" ? "junction" : "dir",
         ),
       );
-      expect(result.stdout).toContain("--database");
-      expect(result.stdout).toContain("--port");
-      expect(result.stdout).toContain("--provider-generation");
-      expect(result.stdout).not.toContain("--api-key");
-      expect(result.stderr).not.toContain("startup failed");
-      if (credential !== undefined) {
-        expect(result.stdout + result.stderr).not.toContain(credential);
+      const cliUrl = new URL("src/cli.ts", pathToFileURL(packagePath + "/"));
+      for (const credential of [
+        undefined,
+        "sk_test_local_" + "a".repeat(64),
+        "private-invalid-bootstrap-key",
+      ]) {
+        const result = yield* Effect.tryPromise(() =>
+          promisify(execFile)(
+            process.execPath,
+            [
+              "--experimental-strip-types",
+              "--import",
+              assertBootstrapConsumed,
+              fileURLToPath(cliUrl),
+              "--help",
+            ],
+            {
+              env:
+                credential === undefined
+                  ? {}
+                  : { LOCAL_WORKOS_API_KEY: credential },
+              timeout: 5000,
+            },
+          ),
+        );
+        expect(result.stdout).toContain("--database");
+        expect(result.stdout).toContain("--port");
+        expect(result.stdout).toContain("--provider-generation");
+        expect(result.stdout).not.toContain("--api-key");
+        expect(result.stderr).not.toContain("startup failed");
+        if (credential !== undefined) {
+          expect(result.stdout + result.stderr).not.toContain(credential);
+        }
       }
-    }
-  }),
+    }),
 );
 
 it.live("CLI schema failures do not reflect argument values", () =>

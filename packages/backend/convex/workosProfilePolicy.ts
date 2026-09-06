@@ -48,7 +48,9 @@ export function shapePublicWorkOSProfile(
 ): PublicWorkOSProfile {
   return {
     displayName: profile.displayName,
-    ...(profile.firstName === undefined ? {} : { firstName: profile.firstName }),
+    ...(profile.firstName === undefined
+      ? {}
+      : { firstName: profile.firstName }),
     onboardingComplete: profile.onboardingComplete,
   };
 }

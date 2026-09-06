@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import {
   HttpServerRequest,
   fromWeb,
@@ -48,7 +49,7 @@ it.effect(
             authenticate: () => unavailable,
             createUser: (body) =>
               Effect.suspend(() => {
-                if (body.mode === "wait")
+                if (body.mode === "wait") {
                   return Deferred.succeed(waiting, undefined).pipe(
                     Effect.andThen(Effect.never),
                     Effect.ensuring(
@@ -57,9 +58,13 @@ it.effect(
                       }),
                     ),
                   );
-                if (body.mode === "defect")
+                }
+                if (body.mode === "defect") {
                   return Effect.die(new Error("SECRET_DEFECT_PAYLOAD"));
-                if (body.mode === "interrupt") return Effect.interrupt;
+                }
+                if (body.mode === "interrupt") {
+                  return Effect.interrupt;
+                }
                 creates++;
                 return Effect.fail(
                   new RequestRejected({ reason: "email_exists" }),
@@ -101,8 +106,9 @@ it.effect(
         assert.deepEqual(defectBody, { code: "internal_error" });
         const interrupted = yield* Effect.exit(direct("interrupt"));
         assert.ok(Exit.isFailure(interrupted));
-        if (Exit.isFailure(interrupted))
+        if (Exit.isFailure(interrupted)) {
           assert.ok(Cause.hasInterruptsOnly(interrupted.cause));
+        }
         const waitingRequest = yield* direct("wait").pipe(Effect.forkScoped);
         yield* Deferred.await(waiting);
         yield* Fiber.interrupt(waitingRequest);
@@ -112,9 +118,10 @@ it.effect(
           port: 0,
         });
         yield* server.serve(app);
-        assert.equal(server.address._tag, "TcpAddress");
-        if (server.address._tag !== "TcpAddress")
+        assert.ok(Predicate.isTagged(server.address, "TcpAddress"));
+        if (!Predicate.isTagged(server.address, "TcpAddress")) {
           throw new Error("Expected TCP server");
+        }
         const base = `http://127.0.0.1:${server.address.port}`;
         yield* Effect.promise(async () => {
           const instance = await fetch(`${base}/instance-info`);
@@ -160,10 +167,12 @@ it.effect(
         pending: Redacted.make("SECRET_PENDING_CREDENTIAL"),
       });
       assert.ok(!JSON.stringify(error).includes("SECRET_PENDING_CREDENTIAL"));
-      assert.equal(error._tag, "VerificationRequired");
-      assert.equal(
-        new RequestRejected({ reason: "invalid_client" })._tag,
-        "RequestRejected",
+      assert.ok(Predicate.isTagged(error, "VerificationRequired"));
+      assert.ok(
+        Predicate.isTagged(
+          new RequestRejected({ reason: "invalid_client" }),
+          "RequestRejected",
+        ),
       );
     }),
 );

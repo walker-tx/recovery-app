@@ -6,7 +6,11 @@ import type {
 } from "./workosGateway.ts";
 import { WorkOSGatewayError } from "./workosErrorPolicy.ts";
 import type { EncryptedPendingAuthenticationToken } from "./workosIntentCrypto.ts";
-import { normalizeAuthEmail, recoveryInitiationResult, signupInitiationResult } from "./workosAuthPolicy.ts";
+import {
+  normalizeAuthEmail,
+  recoveryInitiationResult,
+  signupInitiationResult,
+} from "./workosAuthPolicy.ts";
 
 const SIGNUP_LEASE_MS = 30_000;
 const INTENT_ID_GENERATION_ATTEMPTS = 2;
@@ -52,15 +56,34 @@ type SignupIntentStore = {
     now: number;
     leaseExpiresAt: number;
   }): Promise<AcquiredSignupIntent>;
-  releaseSignupIntentLease(input: { publicId: string; leaseExpiresAt: number }): Promise<void>;
-  completeSignupIntent(input: { publicId: string; leaseExpiresAt: number; now: number }): Promise<void>;
+  releaseSignupIntentLease(input: {
+    publicId: string;
+    leaseExpiresAt: number;
+  }): Promise<void>;
+  completeSignupIntent(input: {
+    publicId: string;
+    leaseExpiresAt: number;
+    now: number;
+  }): Promise<void>;
   cleanupExpiredAuthData(): Promise<void>;
 };
 
 type AuthDelivery = {
-  verification(input: { email: string; code: string; expiresAt: number }): void | Promise<void>;
-  reset(input: { email: string; resetToken: string; expiresAt: number }): void | Promise<void>;
-  guidance(input: { email: string; category: PrivateGuidanceCategory; expiresAt: number }): void | Promise<void>;
+  verification(input: {
+    email: string;
+    code: string;
+    expiresAt: number;
+  }): void | Promise<void>;
+  reset(input: {
+    email: string;
+    resetToken: string;
+    expiresAt: number;
+  }): void | Promise<void>;
+  guidance(input: {
+    email: string;
+    category: PrivateGuidanceCategory;
+    expiresAt: number;
+  }): void | Promise<void>;
 };
 
 export type WorkOSAuthOrchestrationDependencies = {
@@ -70,13 +93,19 @@ export type WorkOSAuthOrchestrationDependencies = {
   now(): number;
   newIntentId(): string;
   fingerprintEmail(normalizedEmail: string): string;
-  encryptPendingAuthenticationToken(token: string): EncryptedPendingAuthenticationToken;
-  decryptPendingAuthenticationToken(encrypted: EncryptedPendingAuthenticationToken): string;
+  encryptPendingAuthenticationToken(
+    token: string,
+  ): EncryptedPendingAuthenticationToken;
+  decryptPendingAuthenticationToken(
+    encrypted: EncryptedPendingAuthenticationToken,
+  ): string;
 };
 
 type PublicSession = { accessToken: string; refreshToken: string };
 
-export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrationDependencies) {
+export function createWorkOSAuthOrchestration(
+  dependencies: WorkOSAuthOrchestrationDependencies,
+) {
   const startSignup = async (input: { email: string; password: string }) => {
     const email = normalizeAuthEmail(input.email);
     const generatedIntent = generateSignupIntentId(dependencies.newIntentId);
@@ -94,13 +123,22 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
         purpose: "signup",
         now: dependencies.now(),
       });
-      if (!admitted) return signupInitiationResult("rateLimited", intentId);
+      if (!admitted) {
+        return signupInitiationResult("rateLimited", intentId);
+      }
 
-      const classification = await dependencies.gateway.lookupUserByEmail(email);
-      if (classification.kind === "new" || classification.kind === "unverifiedPassword") {
+      const classification =
+        await dependencies.gateway.lookupUserByEmail(email);
+      if (
+        classification.kind === "new" ||
+        classification.kind === "unverifiedPassword"
+      ) {
         const user =
           classification.kind === "new"
-            ? await dependencies.gateway.createPasswordUser({ email, password: input.password })
+            ? await dependencies.gateway.createPasswordUser({
+                email,
+                password: input.password,
+              })
             : classification.user;
         const authentication = await dependencies.gateway.authenticatePassword({
           email,
@@ -110,7 +148,9 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
           const verification = await dependencies.gateway.getEmailVerification(
             authentication.emailVerificationId,
           );
-          if (verification.userId !== user.id) throw new WorkOSGatewayError("providerUnavailable");
+          if (verification.userId !== user.id) {
+            throw new WorkOSGatewayError("providerUnavailable");
+          }
           await dependencies.delivery.verification({
             email,
             code: verification.code,
@@ -120,9 +160,10 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
             publicId: intentId,
             emailFingerprint,
             purpose: "signup",
-            encryptedPendingToken: dependencies.encryptPendingAuthenticationToken(
-              authentication.pendingAuthenticationToken,
-            ),
+            encryptedPendingToken:
+              dependencies.encryptPendingAuthenticationToken(
+                authentication.pendingAuthenticationToken,
+              ),
             now: dependencies.now(),
           });
           return signupInitiationResult(classification, intentId);
@@ -141,13 +182,17 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
         publicId: intentId,
         emailFingerprint,
         purpose: "signup",
-        ...(guidance === undefined ? {} : { privateGuidanceCategory: guidance }),
+        ...(guidance === undefined
+          ? {}
+          : { privateGuidanceCategory: guidance }),
         now: dependencies.now(),
       });
       return signupInitiationResult(classification, intentId);
     } catch (error) {
       return signupInitiationResult(
-        error instanceof WorkOSGatewayError ? error.category : "providerUnavailable",
+        error instanceof WorkOSGatewayError
+          ? error.category
+          : "providerUnavailable",
         intentId,
       );
     } finally {
@@ -155,7 +200,10 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
     }
   };
 
-  const completeSignup = async (input: { intentId: string; code: string }): Promise<PublicSession> => {
+  const completeSignup = async (input: {
+    intentId: string;
+    code: string;
+  }): Promise<PublicSession> => {
     const leaseExpiresAt = dependencies.now() + SIGNUP_LEASE_MS;
     let acquired: AcquiredSignupIntent;
     try {
@@ -174,9 +222,10 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
         throw new WorkOSAuthError("INVALID_SIGNUP");
       }
       const session = await dependencies.gateway.completeEmailVerification({
-        pendingAuthenticationToken: dependencies.decryptPendingAuthenticationToken(
-          acquired.encryptedPendingToken,
-        ),
+        pendingAuthenticationToken:
+          dependencies.decryptPendingAuthenticationToken(
+            acquired.encryptedPendingToken,
+          ),
         code: input.code,
       });
       providerCompleted = true;
@@ -196,20 +245,33 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       return publicSession(session);
     } catch (error) {
       if (!providerCompleted) {
-        await releaseSafely(dependencies.intents, input.intentId, leaseExpiresAt);
+        await releaseSafely(
+          dependencies.intents,
+          input.intentId,
+          leaseExpiresAt,
+        );
       }
-      if (error instanceof WorkOSAuthError) throw error;
+      if (error instanceof WorkOSAuthError) {
+        throw error;
+      }
       if (error instanceof WorkOSGatewayError) {
-        if (error.category === "invalidVerification") throw new WorkOSAuthError("INVALID_SIGNUP");
+        if (error.category === "invalidVerification") {
+          throw new WorkOSAuthError("INVALID_SIGNUP");
+        }
         throw providerUnavailable();
       }
-      throw providerCompleted ? providerUnavailable() : new WorkOSAuthError("INVALID_SIGNUP");
+      throw providerCompleted
+        ? providerUnavailable()
+        : new WorkOSAuthError("INVALID_SIGNUP");
     } finally {
       await cleanupSafely(dependencies.intents);
     }
   };
 
-  const signIn = async (input: { email: string; password: string }): Promise<PublicSession> => {
+  const signIn = async (input: {
+    email: string;
+    password: string;
+  }): Promise<PublicSession> => {
     try {
       const authentication = await dependencies.gateway.authenticatePassword({
         email: normalizeAuthEmail(input.email),
@@ -220,8 +282,13 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       }
       return publicSession(authentication);
     } catch (error) {
-      if (error instanceof WorkOSAuthError) throw error;
-      if (error instanceof WorkOSGatewayError && error.category === "invalidCredentials") {
+      if (error instanceof WorkOSAuthError) {
+        throw error;
+      }
+      if (
+        error instanceof WorkOSGatewayError &&
+        error.category === "invalidCredentials"
+      ) {
         throw new WorkOSAuthError("INVALID_CREDENTIALS");
       }
       throw providerUnavailable();
@@ -230,10 +297,15 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
 
   const refreshSession = async (input: { refreshToken: string }) => {
     try {
-      const session = await dependencies.gateway.refreshSession(input.refreshToken);
+      const session = await dependencies.gateway.refreshSession(
+        input.refreshToken,
+      );
       return { status: "success" as const, ...publicSession(session) };
     } catch (error) {
-      if (error instanceof WorkOSGatewayError && error.category === "invalidSession") {
+      if (
+        error instanceof WorkOSGatewayError &&
+        error.category === "invalidSession"
+      ) {
         return { status: "invalid" as const };
       }
       throw providerUnavailable();
@@ -242,11 +314,16 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
 
   const signOutSession = async (input: { refreshToken: string }) => {
     try {
-      const session = await dependencies.gateway.refreshSession(input.refreshToken);
+      const session = await dependencies.gateway.refreshSession(
+        input.refreshToken,
+      );
       await dependencies.gateway.revokeSession(session.sessionId);
       return { revoked: true as const };
     } catch (error) {
-      if (error instanceof WorkOSGatewayError && error.category === "invalidSession") {
+      if (
+        error instanceof WorkOSGatewayError &&
+        error.category === "invalidSession"
+      ) {
         return { revoked: true as const };
       }
       throw providerUnavailable();
@@ -262,10 +339,16 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
         purpose: "recovery",
         now: dependencies.now(),
       });
-      if (!admitted) return recoveryInitiationResult("rateLimited");
+      if (!admitted) {
+        return recoveryInitiationResult("rateLimited");
+      }
 
-      const classification = await dependencies.gateway.lookupUserByEmail(email);
-      if (classification.kind === "password" || classification.kind === "unverifiedPassword") {
+      const classification =
+        await dependencies.gateway.lookupUserByEmail(email);
+      if (
+        classification.kind === "password" ||
+        classification.kind === "unverifiedPassword"
+      ) {
         const reset = await dependencies.gateway.createPasswordReset(email);
         await dependencies.delivery.reset({
           email,
@@ -285,19 +368,27 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
       return recoveryInitiationResult(classification);
     } catch (error) {
       return recoveryInitiationResult(
-        error instanceof WorkOSGatewayError ? error.category : "providerUnavailable",
+        error instanceof WorkOSGatewayError
+          ? error.category
+          : "providerUnavailable",
       );
     } finally {
       await cleanupSafely(dependencies.intents);
     }
   };
 
-  const resetPassword = async (input: { token: string; newPassword: string }) => {
+  const resetPassword = async (input: {
+    token: string;
+    newPassword: string;
+  }) => {
     try {
       await dependencies.gateway.completePasswordReset(input);
       return { reset: true as const };
     } catch (error) {
-      if (error instanceof WorkOSGatewayError && error.category === "invalidReset") {
+      if (
+        error instanceof WorkOSGatewayError &&
+        error.category === "invalidReset"
+      ) {
         throw new WorkOSAuthError("INVALID_RESET");
       }
       throw providerUnavailable();
@@ -316,10 +407,15 @@ export function createWorkOSAuthOrchestration(dependencies: WorkOSAuthOrchestrat
 }
 
 function publicSession(session: WorkOSGatewaySession): PublicSession {
-  return { accessToken: session.accessToken, refreshToken: session.refreshToken };
+  return {
+    accessToken: session.accessToken,
+    refreshToken: session.refreshToken,
+  };
 }
 
-function guidanceFor(classification: WorkOSUserClassification): PrivateGuidanceCategory | undefined {
+function guidanceFor(
+  classification: WorkOSUserClassification,
+): PrivateGuidanceCategory | undefined {
   if (
     classification.kind === "password" ||
     classification.kind === "unverifiedPassword" ||
@@ -327,8 +423,12 @@ function guidanceFor(classification: WorkOSUserClassification): PrivateGuidanceC
   ) {
     return "passwordSignInOrRecovery";
   }
-  if (classification.kind === "googleOnly") return "googleSignIn";
-  if (classification.kind === "appleOnly") return "appleSignIn";
+  if (classification.kind === "googleOnly") {
+    return "googleSignIn";
+  }
+  if (classification.kind === "appleOnly") {
+    return "appleSignIn";
+  }
   return undefined;
 }
 
@@ -344,7 +444,10 @@ function generateSignupIntentId(generate: () => string) {
       // Retry the application-owned generator before using a response-only fallback.
     }
   }
-  return { intentId: globalThis.crypto.randomUUID(), canPersist: false as const };
+  return {
+    intentId: globalThis.crypto.randomUUID(),
+    canPersist: false as const,
+  };
 }
 
 async function completeSignupIntentWithRetry(
@@ -371,7 +474,11 @@ async function revokeSafely(gateway: WorkOSGateway, sessionId: string) {
   }
 }
 
-async function releaseSafely(store: SignupIntentStore, publicId: string, leaseExpiresAt: number) {
+async function releaseSafely(
+  store: SignupIntentStore,
+  publicId: string,
+  leaseExpiresAt: number,
+) {
   try {
     await store.releaseSignupIntentLease({ publicId, leaseExpiresAt });
   } catch {

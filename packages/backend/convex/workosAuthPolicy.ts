@@ -14,12 +14,14 @@ export function signupInitiationResult(
   _outcome: WorkOSInitiationOutcome,
   intentId: string,
 ): { accepted: true; intentId: string } {
-  if (!opaqueIntentIdPattern.test(intentId)) throw new Error("Invalid signup intent");
+  if (!opaqueIntentIdPattern.test(intentId)) {
+    throw new Error("Invalid signup intent");
+  }
   return { accepted: true, intentId };
 }
 
-export function recoveryInitiationResult(
-  _outcome: WorkOSInitiationOutcome,
-): { accepted: true } {
+export function recoveryInitiationResult(_outcome: WorkOSInitiationOutcome): {
+  accepted: true;
+} {
   return { accepted: true };
 }

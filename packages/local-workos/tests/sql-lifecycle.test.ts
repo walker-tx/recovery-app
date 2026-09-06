@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import {
   ConfigService,
   SigningIdentity,
@@ -33,7 +34,8 @@ import { acquireProvider, startProvider } from "../src/provider.ts";
 
 const directory = Effect.acquireRelease(
   Effect.promise(() => mkdtemp(join(tmpdir(), "workos-sql-scope-"))),
-  (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
+  (resource) =>
+    Effect.promise(() => rm(resource, { recursive: true, force: true })),
 );
 const closeSpy = Effect.acquireRelease(
   Effect.sync(() => vi.spyOn(DatabaseSync.prototype, "close")),
@@ -67,7 +69,7 @@ it.live(
             apiKey: `sk_test_local_${"08".repeat(32)}`,
           }),
         ),
-        (provider) => Effect.promise(() => provider.close()),
+        (resource) => Effect.promise(() => resource.close()),
       );
       assert.equal(connections.size, 1);
       const [db] = connections;
@@ -111,8 +113,9 @@ it.live(
             this: DatabaseSync,
             text: string,
           ) {
-            if (text.startsWith("PRAGMA busy_timeout"))
+            if (text.startsWith("PRAGMA busy_timeout")) {
               throw new Error("synthetic configuration failure");
+            }
             return originalExec.call(this, text);
           }),
         ),
@@ -337,7 +340,7 @@ it.live("native fixture rejection is tagged", () =>
     if (Exit.isFailure(exit)) {
       const error = Cause.squash(exit.cause);
       assert.ok(error instanceof Error && "_tag" in error);
-      assert.equal(error._tag, "FixtureError");
+      assert.ok(Predicate.isTagged(error, "FixtureError"));
     }
   }),
 );

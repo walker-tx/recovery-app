@@ -17,15 +17,24 @@ export type WorkOSSessionStorage = {
   clear(): Promise<void>;
 };
 
-export function createWorkOSSessionStorage(store: SecureStoreAdapter): WorkOSSessionStorage {
+export function createWorkOSSessionStorage(
+  store: SecureStoreAdapter,
+): WorkOSSessionStorage {
   return {
     async read() {
       const value = await store.getItemAsync(WORKOS_SESSION_STORAGE_KEY);
-      if (value === null) return null;
+      if (value === null) {
+        return null;
+      }
       try {
         const record: unknown = JSON.parse(value);
-        if (!isSessionRecord(record)) return null;
-        return { accessToken: record.accessToken, refreshToken: record.refreshToken };
+        if (!isSessionRecord(record)) {
+          return null;
+        }
+        return {
+          accessToken: record.accessToken,
+          refreshToken: record.refreshToken,
+        };
       } catch {
         return null;
       }
@@ -42,12 +51,18 @@ export function createWorkOSSessionStorage(store: SecureStoreAdapter): WorkOSSes
   };
 }
 
-function isSessionRecord(value: unknown): value is SessionCredentials & { version: 1 } {
-  if (typeof value !== "object" || value === null) return false;
+function isSessionRecord(
+  value: unknown,
+): value is SessionCredentials & { version: 1 } {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
   const record = value as Record<string, unknown>;
-  return record.version === 1
-    && typeof record.accessToken === "string"
-    && record.accessToken.length > 0
-    && typeof record.refreshToken === "string"
-    && record.refreshToken.length > 0;
+  return (
+    record.version === 1 &&
+    typeof record.accessToken === "string" &&
+    record.accessToken.length > 0 &&
+    typeof record.refreshToken === "string" &&
+    record.refreshToken.length > 0
+  );
 }

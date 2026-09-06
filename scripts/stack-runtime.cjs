@@ -17,8 +17,16 @@ const { persistLocalConfig } = require("./stack-local-config.cjs");
 const { createProcessInspector } = require("./stack-process-inspector.cjs");
 const { createPitchforkIdentity } = require("./stack-pitchfork-identity.cjs");
 const { createPitchforkRunner } = require("./stack-adapters.cjs");
-const { createRegistry, portAvailable: observePort } = require("./stack-registry.cjs");
-const { createLifecycle, processName, StopFailure, groups } = require("./stack-lifecycle.cjs");
+const {
+  createRegistry,
+  portAvailable: observePort,
+} = require("./stack-registry.cjs");
+const {
+  createLifecycle,
+  processName,
+  StopFailure,
+  groups,
+} = require("./stack-lifecycle.cjs");
 const uuid = (value) =>
   typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
@@ -97,8 +105,9 @@ async function createRuntime({
           "CONVEX_ADMIN_KEY",
           "WORKOS_ADMIN_API_KEY",
         ]) {
-          if (key in inherited)
+          if (key in inherited) {
             throw Error("Inherited deployment selector rejected");
+          }
         }
         prepareOwnedStateDirectories({
           registry: record,
@@ -117,8 +126,9 @@ async function createRuntime({
           return { LOCAL_WORKOS_API_KEY: prepared.seed.LOCAL_WORKOS_API_KEY };
         }
         if (service.name === "metro") {
-          if (!prepared.persisted)
+          if (!prepared.persisted) {
             throw Error("Metro configuration not persisted");
+          }
           return prepared.configuration.mobile;
         }
         return {};
@@ -137,8 +147,9 @@ async function createRuntime({
           );
         }
         if (service.name === "convexCloud") {
-          if (!prepared.configuration)
+          if (!prepared.configuration) {
             throw Error("Validated provider configuration required");
+          }
           await bootstrap({
             registry: record,
             worktree: record.worktree,
@@ -178,69 +189,119 @@ async function createRuntime({
       },
     });
     async function check(stackId) {
-      if (!uuid(stackId)) throw Error("Explicit stack UUID required");
+      if (!uuid(stackId)) {
+        throw Error("Explicit stack UUID required");
+      }
       const status = await lifecycle.status(worktree);
-      if (status.stackId !== stackId) throw Error("Stack ownership mismatch");
+      if (status.stackId !== stackId) {
+        throw Error("Stack ownership mismatch");
+      }
       return status;
     }
     return {
       // No transaction, lock acquisition, state preparation, or route inference.
       // Production route evidence is intentionally unavailable until #49.
-      destructionPreflight: (target, confirmation) => preflightDestruction({
-        worktree, registryPath, target, confirmation,
-        inspectProcess: identity.inspectProcess,
-        portAvailable,
-      }),
+      destructionPreflight: (target, confirmation) =>
+        preflightDestruction({
+          worktree,
+          registryPath,
+          target,
+          confirmation,
+          inspectProcess: identity.inspectProcess,
+          portAvailable,
+        }),
       // Explicit local capability only, not exposed by the CLI. Never re-pairs trust.
-      destroyProvider: confirmation => lifecycle.destroyProvider(worktree, confirmation),
+      destroyProvider: (confirmation) =>
+        lifecycle.destroyProvider(worktree, confirmation),
       reserve: () => registry.reserve(worktree),
       status: async (stackId) => {
-        if (!uuid(stackId)) throw Error("Explicit stack UUID required");
+        if (!uuid(stackId)) {
+          throw Error("Explicit stack UUID required");
+        }
         const record = await registry.readOwned(worktree, stackId);
         const status = await check(stackId);
-        const observations = Object.fromEntries(Object.keys(status.ports).map(service => [
-          service, { state: "unknown", reason: "not-probed" },
-        ]));
-        await Promise.all(groups.map(async group => {
-          const original = record.processes[group[0]];
-          if (!original || !group.every(service =>
-            status.services[service] === "running" &&
-            isDeepStrictEqual(record.processes[service], original)
-          )) return;
-          try {
-            // Check the canonical paired daemon against the original registry
-            // identity, never using HTTP to establish process ownership.
-            if (!isDeepStrictEqual(await identity.identify(processName(record, group[0])), original)) return;
-          } catch { return; }
-          await Promise.all(group.map(async service => {
-            try {
-              await readiness.ready(service, record);
-              observations[service] = {
-                state: "ready", evidence: service === "convexSite" ? "transport" : "protocol",
-              };
-            } catch {
-              observations[service] = { state: "not-ready", reason: "probe-failed" };
+        const observations = Object.fromEntries(
+          Object.keys(status.ports).map((service) => [
+            service,
+            { state: "unknown", reason: "not-probed" },
+          ]),
+        );
+        await Promise.all(
+          groups.map(async (group) => {
+            const original = record.processes[group[0]];
+            if (
+              !original ||
+              !group.every(
+                (service) =>
+                  status.services[service] === "running" &&
+                  isDeepStrictEqual(record.processes[service], original),
+              )
+            ) {
+              return;
             }
-          }));
-        }));
+            try {
+              // Check the canonical paired daemon against the original registry
+              // identity, never using HTTP to establish process ownership.
+              if (
+                !isDeepStrictEqual(
+                  await identity.identify(processName(record, group[0])),
+                  original,
+                )
+              ) {
+                return;
+              }
+            } catch {
+              return;
+            }
+            await Promise.all(
+              group.map(async (service) => {
+                try {
+                  await readiness.ready(service, record);
+                  observations[service] = {
+                    state: "ready",
+                    evidence:
+                      service === "convexSite" ? "transport" : "protocol",
+                  };
+                } catch {
+                  observations[service] = {
+                    state: "not-ready",
+                    reason: "probe-failed",
+                  };
+                }
+              }),
+            );
+          }),
+        );
         // Single-attempt bounded protocol observations, not application health
         // or identity evidence. URLs remain configured destinations.
         return {
           ...status,
-          urls: Object.fromEntries(Object.entries(status.ports).map(([service, port]) => [
-            service, `${service === "mailpitSmtp" ? "smtp" : "http"}://127.0.0.1:${port}`,
-          ])),
+          urls: Object.fromEntries(
+            Object.entries(status.ports).map(([service, port]) => [
+              service,
+              `${service === "mailpitSmtp" ? "smtp" : "http"}://127.0.0.1:${port}`,
+            ]),
+          ),
           readiness: observations,
-          guidance: status.state === "reserved" && Object.entries(status.services).every(
-            ([service, state]) => state === "stopped" ||
-              (state === "running" && observations[service]?.state === "ready")
-          )
-            ? "To explicitly resume when authorized, run from the reported worktree: mise run zero -- --isolated <absolute-backend-executable>. Replace the placeholder with your verified executable; its path is not inferred. Startup still enforces ownership and lock checks. Never clear locks or reset state to retry."
-            : "Resume refused: process ownership or readiness is conflicted, unknown, or not ready. Inspect the reported services and scoped logs; status cannot prescribe a safe repair. Never clear locks, kill unknown processes, or reset state to retry.",
+          guidance:
+            status.state === "reserved" &&
+            Object.entries(status.services).every(
+              ([service, state]) =>
+                state === "stopped" ||
+                (state === "running" &&
+                  observations[service]?.state === "ready"),
+            )
+              ? "To explicitly resume when authorized, run from the reported worktree: mise run zero -- --isolated <absolute-backend-executable>. Replace the placeholder with your verified executable; its path is not inferred. Startup still enforces ownership and lock checks. Never clear locks or reset state to retry."
+              : "Resume refused: process ownership or readiness is conflicted, unknown, or not ready. Inspect the reported services and scoped logs; status cannot prescribe a safe repair. Never clear locks, kill unknown processes, or reset state to retry.",
           // Paired endpoints share one daemon; do not invent filesystem log paths.
-          logs: Object.fromEntries(["mailpitHttp", "provider", "convexCloud", "metro"].map(service => [
-            service, { manager: "pitchfork", name: processName(status, service) },
-          ])),
+          logs: Object.fromEntries(
+            ["mailpitHttp", "provider", "convexCloud", "metro"].map(
+              (service) => [
+                service,
+                { manager: "pitchfork", name: processName(status, service) },
+              ],
+            ),
+          ),
         };
       },
       stop: async (stackId) => {
@@ -258,20 +319,26 @@ async function createRuntime({
           );
         }
         try {
-          if (!(await fs.stat(backendBinary)).isFile()) throw Error();
+          if (!(await fs.stat(backendBinary)).isFile()) {
+            throw Error();
+          }
           await fs.access(backendBinary, constants.X_OK);
           const providerFile = path.join(
             worktree,
             "packages/local-workos/src/cli.ts",
           );
-          if (!(await fs.stat(providerFile)).isFile()) throw Error();
+          if (!(await fs.stat(providerFile)).isFile()) {
+            throw Error();
+          }
           await fs.access(providerFile, constants.R_OK);
           for (const relative of [
             "apps/mobile/node_modules/expo/bin/cli",
             "packages/backend/node_modules/.bin/convex",
           ]) {
             const file = path.join(worktree, relative);
-            if (!(await fs.stat(file)).isFile()) throw Error();
+            if (!(await fs.stat(file)).isFile()) {
+              throw Error();
+            }
             await fs.access(
               file,
               relative.endsWith("/convex") ? constants.X_OK : constants.R_OK,
@@ -282,10 +349,14 @@ async function createRuntime({
             for (const directory of (inherited.PATH ?? "").split(
               path.delimiter,
             )) {
-              if (!path.isAbsolute(directory)) continue;
+              if (!path.isAbsolute(directory)) {
+                continue;
+              }
               const file = path.join(directory, command);
               try {
-                if (!(await fs.stat(file)).isFile()) continue;
+                if (!(await fs.stat(file)).isFile()) {
+                  continue;
+                }
                 await fs.access(file, constants.X_OK);
                 found = true;
                 break;
@@ -293,7 +364,9 @@ async function createRuntime({
                 /* Try the next explicit PATH entry. */
               }
             }
-            if (!found) throw Error();
+            if (!found) {
+              throw Error();
+            }
           }
         } catch {
           throw Error(
@@ -331,11 +404,15 @@ async function runCli(
     typeof stackId === "string" &&
     path.isAbsolute(stackId) &&
     !stackId.includes("\0");
-  if (!(
-    validStart ||
-    (command === "reserve" && args.length === 1) ||
-    (["status", "stop"].includes(command) && args.length === 2 && uuid(stackId))
-  )) {
+  if (
+    !(
+      validStart ||
+      (command === "reserve" && args.length === 1) ||
+      (["status", "stop"].includes(command) &&
+        args.length === 2 &&
+        uuid(stackId))
+    )
+  ) {
     write(
       "Usage: node scripts/stack-runtime.cjs start <absolute-backend-executable> | reserve | status <stack-UUID> | stop <stack-UUID>",
     );
@@ -355,14 +432,18 @@ async function runCli(
         state: result.state ?? "reserved",
         ports: result.ports,
         services: result.services,
-        ...(command === "stop" && result.stopReport ? { stopReport: result.stopReport } : {}),
-        ...(command === "status" ? {
-          worktree: result.worktree,
-          urls: result.urls,
-          readiness: result.readiness,
-          guidance: result.guidance,
-          logs: result.logs,
-        } : {}),
+        ...(command === "stop" && result.stopReport
+          ? { stopReport: result.stopReport }
+          : {}),
+        ...(command === "status"
+          ? {
+              worktree: result.worktree,
+              urls: result.urls,
+              readiness: result.readiness,
+              guidance: result.guidance,
+              logs: result.logs,
+            }
+          : {}),
       }),
     );
     return 0;
@@ -376,10 +457,12 @@ async function runCli(
     );
     return 1;
   } finally {
-    if (runtime) await runtime.close();
+    if (runtime) {
+      await runtime.close();
+    }
   }
 }
-if (require.main === module)
+if (require.main === module) {
   runCli(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;
@@ -391,4 +474,5 @@ if (require.main === module)
       process.exitCode = 1;
     },
   );
+}
 module.exports = { createRuntime, runCli };

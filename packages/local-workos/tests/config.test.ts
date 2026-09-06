@@ -107,8 +107,8 @@ it.live(
     Effect.gen(function* () {
       const dir = yield* Effect.acquireRelease(
         Effect.promise(() => mkdtemp(join(tmpdir(), "workos-config-"))),
-        (dir) =>
-          Effect.promise(() => rm(dir, { recursive: true, force: true })),
+        (resource) =>
+          Effect.promise(() => rm(resource, { recursive: true, force: true })),
       );
       const providers = yield* Effect.all(
         ["first", "second"].map((name) =>
@@ -119,7 +119,7 @@ it.live(
                 apiKey: key,
               }),
             ),
-            (provider) => Effect.promise(() => provider.close()),
+            (resource) => Effect.promise(() => resource.close()),
           ),
         ),
         { concurrency: "unbounded" },
@@ -148,18 +148,27 @@ it.live(
     }),
 );
 
-it.effect("isolates concurrent bootstrap ConfigProviders without a global handoff", () =>
-  Effect.gen(function* () {
-    const keys = ["a", "b"].map((letter) => `sk_test_local_${letter.repeat(64)}`);
-    const configs = yield* Effect.all(
-      keys.map((apiKey) =>
-        loadProviderConfig({ database: "/tmp/synthetic.sqlite" }).pipe(
-          provide({ LOCAL_WORKOS_API_KEY: apiKey }),
+it.effect(
+  "isolates concurrent bootstrap ConfigProviders without a global handoff",
+  () =>
+    Effect.gen(function* () {
+      const keys = ["a", "b"].map(
+        (letter) => `sk_test_local_${letter.repeat(64)}`,
+      );
+      const configs = yield* Effect.all(
+        keys.map((apiKey) =>
+          loadProviderConfig({ database: "/tmp/synthetic.sqlite" }).pipe(
+            provide({ LOCAL_WORKOS_API_KEY: apiKey }),
+          ),
         ),
-      ),
-      { concurrency: "unbounded" },
-    );
-    assert.deepEqual(configs.map((config) => Redacted.value(config.apiKey)), keys);
-    for (const apiKey of keys) assert.ok(!JSON.stringify(configs).includes(apiKey));
-  }),
+        { concurrency: "unbounded" },
+      );
+      assert.deepEqual(
+        configs.map((config) => Redacted.value(config.apiKey)),
+        keys,
+      );
+      for (const apiKey of keys) {
+        assert.ok(!JSON.stringify(configs).includes(apiKey));
+      }
+    }),
 );

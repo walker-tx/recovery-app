@@ -104,29 +104,37 @@ for (const kind of [
   "forbidden",
   "unsafe",
   "read-failure",
-])
+]) {
   test(`rejects ${kind} without regenerating`, (t) => {
     const { options, calls } = fixture(t);
-    if (kind === "unowned")
+    if (kind === "unowned") {
       fs.writeFileSync(options.file, '[env]\nOTHER="keep"\n', { mode: 0o600 });
-    else prepareBootstrapSeed(options);
-    if (kind === "partial")
+    } else {
+      prepareBootstrapSeed(options);
+    }
+    if (kind === "partial") {
       fs.writeFileSync(
         options.file,
         fs
           .readFileSync(options.file, "utf8")
           .replace(/^LOCAL_CONVEX_ADMIN_KEY.*\n/m, ""),
       );
-    if (kind === "generation")
+    }
+    if (kind === "generation") {
       options.registry = {
         ...options.registry,
         providerGeneration: "33333333-3333-4333-8333-333333333333",
       };
-    if (kind === "forbidden")
+    }
+    if (kind === "forbidden") {
       fs.appendFileSync(options.file, '\nCONVEX_DEPLOY_KEY="synthetic"\n');
-    if (kind === "unsafe") fs.chmodSync(options.file, 0o644);
-    if (kind === "read-failure")
+    }
+    if (kind === "unsafe") {
+      fs.chmodSync(options.file, 0o644);
+    }
+    if (kind === "read-failure") {
       options.run = () => ({ status: 1, stdout: "", stderr: "unexpected" });
+    }
     const before = fs.readFileSync(options.file);
     const count = calls();
     assert.throws(() => prepareBootstrapSeed(options));
@@ -134,7 +142,8 @@ for (const kind of [
       calls() === count && fs.readFileSync(options.file).equals(before),
     );
   });
-for (const output of ["", "  ", "bad\nsecond\n", "x".repeat(4097)])
+}
+for (const output of ["", "  ", "bad\nsecond\n", "x".repeat(4097)]) {
   test("invalid keygen output cannot publish config", (t) => {
     const { options } = fixture(t);
     assert.throws(() =>
@@ -145,6 +154,7 @@ for (const output of ["", "  ", "bad\nsecond\n", "x".repeat(4097)])
     );
     assert.ok(!fs.existsSync(options.file));
   });
+}
 test("ready persistence rejects partial seed and seed replacement", (t) => {
   const { options } = fixture(t);
   const seed = prepareBootstrapSeed(options);

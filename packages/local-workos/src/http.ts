@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import {
   Effect,
   Scope,
@@ -29,7 +30,10 @@ import {
   AuthenticationSchema,
   UserListSchema,
   RevokeSessionRequestSchema,
-  CreatePasswordResetRequestSchema, ResetPasswordRequestSchema, PasswordResetSchema, ResetPasswordResponseSchema,
+  CreatePasswordResetRequestSchema,
+  ResetPasswordRequestSchema,
+  PasswordResetSchema,
+  ResetPasswordResponseSchema,
   EmailVerificationSchema,
   IdentitiesSchema,
   JwksSchema,
@@ -43,7 +47,7 @@ function requireBearer(authorization: string | undefined, apiKey: string) {
     : Effect.fail(new RequestRejected({ reason: "unauthorized" }));
 }
 function domainResponse(error: RequestFailure) {
-  if (error instanceof VerificationRequired)
+  if (error instanceof VerificationRequired) {
     return Response.jsonUnsafe(
       {
         code: "email_verification_required",
@@ -53,13 +57,16 @@ function domainResponse(error: RequestFailure) {
       },
       { status: 400 },
     );
-  if (error.reason === "invalid_grant")
+  }
+  if (error.reason === "invalid_grant") {
     return Response.jsonUnsafe(
       { error: "invalid_grant", error_description: "Invalid credentials" },
       { status: 400 },
     );
-  if (error.reason === "invalid_request")
+  }
+  if (error.reason === "invalid_request") {
     return Response.jsonUnsafe({ code: "invalid_request" }, { status: 422 });
+  }
   const status = {
     unauthorized: 401,
     unsupported_operation: 404,
@@ -136,23 +143,41 @@ const api = HttpApi.make("localWorkOS").add(
       payload: CreateUserRequestSchema,
       success: UserSchema,
     }),
-    HttpApiEndpoint.post("createPasswordReset", "/user_management/password_reset", {
-      payload: CreatePasswordResetRequestSchema, success: PasswordResetSchema,
-    }),
-    HttpApiEndpoint.post("resetPassword", "/user_management/password_reset/confirm", {
-      payload: ResetPasswordRequestSchema, success: ResetPasswordResponseSchema,
-    }),
+    HttpApiEndpoint.post(
+      "createPasswordReset",
+      "/user_management/password_reset",
+      {
+        payload: CreatePasswordResetRequestSchema,
+        success: PasswordResetSchema,
+      },
+    ),
+    HttpApiEndpoint.post(
+      "resetPassword",
+      "/user_management/password_reset/confirm",
+      {
+        payload: ResetPasswordRequestSchema,
+        success: ResetPasswordResponseSchema,
+      },
+    ),
     HttpApiEndpoint.post("revokeSession", "/user_management/sessions/revoke", {
-      payload: RevokeSessionRequestSchema, success: Schema.Void,
+      payload: RevokeSessionRequestSchema,
+      success: Schema.Void,
     }),
     HttpApiEndpoint.get("listUsers", "/user_management/users", {
       success: UserListSchema,
     }),
-    HttpApiEndpoint.get("getEmailVerification", "/user_management/email_verification/:id", {
+    HttpApiEndpoint.get(
+      "getEmailVerification",
+      "/user_management/email_verification/:id",
+      {
+        params: { id: Schema.String },
+        success: EmailVerificationSchema,
+      },
+    ),
+    HttpApiEndpoint.delete("deleteUser", "/user_management/users/:id", {
       params: { id: Schema.String },
-      success: EmailVerificationSchema,
+      success: Schema.Void,
     }),
-    HttpApiEndpoint.delete("deleteUser", "/user_management/users/:id", { params: { id: Schema.String }, success: Schema.Void }),
     HttpApiEndpoint.get("getUser", "/user_management/users/:id", {
       params: { id: Schema.String },
       success: UserSchema,
@@ -177,8 +202,9 @@ function workosResponse<A>(
 ) {
   return Effect.gen(function* () {
     const request = yield* HttpServerRequest;
-    if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES)
+    if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES) {
       return Response.jsonUnsafe({ code: "invalid_request" }, { status: 413 });
+    }
     const raw =
       request.method === "POST"
         ? yield* request.json.pipe(
@@ -192,11 +218,12 @@ function workosResponse<A>(
     )(raw).pipe(
       Effect.mapError(() => new RequestRejected({ reason: "invalid_request" })),
     );
-    if (options.access === "bearer")
+    if (options.access === "bearer") {
       yield* requireBearer(
         request.headers.authorization,
         Redacted.value(apiKey),
       );
+    }
     if (options.path && !matchesRawPath(request.url, options.path)) {
       yield* requireBearer(
         request.headers.authorization,
@@ -221,7 +248,10 @@ export function makeHttpApp(scope: Scope.Scope) {
       instanceInfo,
       authenticate,
       createUser,
-      createPasswordReset, resetPassword, revokeSession, deleteUser,
+      createPasswordReset,
+      resetPassword,
+      revokeSession,
+      deleteUser,
       listUsers,
       getUser,
       getIdentities,
@@ -229,8 +259,8 @@ export function makeHttpApp(scope: Scope.Scope) {
       jwks,
     } = yield* WorkOSService;
     const { clientId } = yield* instanceInfo;
-    const handlers = HttpApiBuilder.group(api, "workos", (handlers) =>
-      handlers
+    const handlers = HttpApiBuilder.group(api, "workos", (group) =>
+      group
         .handleRaw("instanceInfo", ({ endpoint }) =>
           workosResponse(apiKey, () => instanceInfo, { path: endpoint.path }),
         )
@@ -256,13 +286,26 @@ export function makeHttpApp(scope: Scope.Scope) {
           }),
         )
         .handleRaw("createPasswordReset", ({ endpoint }) =>
-          workosResponse(apiKey, createPasswordReset, { access: "bearer", path: endpoint.path }),
+          workosResponse(apiKey, createPasswordReset, {
+            access: "bearer",
+            path: endpoint.path,
+          }),
         )
         .handleRaw("resetPassword", ({ endpoint }) =>
-          workosResponse(apiKey, resetPassword, { access: "bearer", path: endpoint.path }),
+          workosResponse(apiKey, resetPassword, {
+            access: "bearer",
+            path: endpoint.path,
+          }),
         )
         .handleRaw("revokeSession", ({ endpoint }) =>
-          workosResponse(apiKey, body => revokeSession(body).pipe(Effect.as(Response.empty({ status: 204 }))), { access: "bearer", path: endpoint.path }),
+          workosResponse(
+            apiKey,
+            (body) =>
+              revokeSession(body).pipe(
+                Effect.as(Response.empty({ status: 204 })),
+              ),
+            { access: "bearer", path: endpoint.path },
+          ),
         )
         .handleRaw("listUsers", ({ endpoint }) =>
           workosResponse(apiKey, (_, request) => listUsers(request.url), {
@@ -271,14 +314,27 @@ export function makeHttpApp(scope: Scope.Scope) {
           }),
         )
         .handleRaw("getEmailVerification", ({ endpoint }) =>
-          workosResponse(apiKey, (_, request) => getEmailVerification(rawUserId(request.url)), {
-            access: "bearer", path: endpoint.path,
-          }),
+          workosResponse(
+            apiKey,
+            (_, request) => getEmailVerification(rawUserId(request.url)),
+            {
+              access: "bearer",
+              path: endpoint.path,
+            },
+          ),
         )
         .handleRaw("deleteUser", ({ endpoint }) =>
-          workosResponse(apiKey, (_, request) => deleteUser(rawUserId(request.url)).pipe(Effect.as(Response.empty({ status: 204 }))), {
-            access: "bearer", path: endpoint.path,
-          }),
+          workosResponse(
+            apiKey,
+            (_, request) =>
+              deleteUser(rawUserId(request.url)).pipe(
+                Effect.as(Response.empty({ status: 204 })),
+              ),
+            {
+              access: "bearer",
+              path: endpoint.path,
+            },
+          ),
         )
         .handleRaw("getUser", ({ endpoint }) =>
           workosResponse(
@@ -319,11 +375,16 @@ export function makeHttpApp(scope: Scope.Scope) {
     const app = Effect.gen(function* () {
       const request = yield* HttpServerRequest;
       // HttpRouter otherwise implicitly serves GET endpoints for HEAD.
-      if (request.method !== "GET" && request.method !== "POST" && request.method !== "DELETE")
+      if (
+        request.method !== "GET" &&
+        request.method !== "POST" &&
+        request.method !== "DELETE"
+      ) {
         return yield* unsupported;
+      }
       return yield* routed.pipe(
         Effect.catch((error) =>
-          error.reason._tag === "RouteNotFound"
+          Predicate.isTagged(error.reason, "RouteNotFound")
             ? unsupported
             : Effect.die(error),
         ),

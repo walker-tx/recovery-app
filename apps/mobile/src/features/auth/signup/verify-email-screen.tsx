@@ -8,21 +8,33 @@ import { toSafeAuthError } from "../auth-error-policy";
 import { createSubmissionGuard } from "../auth-submission";
 import { useWorkOSSession } from "../session/workos-session-provider";
 import { useSignupFlow } from "./signup-flow-provider";
-import { getVerificationCodeError, initialVerificationState, reduceVerificationState } from "./signup-state";
+import {
+  getVerificationCodeError,
+  initialVerificationState,
+  reduceVerificationState,
+} from "./signup-state";
 
 export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
   const { completeSignup } = useWorkOSSession();
   const { intentId, submittedEmail, completeSignupFlow } = useSignupFlow();
   const guard = useRef(createSubmissionGuard()).current;
   const codeInput = useRef<TextInput>(null);
-  const [state, dispatch] = useReducer(reduceVerificationState, initialVerificationState);
+  const [state, dispatch] = useReducer(
+    reduceVerificationState,
+    initialVerificationState,
+  );
   const [codeError, setCodeError] = useState<string>();
 
   async function handleSubmit(code: string) {
     const error = getVerificationCodeError(code);
     setCodeError(error);
-    if (error) { codeInput.current?.focus(); return; }
-    if (intentId === null) return;
+    if (error) {
+      codeInput.current?.focus();
+      return;
+    }
+    if (intentId === null) {
+      return;
+    }
 
     await guard.run({ intentId, code }, async (values) => {
       dispatch({ type: "submissionStarted" });
@@ -31,7 +43,10 @@ export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
         dispatch({ type: "submissionSucceeded" });
         completeSignupFlow();
       } catch (caught) {
-        dispatch({ type: "submissionFailed", message: toSafeAuthError("verification", caught) });
+        dispatch({
+          type: "submissionFailed",
+          message: toSafeAuthError("verification", caught),
+        });
       }
     });
   }
@@ -54,10 +69,16 @@ export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
           <Typography variant="title">‹</Typography>
         </Pressable>
         <View className="gap-sm">
-          <Typography selectable variant="overline">
+          <Typography
+            selectable
+            variant="overline"
+          >
             {submittedEmail === null ? "EMAIL" : submittedEmail.toUpperCase()}
           </Typography>
-          <Typography accessibilityRole="header" variant="display">
+          <Typography
+            accessibilityRole="header"
+            variant="display"
+          >
             Six digits, from your inbox
           </Typography>
           <Typography className="text-ink-muted">
@@ -68,7 +89,13 @@ export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
 
       <View className="gap-lg">
         {intentId === null ? (
-          <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
+          <Typography
+            accessibilityLiveRegion="polite"
+            accessibilityRole="alert"
+            className="text-danger"
+            selectable
+            variant="caption"
+          >
             This signup attempt is no longer available. Go back and start again.
           </Typography>
         ) : null}
@@ -83,7 +110,9 @@ export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
           onChangeText={(value) => {
             dispatch({ type: "codeChanged", value });
             setCodeError(undefined);
-            if (/^\d{6}$/.test(value)) void handleSubmit(value);
+            if (/^\d{6}$/.test(value)) {
+              void handleSubmit(value);
+            }
           }}
           ref={codeInput}
           returnKeyType="done"
@@ -91,12 +120,23 @@ export function VerifyEmailScreen({ onBack }: { onBack: () => void }) {
           value={state.code}
         />
         {state.isPending ? (
-          <Typography accessibilityLiveRegion="polite" className="text-ink-muted" selectable variant="caption">
+          <Typography
+            accessibilityLiveRegion="polite"
+            className="text-ink-muted"
+            selectable
+            variant="caption"
+          >
             Verifying…
           </Typography>
         ) : null}
         {state.formError ? (
-          <Typography accessibilityLiveRegion="polite" accessibilityRole="alert" className="text-danger" selectable variant="caption">
+          <Typography
+            accessibilityLiveRegion="polite"
+            accessibilityRole="alert"
+            className="text-danger"
+            selectable
+            variant="caption"
+          >
             {state.formError}
           </Typography>
         ) : null}

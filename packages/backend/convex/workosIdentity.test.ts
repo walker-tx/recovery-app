@@ -15,9 +15,9 @@ import {
 const clientId = "client_01ABC123";
 const issuer = `https://api.workos.com/user_management/${clientId}`;
 
-function contextWith(identity: UserIdentity | null) {
+function contextWith(userIdentity: UserIdentity | null) {
   return {
-    auth: { getUserIdentity: vi.fn().mockResolvedValue(identity) },
+    auth: { getUserIdentity: vi.fn().mockResolvedValue(userIdentity) },
   };
 }
 
@@ -38,14 +38,18 @@ describe("requireWorkOSIdentity", () => {
   it("returns only the validated subject", async () => {
     vi.stubEnv("WORKOS_CLIENT_ID", clientId);
 
-    await expect(requireWorkOSIdentity(contextWith(identity()))).resolves.toEqual({
+    await expect(
+      requireWorkOSIdentity(contextWith(identity())),
+    ).resolves.toEqual({
       subject: "user_123",
     });
   });
 
   it("rejects a missing identity", async () => {
     vi.stubEnv("WORKOS_CLIENT_ID", clientId);
-    await expect(requireWorkOSIdentity(contextWith(null))).rejects.toMatchObject({
+    await expect(
+      requireWorkOSIdentity(contextWith(null)),
+    ).rejects.toMatchObject({
       data: { code: "UNAUTHENTICATED" },
     });
   });
@@ -66,7 +70,9 @@ describe("requireWorkOSIdentity", () => {
     vi.stubEnv("WORKOS_CLIENT_ID", clientId);
     await expect(
       requireWorkOSIdentity(
-        contextWith(identity({ issuer: "https://api.workos.com/user_management" })),
+        contextWith(
+          identity({ issuer: "https://api.workos.com/user_management" }),
+        ),
       ),
     ).rejects.toMatchObject({ data: { code: "UNAUTHENTICATED" } });
   });
@@ -134,9 +140,9 @@ describe("WorkOS identity source-contract detection", () => {
         "otherAuth.getUserIdentity()",
       );
 
-      expect(
-        findGetUserIdentityUsages({ rootDirectory, allowedFile }),
-      ).toEqual([join("nested", "protected.ts")]);
+      expect(findGetUserIdentityUsages({ rootDirectory, allowedFile })).toEqual(
+        [join("nested", "protected.ts")],
+      );
     } finally {
       rmSync(rootDirectory, { recursive: true, force: true });
     }

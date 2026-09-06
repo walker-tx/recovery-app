@@ -22,8 +22,9 @@ test("HTTP uses allocated loopback ports, exact paths and no redirects", async (
       return response(bodies.shift());
     },
   });
-  for (const name of ["provider", "metro", "convexCloud", "mailpitHttp"])
+  for (const name of ["provider", "metro", "convexCloud", "mailpitHttp"]) {
     assert.equal(await adapter.ready(name, record), true);
+  }
   assert.deepEqual(calls, [
     ["http://127.0.0.1:4101/instance-info", "error"],
     ["http://127.0.0.1:4102/status", "error"],
@@ -130,7 +131,9 @@ function socketFake(parts) {
     socket.destroyed = true;
   };
   queueMicrotask(() => {
-    for (const part of parts) socket.emit("data", Buffer.from(part));
+    for (const part of parts) {
+      socket.emit("data", Buffer.from(part));
+    }
   });
   return socket;
 }
@@ -178,13 +181,17 @@ test("site pre-push readiness is only an independent TCP connect, never HTTP", a
       connect: (options) => {
         assert.deepEqual(options, { host: "127.0.0.1", port: 4104 });
         socket = socketFake([]);
-        if (event) queueMicrotask(() => socket.emit(event));
+        if (event) {
+          queueMicrotask(() => socket.emit(event));
+        }
         return socket;
       },
     });
-    if (event === "connect")
+    if (event === "connect") {
       assert.equal(await adapter.ready("convexSite", record), true);
-    else await assert.rejects(adapter.ready("convexSite", record));
+    } else {
+      await assert.rejects(adapter.ready("convexSite", record));
+    }
     assert.equal(socket.destroyed, true);
     assert.equal(socket.eventNames().length, 0);
   }

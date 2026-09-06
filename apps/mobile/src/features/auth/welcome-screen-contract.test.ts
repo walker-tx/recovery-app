@@ -13,9 +13,18 @@ test("welcome follows the artifact hierarchy with email authentication actions",
   assert.match(source, />\s*Count the days,\{"\\n"\}not alone\s*</);
   assert.match(
     source,
-    /Nothing is public\. You choose a name, and you choose what the group sees\./,
+    /Nothing\s+is\s+public\.\s+You\s+choose\s+a\s+name,\s+and\s+you\s+choose\s+what\s+the\s+group\s+sees\./,
   );
-  assert.match(source, /contentContainerStyle=\{\{ justifyContent: "space-between" \}\}/);
-  assert.match(source, /<Button[\s\S]*?onPress=\{onSignUp\}[\s\S]*?>\s*Create account\s*<\/Button>/);
-  assert.match(source, /<Button[\s\S]*?onPress=\{onSignIn\}[\s\S]*?>\s*Sign in\s*<\/Button>/);
+  assert.match(
+    source,
+    /contentContainerStyle=\{\{ justifyContent: "space-between" \}\}/,
+  );
+  assert.match(
+    source,
+    /<Button[\s\S]*?onPress=\{onSignUp\}[\s\S]*?>\s*Create account\s*<\/Button>/,
+  );
+  assert.match(
+    source,
+    /<Button[\s\S]*?onPress=\{onSignIn\}[\s\S]*?>\s*Sign in\s*<\/Button>/,
+  );
 });

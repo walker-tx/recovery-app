@@ -6,14 +6,19 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
 test("opt-in Mise stack tasks forward exact argv without starting services", async (t) => {
-  const config = await fs.readFile(path.join(__dirname, "../mise.toml"), "utf8");
+  const config = await fs.readFile(
+    path.join(__dirname, "../mise.toml"),
+    "utf8",
+  );
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "stack-entrypoints-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const bin = path.join(root, "bin");
   await fs.mkdir(bin);
-  await fs.writeFile(path.join(bin, "node"),
+  await fs.writeFile(
+    path.join(bin, "node"),
     `#!${process.execPath}\nprocess.stdout.write(JSON.stringify(process.argv.slice(2)));\n`,
-    { mode: 0o755 });
+    { mode: 0o755 },
+  );
   // Only copy task declarations: never load repository tools, secrets or hooks.
   const tasks = ["start", "status", "stop"].map((command) => {
     const header = `[tasks."stack:${command}"]`;
@@ -38,8 +43,15 @@ test("opt-in Mise stack tasks forward exact argv without starting services", asy
     ["status", "6c64e416-fd56-4afd-917b-bcebc51d169f"],
     ["stop", "ae3458fa-c244-45bb-b343-f0bf91ded5ca"],
   ]) {
-    const output = execFileSync(mise, ["run", "--quiet", `stack:${command}`, "--", argument],
-      { cwd: root, env, encoding: "utf8", timeout: 15000 });
-    assert.deepEqual(JSON.parse(output), ["scripts/stack-runtime.cjs", command, argument]);
+    const output = execFileSync(
+      mise,
+      ["run", "--quiet", `stack:${command}`, "--", argument],
+      { cwd: root, env, encoding: "utf8", timeout: 15000 },
+    );
+    assert.deepEqual(JSON.parse(output), [
+      "scripts/stack-runtime.cjs",
+      command,
+      argument,
+    ]);
   }
 });

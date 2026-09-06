@@ -6,7 +6,9 @@ export function createSubmissionGuard() {
       values: Values,
       work: (submittedValues: Values) => Promise<void>,
     ) {
-      if (running) return false;
+      if (running) {
+        return false;
+      }
 
       running = true;
       try {

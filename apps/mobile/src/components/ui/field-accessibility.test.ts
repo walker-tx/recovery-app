@@ -4,12 +4,15 @@ import test from "node:test";
 
 import { getFieldAccessibilityHint } from "./field-accessibility.ts";
 
-const fieldSource = await readFile(new URL("./field.tsx", import.meta.url), "utf8");
+const fieldSource = await readFile(
+  new URL("./field.tsx", import.meta.url),
+  "utf8",
+);
 
 test("announces shared field errors through one polite live region", () => {
   assert.match(
     fieldSource,
-    /error \? <Typography accessibilityLiveRegion="polite" accessibilityRole="alert"[^>]*>\{error\}<\/Typography>/,
+    /error\s+\?\s*\(\s*<Typography\s+accessibilityLiveRegion="polite"\s+accessibilityRole="alert"[^>]*>\s*\{error\}\s*<\/Typography>/,
   );
   assert.equal(
     fieldSource.match(/accessibilityLiveRegion="polite"/g)?.length,

@@ -31,7 +31,8 @@ export const bootstrapApiKey = Effect.gen(function* () {
   ),
 );
 const LifetimeSeconds = Schema.Number.check(
-  Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 30 * 86400 }),
+  Schema.isInt(),
+  Schema.isBetween({ minimum: 1, maximum: 30 * 86400 }),
 ).pipe(Schema.brand("LifetimeSeconds"));
 const LifetimesSchema = Schema.Struct({
   accessTokenSeconds: LifetimeSeconds,
@@ -44,7 +45,12 @@ export type ProviderOptions = {
   apiKey: string;
   port?: number;
   providerGeneration?: string;
-  lifetimes?: Partial<{ accessTokenSeconds: number; sessionSeconds: number; verificationSeconds: number; passwordResetSeconds: number }>;
+  lifetimes?: Partial<{
+    accessTokenSeconds: number;
+    sessionSeconds: number;
+    verificationSeconds: number;
+    passwordResetSeconds: number;
+  }>;
 };
 export const decodeProviderConfig = (options: ProviderOptions) =>
   Effect.gen(function* () {
@@ -89,11 +95,23 @@ export const decodeProviderConfig = (options: ProviderOptions) =>
             ),
           );
     const lifetimes = yield* Schema.decodeUnknownEffect(LifetimesSchema)({
-      accessTokenSeconds: 300, sessionSeconds: 7 * 86400, verificationSeconds: 600, passwordResetSeconds: 1800,
+      accessTokenSeconds: 300,
+      sessionSeconds: 7 * 86400,
+      verificationSeconds: 600,
+      passwordResetSeconds: 1800,
       ...options.lifetimes,
-    }).pipe(Effect.mapError(() => new ConfigurationError({ message: "Invalid provider lifetimes" })));
-    if (lifetimes.accessTokenSeconds > lifetimes.sessionSeconds)
-      return yield* Effect.fail(new ConfigurationError({ message: "Access lifetime exceeds session lifetime" }));
+    }).pipe(
+      Effect.mapError(
+        () => new ConfigurationError({ message: "Invalid provider lifetimes" }),
+      ),
+    );
+    if (lifetimes.accessTokenSeconds > lifetimes.sessionSeconds) {
+      return yield* Effect.fail(
+        new ConfigurationError({
+          message: "Access lifetime exceeds session lifetime",
+        }),
+      );
+    }
     return {
       lifetimes,
       database,
