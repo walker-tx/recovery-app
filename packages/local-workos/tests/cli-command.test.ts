@@ -14,6 +14,38 @@ const assertBootstrapConsumed = `data:text/javascript,${encodeURIComponent(`
   });
 `)}`;
 
+it.live("bootstrap observer overrides natural and explicit error exits without reflecting secrets", () =>
+  Effect.gen(function* () {
+    const credential = "synthetic-bootstrap-observer-secret";
+    for (const source of ["process.exitCode = 1", "process.exit(1)"]) {
+      for (const present of [true, false]) {
+        const result = yield* Effect.tryPromise(
+          () =>
+            new Promise<{
+              code: number | string | null | undefined;
+              output: string;
+            }>((resolve) => {
+              execFile(
+                process.execPath,
+                ["--import", assertBootstrapConsumed, "--eval", source],
+                {
+                  env: present ? { LOCAL_WORKOS_API_KEY: credential } : {},
+                  timeout: 5000,
+                },
+                (error, stdout, stderr) => {
+                  resolve({ code: error?.code, output: stdout + stderr });
+                },
+              );
+            }),
+        );
+        expect(result.code).toBe(present ? 97 : 1);
+        expect(result.output).not.toContain(credential);
+        expect(result.output).toBe("");
+      }
+    }
+  }),
+);
+
 it.live("Effect CLI help consumes supplied credentials without requiring them", () =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
