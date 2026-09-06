@@ -70,7 +70,7 @@ export const workosLayer = Layer.effect(
   WorkOSService,
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const { apiKey } = yield* ConfigService;
+    const { apiKey, lifetimes } = yield* ConfigService;
     const {
       key,
       jwks: publicJwks,
@@ -83,6 +83,32 @@ export const workosLayer = Layer.effect(
       sql<Row>`SELECT * FROM users WHERE id=${id}`.pipe(
         Effect.map((rows) => rows[0]),
       );
+    const issueSession = (user: User, now: number) => Effect.gen(function* () {
+        const sid = yield* Schema.decodeUnknownEffect(SessionId)(
+          `session_${randomUUID()}`,
+        ).pipe(Effect.orDie);
+        const refresh = randomBytes(32).toString("base64url");
+        const access = yield* Effect.tryPromise({
+          try: () =>
+            new SignJWT({ client_id: clientId, sid })
+              .setProtectedHeader({ alg: "RS256", kid: generation })
+              .setIssuer(issuer)
+              .setAudience(clientId)
+              .setSubject(user.id)
+              .setIssuedAt(Math.floor(now / 1000))
+              .setExpirationTime(Math.floor(now / 1000) + lifetimes.accessTokenSeconds)
+              .sign(key),
+          catch: (error) => error,
+        });
+        yield* sql`INSERT INTO sessions VALUES(${sid},${user.id},${digest(refresh)},${now + lifetimes.sessionSeconds * 1000})`;
+        return {
+          user,
+          access_token: access,
+          refresh_token: refresh,
+          authentication_method: "Password" as const,
+          organization_id: null,
+        };
+    });
     // Effects are lazy; only the provider lifecycle owns database cleanup.
     const authenticate = (body: Record<string, unknown>) =>
       Effect.gen(function* () {
@@ -94,6 +120,37 @@ export const workosLayer = Layer.effect(
           return yield* Effect.fail(
             new RequestRejected({ reason: "invalid_client" }),
           );
+        if (body.grant_type === "urn:workos:oauth:grant-type:email-verification:code") {
+          if (typeof body.pending_authentication_token !== "string" || body.pending_authentication_token.length > 128)
+            return yield* Effect.fail(new RequestRejected({ reason: "invalid_grant" }));
+          const pendingHash = digest(body.pending_authentication_token);
+          // Return rejected outcomes rather than failing inside the transaction:
+          // failed-attempt increments and expiry invalidation must commit.
+          const result = yield* sql.withTransaction(Effect.gen(function* () {
+            const now = yield* Clock.currentTimeMillis;
+            const [challenge] = yield* sql<{ id: string; user_id: string; expires_at: number; body: string; failed_attempts: number }>`SELECT c.id,c.user_id,c.expires_at,v.body,v.failed_attempts FROM challenges c JOIN email_verifications v ON v.challenge_id=c.id WHERE c.pending_hash=${pendingHash}`;
+            if (!challenge) return null;
+            if (challenge.expires_at <= now || challenge.failed_attempts >= 5) {
+              yield* sql`DELETE FROM challenges WHERE id=${challenge.id}`;
+              return null;
+            }
+            const verification = yield* Schema.decodeUnknownEffect(EmailVerificationSchema)(JSON.parse(challenge.body)).pipe(Effect.orDie);
+            if (typeof body.code !== "string" || !equal(body.code, verification.code)) {
+              if (challenge.failed_attempts + 1 >= 5)
+                yield* sql`DELETE FROM challenges WHERE id=${challenge.id}`;
+              else yield* sql`UPDATE email_verifications SET failed_attempts=failed_attempts+1 WHERE challenge_id=${challenge.id}`;
+              return null;
+            }
+            const row = yield* getUser(challenge.user_id);
+            if (!row || verification.user_id !== challenge.user_id) return null;
+            const saved = yield* Schema.decodeUnknownEffect(UserSchema)(JSON.parse(row.body)).pipe(Effect.orDie);
+            const user = { ...saved, email_verified: true, updated_at: new Date(now).toISOString() };
+            yield* sql`UPDATE users SET body=${JSON.stringify(user)} WHERE id=${user.id}`;
+            yield* sql`DELETE FROM challenges WHERE id=${challenge.id}`;
+            return yield* issueSession(user, now);
+          }));
+          return result ?? (yield* Effect.fail(new RequestRejected({ reason: "invalid_grant" })));
+        }
         if (body.grant_type !== "password")
           return yield* Effect.fail(
             new RequestRejected({ reason: "unsupported_grant_type" }),
@@ -129,41 +186,18 @@ export const workosLayer = Layer.effect(
           const verification: EmailVerification = {
             object: "email_verification", id, user_id: user.id, email: user.email,
             code: randomInt(1_000_000).toString().padStart(6, "0"),
-            expires_at: new Date(now + 600000).toISOString(),
+            expires_at: new Date(now + lifetimes.verificationSeconds * 1000).toISOString(),
             created_at: timestamp, updated_at: timestamp,
           };
           yield* sql.withTransaction(Effect.gen(function* () {
-            yield* sql`INSERT INTO challenges VALUES(${id},${user.id},${digest(pending)},${now + 600000})`;
-            yield* sql`INSERT INTO email_verifications VALUES(${id},${JSON.stringify(verification)})`;
+            yield* sql`INSERT INTO challenges VALUES(${id},${user.id},${digest(pending)},${now + lifetimes.verificationSeconds * 1000})`;
+            yield* sql`INSERT INTO email_verifications (challenge_id, body) VALUES(${id},${JSON.stringify(verification)})`;
           }));
           return yield* Effect.fail(
             new VerificationRequired({ id, pending: Redacted.make(pending) }),
           );
         }
-        const sid = yield* Schema.decodeUnknownEffect(SessionId)(
-          `session_${randomUUID()}`,
-        ).pipe(Effect.orDie);
-        const refresh = randomBytes(32).toString("base64url");
-        const access = yield* Effect.tryPromise({
-          try: () =>
-            new SignJWT({ client_id: clientId, sid })
-              .setProtectedHeader({ alg: "RS256", kid: generation })
-              .setIssuer(issuer)
-              .setAudience(clientId)
-              .setSubject(user.id)
-              .setIssuedAt(Math.floor(now / 1000))
-              .setExpirationTime(Math.floor(now / 1000) + 300)
-              .sign(key),
-          catch: (error) => error,
-        });
-        yield* sql`INSERT INTO sessions VALUES(${sid},${user.id},${digest(refresh)},${now + 7 * 86400000})`;
-        return {
-          user,
-          access_token: access,
-          refresh_token: refresh,
-          authentication_method: "Password" as const,
-          organization_id: null,
-        };
+        return yield* issueSession(user, now);
       }).pipe(Effect.catch(operationFailure));
     const createUser = (body: Record<string, unknown>) =>
       Effect.gen(function* () {

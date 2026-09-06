@@ -23,7 +23,7 @@ import {
   VerificationRequired,
   type RequestFailure,
   equal,
-  PasswordAuthenticationRequestSchema,
+  AuthenticationRequestSchema,
   CreateUserRequestSchema,
   UserSchema,
   AuthenticationSchema,
@@ -125,7 +125,7 @@ const api = HttpApi.make("localWorkOS").add(
       success: JwksSchema,
     }),
     HttpApiEndpoint.post("authenticate", "/user_management/authenticate", {
-      payload: PasswordAuthenticationRequestSchema,
+      payload: AuthenticationRequestSchema,
       success: AuthenticationSchema,
     }),
     HttpApiEndpoint.post("createUser", "/user_management/users", {

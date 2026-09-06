@@ -133,6 +133,12 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
   // A dependent table preserves the original challenge row layout and #47's
   // acquired-transaction clear semantics, including existing persistent databases.
   yield* sql`CREATE TABLE IF NOT EXISTS email_verifications (challenge_id TEXT PRIMARY KEY REFERENCES challenges(id) ON DELETE CASCADE, body TEXT NOT NULL)`;
+  yield* sql.withTransaction(Effect.gen(function* () {
+    const columns = yield* sql<{ name: string }>`PRAGMA table_info(email_verifications)`;
+    if (!columns.some(column => column.name === "failed_attempts"))
+      yield* sql`ALTER TABLE email_verifications ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0`;
+    yield* sql`CREATE INDEX IF NOT EXISTS challenges_pending_hash ON challenges(pending_hash)`;
+  }));
   let [saved] = yield* sql<{
     body: string;
   }>`SELECT body FROM instance WHERE id=1`;

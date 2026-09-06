@@ -47,6 +47,16 @@ export const PasswordAuthenticationRequestSchema = Schema.Struct({
   email: Schema.String,
   password: Schema.String.check(Schema.isMaxLength(1024)),
 });
+export const VerificationAuthenticationRequestSchema = Schema.Struct({
+  client_id: Schema.String,
+  client_secret: Schema.String,
+  grant_type: Schema.Literal("urn:workos:oauth:grant-type:email-verification:code"),
+  pending_authentication_token: Schema.String.check(Schema.isMaxLength(128)),
+  code: Schema.String,
+});
+export const AuthenticationRequestSchema = Schema.Union([
+  PasswordAuthenticationRequestSchema, VerificationAuthenticationRequestSchema,
+]);
 export const CreateUserRequestSchema = Schema.Struct({
   email: Schema.String.check(
     Schema.makeFilter((value) => {
