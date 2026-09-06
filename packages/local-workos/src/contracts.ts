@@ -81,6 +81,17 @@ export const UserSchema = Schema.Struct({
   metadata: Schema.JsonObject,
 });
 export type User = typeof UserSchema.Type;
+export const EmailVerificationSchema = Schema.Struct({
+  object: Schema.Literal("email_verification"),
+  id: Schema.String,
+  user_id: UserId,
+  email: Schema.String,
+  code: Schema.String.check(Schema.isPattern(/^\d{6}$/)),
+  expires_at: Schema.String,
+  created_at: Schema.String,
+  updated_at: Schema.String,
+});
+export type EmailVerification = typeof EmailVerificationSchema.Type;
 export const AuthenticationSchema = Schema.Struct({
   user: UserSchema,
   access_token: Schema.String,

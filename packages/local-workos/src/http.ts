@@ -28,6 +28,7 @@ import {
   UserSchema,
   AuthenticationSchema,
   UserListSchema,
+  EmailVerificationSchema,
   IdentitiesSchema,
   JwksSchema,
 } from "./contracts.ts";
@@ -134,6 +135,10 @@ const api = HttpApi.make("localWorkOS").add(
     HttpApiEndpoint.get("listUsers", "/user_management/users", {
       success: UserListSchema,
     }),
+    HttpApiEndpoint.get("getEmailVerification", "/user_management/email_verification/:id", {
+      params: { id: Schema.String },
+      success: EmailVerificationSchema,
+    }),
     HttpApiEndpoint.get("getUser", "/user_management/users/:id", {
       params: { id: Schema.String },
       success: UserSchema,
@@ -205,6 +210,7 @@ export function makeHttpApp(scope: Scope.Scope) {
       listUsers,
       getUser,
       getIdentities,
+      getEmailVerification,
       jwks,
     } = yield* WorkOSService;
     const { clientId } = yield* instanceInfo;
@@ -238,6 +244,11 @@ export function makeHttpApp(scope: Scope.Scope) {
           workosResponse(apiKey, (_, request) => listUsers(request.url), {
             access: "bearer",
             path: endpoint.path,
+          }),
+        )
+        .handleRaw("getEmailVerification", ({ endpoint }) =>
+          workosResponse(apiKey, (_, request) => getEmailVerification(rawUserId(request.url)), {
+            access: "bearer", path: endpoint.path,
           }),
         )
         .handleRaw("getUser", ({ endpoint }) =>

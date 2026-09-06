@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Redacted, Schema, Clock } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
-import { randomUUID, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { randomUUID, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { SignJWT } from "jose";
 import { ConfigService, SigningIdentity } from "./config.ts";
@@ -10,6 +10,8 @@ import {
   type RequestFailure,
   UserId,
   UserSchema,
+  EmailVerificationSchema,
+  type EmailVerification,
   IdentitiesSchema,
   SessionId,
   digest,
@@ -53,6 +55,7 @@ export class WorkOSService extends Context.Service<
       url: string,
     ) => Effect.Effect<UserList, RequestFailure>;
     readonly getUser: (id: string) => Effect.Effect<User, RequestFailure>;
+    readonly getEmailVerification: (id: string) => Effect.Effect<EmailVerification, RequestFailure>;
     readonly getIdentities: (
       id: string,
     ) => Effect.Effect<Identities, RequestFailure>;
@@ -122,7 +125,17 @@ export const workosLayer = Layer.effect(
         if (!user.email_verified) {
           const id = `email_verification_${randomUUID()}`,
             pending = randomBytes(32).toString("base64url");
-          yield* sql`INSERT INTO challenges VALUES(${id},${user.id},${digest(pending)},${now + 600000})`;
+          const timestamp = new Date(now).toISOString();
+          const verification: EmailVerification = {
+            object: "email_verification", id, user_id: user.id, email: user.email,
+            code: randomInt(1_000_000).toString().padStart(6, "0"),
+            expires_at: new Date(now + 600000).toISOString(),
+            created_at: timestamp, updated_at: timestamp,
+          };
+          yield* sql.withTransaction(Effect.gen(function* () {
+            yield* sql`INSERT INTO challenges VALUES(${id},${user.id},${digest(pending)},${now + 600000})`;
+            yield* sql`INSERT INTO email_verifications VALUES(${id},${JSON.stringify(verification)})`;
+          }));
           return yield* Effect.fail(
             new VerificationRequired({ id, pending: Redacted.make(pending) }),
           );
@@ -269,6 +282,12 @@ export const workosLayer = Layer.effect(
       authenticate,
       createUser,
       listUsers,
+      getEmailVerification: (id) => Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        const [row] = yield* sql<{ body: string }>`SELECT v.body FROM email_verifications v JOIN challenges c ON c.id=v.challenge_id WHERE c.id=${id} AND c.expires_at>${now}`;
+        if (!row) return yield* Effect.fail(new RequestRejected({ reason: "not_found" }));
+        return yield* Schema.decodeUnknownEffect(EmailVerificationSchema)(JSON.parse(row.body)).pipe(Effect.orDie);
+      }).pipe(Effect.catch(operationFailure)),
       instanceInfo: Effect.succeed({
         clientId,
         issuer,

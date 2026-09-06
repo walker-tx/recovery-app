@@ -73,6 +73,7 @@ it.effect(
               }),
             getUser: () => unavailable,
             getIdentities: () => unavailable,
+            getEmailVerification: () => unavailable,
           }),
         );
         const scope = yield* Scope.Scope;
