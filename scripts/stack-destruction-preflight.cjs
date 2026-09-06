@@ -34,10 +34,10 @@ function contents(dir, budget, depth = 0) {
     }
   } finally { entries.closeSync(); }
 }
-async function preflightDestruction({ worktree, registryPath, target, inspectProcess, portAvailable, routeEvidence, timeoutMs = 2000 } = {}) {
+async function preflightDestruction({ worktree, registryPath, target, confirmation, inspectProcess, portAvailable, routeEvidence, timeoutMs = 2000 } = {}) {
   const blockers = [];
   const block = (code, domain) => blockers.push({ code, domain });
-  const result = { readyForTeardown: false, destructionImplemented: false,
+  const result = { readyForTeardown: false, confirmationAccepted: false, destructionImplemented: false,
     reservationReleaseAllowed: false, blockers, affectedDomains: [] };
   let record;
   try {
@@ -70,6 +70,21 @@ async function preflightDestruction({ worktree, registryPath, target, inspectPro
     { domain: 'routes', scope: 'whole-stack' },
     { domain: 'reservation', stackId: record.stackId },
   ];
+  // Confirmation names the precise identity and every affected domain. It is
+  // not a capability: no saved preflight/confirmation can authorize deletion.
+  result.requiredConfirmation = { operation: 'destroy-worktree-stack', ...result.target,
+    affectedDomains: result.affectedDomains.map(({ domain }) => domain) };
+  const expected = result.requiredConfirmation;
+  result.confirmationAccepted = Boolean(confirmation &&
+    confirmation.operation === expected.operation &&
+    confirmation.stackId === expected.stackId &&
+    confirmation.providerGeneration === expected.providerGeneration &&
+    confirmation.worktree === expected.worktree &&
+    Array.isArray(confirmation.affectedDomains) &&
+    confirmation.affectedDomains.length === expected.affectedDomains.length &&
+    new Set(confirmation.affectedDomains).size === expected.affectedDomains.length &&
+    confirmation.affectedDomains.every(domain => expected.affectedDomains.includes(domain)));
+  if (!result.confirmationAccepted) block(confirmation == null ? 'confirmation-required' : 'confirmation-mismatch', 'confirmation');
   for (const [file, code] of [[path.join(worktree, '.recovery-stack-lifecycle.lock'), 'lifecycle-locked'], [path.join(registryPath,'lock'), 'registry-locked']]) {
     try { fs.lstatSync(file); block(code, 'coordination'); }
     catch (e) { if (e.code !== 'ENOENT') block(code, 'coordination'); }

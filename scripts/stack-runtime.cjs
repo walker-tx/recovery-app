@@ -185,8 +185,8 @@ async function createRuntime({
     return {
       // No transaction, lock acquisition, state preparation, or route inference.
       // Production route evidence is intentionally unavailable until #49.
-      destructionPreflight: (target) => preflightDestruction({
-        worktree, registryPath, target,
+      destructionPreflight: (target, confirmation) => preflightDestruction({
+        worktree, registryPath, target, confirmation,
         inspectProcess: identity.inspectProcess,
         portAvailable,
       }),

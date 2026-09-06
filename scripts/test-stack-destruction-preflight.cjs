@@ -26,7 +26,8 @@ function fixture(t) {
   fs.mkdirSync(path.join(root, 'sibling'), { mode: 0o700 });
   fs.writeFileSync(path.join(root, 'sibling/keep'), 'untouched');
   const target = { stackId: record.stackId, providerGeneration: record.providerGeneration, worktree };
-  const options = { registryPath, worktree, target, inspectProcess: async () => null, portAvailable: async () => true,
+  const confirmation = { operation: 'destroy-worktree-stack', ...target, affectedDomains: ['provider', 'convex', 'inbox', 'stack-metadata', 'routes', 'reservation'] };
+  const options = { registryPath, worktree, target, confirmation, inspectProcess: async () => null, portAvailable: async () => true,
     routeEvidence: async () => ({ ...target, state: 'absent', scope: 'whole-stack' }) };
   return { root, worktree, record, options, save };
 }
@@ -84,7 +85,7 @@ test('runtime selected-stack hook stays read-only and fails closed without route
     identity: { identify: forbidden, inspectProcess: async () => null },
     run: forbidden, fetchImpl: forbidden, connect: forbidden, portAvailable: async () => true });
   const before = snapshot(f.root);
-  const result = await runtime.destructionPreflight(f.options.target);
+  const result = await runtime.destructionPreflight(f.options.target, f.options.confirmation);
   assert.deepEqual(result.blockers, [{ code: 'routes-unknown', domain: 'routes' }]);
   assert.equal(result.readyForTeardown, false);
   assert.deepEqual(snapshot(f.root), before);
@@ -123,7 +124,7 @@ test('runtime defaults to the existing port observer when omitted', async t => {
     inspector: { inspect: async () => null, close: async () => {} },
     identity: { identify: async () => null, inspectProcess: async () => null } });
   t.after(() => runtime.close());
-  const result = await runtime.destructionPreflight(f.options.target);
+  const result = await runtime.destructionPreflight(f.options.target, f.options.confirmation);
   assert.equal(result.blockers.some(b => b.code === 'ports-unknown'), false);
   assert.ok(result.blockers.some(b => b.code === 'routes-unknown'));
 });
@@ -137,5 +138,63 @@ for (const domain of ['registry', 'marker', 'depth']) {
     const result = await preflightDestruction(f.options);
     assert.equal(result.readyForTeardown, false);
     assert.ok(result.blockers.some(b => b.code === (domain === 'registry' ? 'target-mismatch' : 'unsafe-state')));
+  });
+}
+
+for (const [name, change] of [
+  ['missing', f => { delete f.options.confirmation; }],
+  ['wrong operation', f => { f.options.confirmation.operation = 'stop'; }],
+  ['wrong stack', f => { f.options.confirmation.stackId = randomUUID(); }],
+  ['stale generation', f => { f.options.confirmation.providerGeneration = randomUUID(); }],
+  ['sibling worktree', f => { f.options.confirmation.worktree = path.join(f.root, 'sibling'); }],
+  ['missing inbox', f => { f.options.confirmation.affectedDomains.splice(2, 1); }],
+  ['duplicate domain', f => { f.options.confirmation.affectedDomains[2] = 'provider'; }],
+  ['extra device deletion', f => { f.options.confirmation.affectedDomains.push('device-storage'); }],
+  ['malformed domains', f => { f.options.confirmation.affectedDomains = 'all'; }],
+]) test(`confirmation rejects ${name} without authorizing any effects`, async t => {
+  const f = fixture(t); change(f); const before = snapshot(f.root);
+  const result = await preflightDestruction(f.options);
+  assert.equal(result.confirmationAccepted, false);
+  assert.equal(result.readyForTeardown, false);
+  assert.ok(result.blockers.some(b => b.domain === 'confirmation'));
+  assert.equal(result.destructionImplemented, false);
+  assert.equal(result.reservationReleaseAllowed, false);
+  assert.deepEqual(snapshot(f.root), before);
+});
+test('exact confirmation accepts reordered domains but never bypasses missing routes', async t => {
+  const f = fixture(t);
+  f.options.confirmation.affectedDomains.reverse();
+  delete f.options.routeEvidence;
+  const result = await preflightDestruction(f.options);
+  assert.equal(result.confirmationAccepted, true);
+  assert.deepEqual(result.requiredConfirmation, { operation: 'destroy-worktree-stack', ...f.options.target,
+    affectedDomains: ['provider', 'convex', 'inbox', 'stack-metadata', 'routes', 'reservation'] });
+  assert.deepEqual(result.blockers, [{ code: 'routes-unknown', domain: 'routes' }]);
+  assert.equal(result.readyForTeardown, false);
+  assert.equal(result.destructionImplemented, false);
+  assert.equal(result.reservationReleaseAllowed, false);
+});
+
+for (const changed of ['generation', 'process', 'routes']) {
+  test(`reusing accepted confirmation still reobserves changed ${changed}`, async t => {
+    const f = fixture(t);
+    const first = await preflightDestruction(f.options);
+    assert.equal(first.confirmationAccepted, true);
+    assert.equal(first.readyForTeardown, true);
+    if (changed === 'generation') {
+      f.record.providerGeneration = randomUUID();
+      f.save();
+    } else if (changed === 'process') {
+      f.record.processes.provider = { pid: 123, startedAt: 'new', stackId: f.record.stackId, worktree: f.worktree };
+      f.save();
+      f.options.inspectProcess = async () => f.record.processes.provider;
+    } else delete f.options.routeEvidence;
+    const before = snapshot(f.root);
+    const result = await preflightDestruction(f.options);
+    assert.equal(result.readyForTeardown, false);
+    assert.ok(result.blockers.some(b => b.code === ({ generation: 'target-mismatch', process: 'process-not-stopped', routes: 'routes-unknown' })[changed]));
+    assert.equal(result.destructionImplemented, false);
+    assert.equal(result.reservationReleaseAllowed, false);
+    assert.deepEqual(snapshot(f.root), before);
   });
 }
