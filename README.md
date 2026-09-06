@@ -60,8 +60,120 @@ This keeps Metro bound to loopback, forwards it through a tailnet-only raw TCP S
 kit tui --root .
 ```
 
+## Isolated local stack (development checkpoint)
+
+`scripts/stack-runtime.cjs` provides ownership-checked `reserve`, `status <stack-UUID>`,
+`stop <stack-UUID>`, and `start <absolute-backend-executable>` commands. Run through
+`mise exec -- node` from the intended worktree. The executable is the local Convex
+server, not the Recovery backend functions. Opt in explicitly from that worktree:
+
+```sh
+mise run stack:start -- /absolute/path/to/convex-server
+mise run stack:status -- <stack-UUID>
+mise run stack:stop -- <stack-UUID>
+```
+
+Replace the placeholders (quote paths containing spaces); use the `stackId` from
+startup output for status/stop. No server executable path is inferred. These tasks
+only forward arguments to the runtime. The existing local entrypoints also accept
+explicit isolated mode as their first argument, from the intended worktree root:
+
+```sh
+mise run zero -- --isolated /absolute/path/to/convex-server
+mise run status -- --isolated <stack-UUID>
+mise run stop -- --isolated <stack-UUID>
+```
+
+These dispatch before any legacy configuration/migration/service work and never
+fall back after an isolated failure. No-argument legacy behavior is unchanged;
+these commands do not adopt or stop existing legacy previews.
+`mise run zero:tailnet -- --isolated` is explicitly unavailable pending the
+separately authorized #60/#49 route lifecycle; it never falls through to legacy
+route publication. The open #28/#34 work and PR33/35 bootstrap exception/readiness
+changes are not altered or reauthorized by this local-only dispatch.
+
+Startup requires the local provider
+package, installed Expo/Convex dependencies, Node, pnpm, Mailpit, and Pitchfork.
+
+The runtime reserves separate ports/state, prepares private bootstrap values,
+validates provider identity, synchronizes and pushes functions to the paired local
+Convex instance, publishes paired mobile configuration, then starts Metro. That
+`start` command performs local writes; tests use injected I/O instead. It never
+targets a cloud deployment or falls back to staging credentials.
+
+Status probes only verified original owned-running processes whose paired daemon
+mapping still matches. Stopped, conflicted, or unknown endpoints stay
+`unknown/not-probed`. Each eligible endpoint gets one bounded probe; failures are
+sanitized as `not-ready/probe-failed`, without changing process ownership state.
+`ready` reports protocol evidence, not application health or process identity.
+Status also reports resume guidance using the supported isolated command and an
+explicit `<absolute-backend-executable>` parameter, never an inferred path. Run
+it only when authorized, from the reported worktree, with your verified executable.
+This is guidance, not an executed action or proof that lifecycle locks are clear;
+startup still performs its existing ownership and lock checks. Conflicted or
+unknown ownership, or unknown/failed readiness for a running process, instead
+reports refusal and directs inspection of the reported services/scoped logs.
+There is no automatic repair command: never clear locks, kill unknown processes,
+or reset state to bypass refusal.
+SMTP readiness uses its own greeting; Convex site readiness reports `transport`
+evidence for its own TCP listener only, not application health.
+Ambiguous command/publication timeouts
+retain the lifecycle lock for manual ownership reconciliation. Never remove locks
+or reset state merely to retry a failed start. Existing daily-development scripts
+and previews are not managed by these commands.
+
+This remains a development checkpoint: fake-I/O tests do not establish successful
+native startup, complete authentication, or the reset/refresh lifecycle.
+
+### Local provider bulk-clear capability
+
+The acquired provider API exposes `clearData(confirmation)` as a scoped Effect;
+`startProvider` exposes it through its existing Promise boundary. This is a local
+lifecycle API, not an HTTP endpoint or a `stack:stop` side effect. No clear command
+is enabled in the CLI. Execution against actual state requires separate approval.
+
+Confirmation explicitly names `operation: "clear-provider-data"`, the exact
+configured absolute `database`, the acquired `providerGeneration`, and all three
+`affectedDomains`: `users`, `sessions`, `challenges`. The operation rechecks the
+opened database identity and persisted signing identity, then atomically clears
+those tables using the already-acquired SQL service. Failed transactions roll back;
+identity, signing keys, credentials and other data domains are not cleared.
+Already-issued access tokens remain valid until expiry; recreated users receive
+new subjects. This covers the current provider schema, not unimplemented #48
+refresh/reset operations or whole-stack destruction/reservation release.
+
 ## Checks
 
 - `mise run bootstrap-test` — test the secure bootstrap and documentation contract
 - `mise run check` — run workspace static checks
 - `mise run doctor` — run Expo Doctor
+
+The explicit local runtime API also exposes `destroyProvider(confirmation)` for a
+**stopped** isolated provider. It is not exposed by a CLI, HTTP route, or console.
+Confirmation names `operation: "destroy-provider-identity"`, the exact canonical
+`worktree`, `stackId`, `providerGeneration`, and both `affectedDomains`:
+`["provider-data", "provider-signing-identity"]`. This removes only the owned
+provider SQLite database and its present WAL/SHM files, which contain provider
+records and signing keys. It does not clear Convex, Mailpit, device state, admin
+seed, ownership markers, routes, or reservations, and does not rotate registry
+identity or re-pair trust.
+
+Before deletion, the lifecycle lock covers original registry/stopped-provider and
+private filesystem identity checks, and a retirement intent is exclusively
+created and synced along with its parent directory. Any retirement entry blocks
+normal stack startup before allocation/preparation, including malformed entries.
+Partial results enumerate removed, uncertain, and unattempted storage files;
+uncertain operations retain both retirement intent and lifecycle exclusion for
+manual ownership reconciliation. There is no automatic retry, tombstone removal,
+or trust re-pairing operation. A fresh identity requires deliberate trust
+re-pairing; ordinary restart must not recreate it under the old generation.
+Cooperative lifecycle exclusion does not defeat arbitrary same-user filesystem
+or unmanaged-process races. Coverage includes an acquired-provider fixture with
+real SDK authentication and persisted SQLite signing identity, closed before
+lifecycle deletion; retired startup refuses recreation, and a sibling acquired
+provider remains usable. Non-provider sentinel files retain their bytes/inodes.
+These are owned temporary fixtures, not actual developer-resource destruction,
+secure erasure, trust re-pairing, or complete two-stack/native proof.
+Whole-stack teardown and reservation release remain unavailable pending the
+separately authorized authoritative route-retirement integration and all other
+owned-domain completion evidence.

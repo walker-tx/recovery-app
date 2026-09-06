@@ -42,6 +42,18 @@ export class FixtureError extends Data.TaggedError("FixtureError")<{
   message: string;
 }> {}
 
+export class ProviderClearError extends Data.TaggedError("ProviderClearError")<{
+  reason: "confirmation" | "identity" | "storage";
+}> {}
+const ClearConfirmation = Schema.Struct({
+  operation: Schema.Literal("clear-provider-data"),
+  database: Schema.String,
+  providerGeneration: ProviderGeneration,
+  affectedDomains: Schema.Array(Schema.Literals(["users", "sessions", "challenges"])).check(
+    Schema.makeFilter(domains => domains.length === 3 && new Set(domains).size === 3),
+  ),
+});
+
 const generationPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 /** Explicit absolute state path; caller owns its directory and lifecycle. No environment fallback. */
@@ -56,7 +68,7 @@ export function acquireProvider(options: ProviderOptions) {
 }
 export const acquireConfiguredProvider = Effect.gen(function* () {
   const options = yield* ConfigService;
-  yield* Effect.try({
+  const ownedDatabase = yield* Effect.try({
     try: () => {
       const parent = lstatSync(dirname(options.database));
       if (
@@ -93,6 +105,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
           0o600,
         ),
       );
+      return lstatSync(options.database);
     },
     catch: (error) =>
       new ProviderStartupError({
@@ -260,6 +273,39 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
       new ProviderStartupError({ message: "Expected loopback TCP address" }),
     );
   return {
+    // Local acquired-resource API only. No HTTP/console reset endpoint and no
+    // new connection, credentials, signing identity or ambient configuration.
+    clearData(input: unknown) {
+      return Effect.gen(function* () {
+        const confirmation = yield* Schema.decodeUnknownEffect(ClearConfirmation)(input).pipe(
+          Effect.mapError(() => new ProviderClearError({ reason: "confirmation" })),
+        );
+        if (confirmation.database !== options.database || confirmation.providerGeneration !== providerGeneration)
+          return yield* Effect.fail(new ProviderClearError({ reason: "confirmation" }));
+        return yield* sql.withTransaction(Effect.gen(function* () {
+          yield* Effect.try({
+            try: () => {
+              const file = lstatSync(options.database);
+              if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1 ||
+                  file.uid !== process.getuid?.() || (file.mode & 0o077) !== 0 ||
+                  file.dev !== ownedDatabase.dev || file.ino !== ownedDatabase.ino) throw Error();
+            },
+            catch: () => new ProviderClearError({ reason: "identity" }),
+          });
+          const [persisted] = yield* sql<{ body: string }>`SELECT body FROM instance WHERE id=1`;
+          // Compare the already-acquired signing identity without serializing it.
+          if (persisted?.body !== saved.body)
+            return yield* Effect.fail(new ProviderClearError({ reason: "identity" }));
+          yield* sql`DELETE FROM sessions`;
+          yield* sql`DELETE FROM challenges`;
+          yield* sql`DELETE FROM users`;
+          return { operation: "clear-provider-data" as const, providerGeneration,
+            cleared: ["users", "sessions", "challenges"] as const,
+            issuedAccessTokens: "valid-until-expiry" as const };
+        })).pipe(Effect.mapError(error => error instanceof ProviderClearError
+          ? error : new ProviderClearError({ reason: "storage" })));
+      });
+    },
     port: server.address.port,
     providerGeneration: identity.generation,
     issuer,
@@ -328,6 +374,7 @@ export async function startProvider(
     let closePromise: Promise<void> | undefined;
     return {
       ...provider,
+      clearData: (input: unknown) => Effect.runPromise(provider.clearData(input)),
       createIdentityFixture: (
         input: Parameters<typeof provider.createIdentityFixture>[0],
       ) =>

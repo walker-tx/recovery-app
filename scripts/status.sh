@@ -2,6 +2,11 @@
 set -u
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+if [ "${1-}" = '--isolated' ]; then
+  [ "$(pwd -P)" = "$ROOT" ] || { echo 'Run this command from the repository root.' >&2; exit 1; }
+  shift
+  exec node "$ROOT/scripts/stack-runtime.cjs" status "$@"
+fi
 STATE_DIR=$ROOT/.recovery-tailnet
 
 pitchfork status mailpit
