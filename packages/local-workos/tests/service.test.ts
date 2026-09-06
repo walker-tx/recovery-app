@@ -1,10 +1,24 @@
+import {
+  HttpServerRequest,
+  fromWeb,
+} from "effect/unstable/http/HttpServerRequest";
+import { toWeb } from "effect/unstable/http/HttpServerResponse";
 import { it } from "@effect/vitest";
-import { ConfigProvider, Effect, Layer, Redacted, Scope } from "effect";
+import {
+  Effect,
+  Layer,
+  Redacted,
+  Scope,
+  Exit,
+  Cause,
+  Fiber,
+  Deferred,
+} from "effect";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { createServer } from "node:http";
 import assert from "node:assert/strict";
 import { makeHttpApp } from "../src/http.ts";
-import { HttpError } from "../src/contracts.ts";
+import { RequestRejected, VerificationRequired } from "../src/contracts.ts";
 import { WorkOSService } from "../src/workos-service.ts";
 
 it.effect(
@@ -13,7 +27,9 @@ it.effect(
     Effect.scoped(
       Effect.gen(function* () {
         let creates = 0;
-        const apiKey = "sk_test_fake_service";
+        let finalized = false;
+        const waiting = yield* Deferred.make<void>();
+        const apiKey = `sk_test_local_${"07".repeat(32)}`;
         const info = {
           clientId: "client_fake",
           issuer: "https://fake.invalid",
@@ -21,7 +37,7 @@ it.effect(
           port: 0,
         };
         const unavailable = Effect.fail(
-          new HttpError(404, { code: "not_found" }),
+          new RequestRejected({ reason: "not_found" }),
         );
         const layer = Layer.succeed(
           WorkOSService,
@@ -30,11 +46,23 @@ it.effect(
             instanceInfo: Effect.succeed(info),
             jwks: Effect.succeed({ keys: [] }),
             authenticate: () => unavailable,
-            createUser: () =>
+            createUser: (body) =>
               Effect.suspend(() => {
+                if (body.mode === "wait")
+                  return Deferred.succeed(waiting, undefined).pipe(
+                    Effect.andThen(Effect.never),
+                    Effect.ensuring(
+                      Effect.sync(() => {
+                        finalized = true;
+                      }),
+                    ),
+                  );
+                if (body.mode === "defect")
+                  return Effect.die(new Error("SECRET_DEFECT_PAYLOAD"));
+                if (body.mode === "interrupt") return Effect.interrupt;
                 creates++;
                 return Effect.fail(
-                  new HttpError(409, { code: "email_exists" }),
+                  new RequestRejected({ reason: "email_exists" }),
                 );
               }),
             listUsers: () =>
@@ -48,13 +76,32 @@ it.effect(
           }),
         );
         const scope = yield* Scope.Scope;
-        const app = yield* makeHttpApp(scope).pipe(
-          Effect.provide(layer),
-          Effect.provideService(
-            ConfigProvider.ConfigProvider,
-            ConfigProvider.fromUnknown({ clientId: info.clientId }),
-          ),
-        );
+        const app = yield* makeHttpApp(scope).pipe(Effect.provide(layer));
+        const direct = (mode: string) =>
+          app.pipe(
+            Effect.provideService(
+              HttpServerRequest,
+              fromWeb(
+                new Request("http://127.0.0.1/user_management/users", {
+                  method: "POST",
+                  headers: { authorization: `Bearer ${apiKey}` },
+                  body: JSON.stringify({ mode }),
+                }),
+              ),
+            ),
+          );
+        const defect = yield* direct("defect");
+        assert.equal(defect.status, 500);
+        const defectBody = yield* Effect.promise(() => toWeb(defect).json());
+        assert.deepEqual(defectBody, { code: "internal_error" });
+        const interrupted = yield* Effect.exit(direct("interrupt"));
+        assert.ok(Exit.isFailure(interrupted));
+        if (Exit.isFailure(interrupted))
+          assert.ok(Cause.hasInterruptsOnly(interrupted.cause));
+        const waitingRequest = yield* direct("wait").pipe(Effect.forkScoped);
+        yield* Deferred.await(waiting);
+        yield* Fiber.interrupt(waitingRequest);
+        assert.equal(finalized, true);
         const server = yield* NodeHttpServer.make(createServer, {
           host: "127.0.0.1",
           port: 0,
@@ -80,7 +127,10 @@ it.effect(
             body: "{}",
           });
           assert.equal(conflict.status, 409);
-          assert.deepEqual(await conflict.json(), { code: "email_exists" });
+          assert.deepEqual(await conflict.json(), {
+            code: "email_exists",
+            message: "email_exists",
+          });
           assert.equal(creates, 1);
           const list = await fetch(`${base}/user_management/users`, {
             headers: { authorization: `Bearer ${apiKey}` },
@@ -94,4 +144,21 @@ it.effect(
         });
       }),
     ),
+);
+
+it.effect(
+  "tagged verification failure does not serialize its pending credential",
+  () =>
+    Effect.sync(() => {
+      const error = new VerificationRequired({
+        id: "verification_fixture",
+        pending: Redacted.make("SECRET_PENDING_CREDENTIAL"),
+      });
+      assert.ok(!JSON.stringify(error).includes("SECRET_PENDING_CREDENTIAL"));
+      assert.equal(error._tag, "VerificationRequired");
+      assert.equal(
+        new RequestRejected({ reason: "invalid_client" })._tag,
+        "RequestRejected",
+      );
+    }),
 );

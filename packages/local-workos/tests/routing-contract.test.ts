@@ -12,7 +12,7 @@ const fixture = Effect.gen(function* () {
     Effect.promise(() => mkdtemp(join(tmpdir(), "workos-routing-"))),
     (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
   );
-  const apiKey = "sk_test_routing";
+  const apiKey = `sk_test_local_${"06".repeat(32)}`;
   const provider = yield* Effect.acquireRelease(
     Effect.promise(() =>
       startProvider({ database: join(dir, "state.sqlite"), apiKey }),

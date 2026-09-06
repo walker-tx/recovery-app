@@ -18,7 +18,7 @@ it.live("Effect CLI renders help without bootstrap credentials", () =>
       symlink(
         fileURLToPath(new URL("../", import.meta.url)),
         packagePath,
-        "dir",
+        process.platform === "win32" ? "junction" : "dir",
       ),
     );
     const cliUrl = new URL("src/cli.ts", pathToFileURL(packagePath + "/"));

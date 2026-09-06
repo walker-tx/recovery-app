@@ -2,7 +2,7 @@
 
 Private synthetic-only provider for #46. Import `startProvider` from `src/provider.ts`
 and pass an explicit absolute SQLite filename (existing owner-controlled parent directory)
-and a synthetic `sk_test_` API key. It binds only `127.0.0.1` on an ephemeral port;
+and a synthetic API key matching `sk_test_local_` followed by 64 lowercase hexadecimal characters. It binds only `127.0.0.1` on an ephemeral port;
 its result includes `port`, `issuer`, `clientId`, and async `close()`. Call `close()`
 before removing disposable test state. Never use real credentials or `.env` files.
 
@@ -23,7 +23,14 @@ stored response data produces a generic 500, and undeclared user fields are
 omitted. `src/contracts.ts` defines supported request/response shapes;
 `src/http.ts` owns routing and error envelopes. An Effect `WorkOSService` Layer
 in `src/workos-service.ts` owns the operations; `src/provider.ts` owns SQLite,
-signing-key acquisition, and server lifecycle. The HTTP app can be tested with
+signing-key acquisition, and server lifecycle. `acquireProvider` is the native
+scoped Effect API; `startProvider` is its Promise compatibility adapter. The CLI
+loads validated, branded bootstrap configuration once and supplies application-scoped
+configuration and acquired signing identity services. Persisted signing identity
+remains authoritative; configuration cannot replace it. HTTP binding acquisition is
+protected from interruption until it settles, preventing a late listener from
+escaping scope cleanup; the CLI retains its three-second shutdown watchdog.
+The HTTP app can be tested with
 an injected service Layer without opening a database.
 
 Tests use the matching `@effect/vitest` release. `it.live` retains real HTTP, SDK,
