@@ -150,7 +150,12 @@ test("identity refuses PID reuse and inaccessible processes", async () => {
         },
       },
     }),
-    /inspect/,
+    (error) => {
+      assert.match(error.message, /inspect/);
+      assert.equal(error.cause, undefined);
+      assert.ok(!require("node:util").inspect(error).includes("private"));
+      return true;
+    },
   );
   assert.equal(
     await inspectLinuxProcess(42, {

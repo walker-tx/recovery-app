@@ -95,8 +95,9 @@ int main(int argc, char **argv) { if (argc != 2) return 99; mode = atoi(argv[1])
       }
       assert.equal(run(fakeBinary, 5).stdout.trim(), "null");
     } finally {
-      if (child && child.exitCode === null && child.signalCode === null)
+      if (child && child.exitCode === null && child.signalCode === null) {
         child.kill();
+      }
       fs.rmSync(dir, { recursive: true, force: true });
     }
   },

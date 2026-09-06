@@ -121,22 +121,32 @@ test("service cwd gives the inspector canonical root ownership", async (t) => {
     assert.equal(service.cwd, options.worktree);
   }
   const status = await registry.status(options.worktree);
-  for (const state of Object.values(status.services))
+  for (const state of Object.values(status.services)) {
     assert.equal(state, "running");
+  }
 });
 
-for (const kind of ["relative", "worktree", "ports", "seed"])
+for (const kind of ["relative", "worktree", "ports", "seed"]) {
   test(`rejects ${kind} safely`, (t) => {
     const o = fixture(t);
-    if (kind === "relative") o.backendBinary = "relative";
-    if (kind === "worktree") o.registry.worktree = "/other";
-    if (kind === "ports") o.registry.ports.metro = 24001;
-    if (kind === "seed") o.seed.LOCAL_CONVEX_INSTANCE_SECRET = "";
+    if (kind === "relative") {
+      o.backendBinary = "relative";
+    }
+    if (kind === "worktree") {
+      o.registry.worktree = "/other";
+    }
+    if (kind === "ports") {
+      o.registry.ports.metro = 24001;
+    }
+    if (kind === "seed") {
+      o.seed.LOCAL_CONVEX_INSTANCE_SECRET = "";
+    }
     assert.throws(
       () => buildStackServices(o),
       (e) => e.message === "Local stack service definitions rejected",
     );
   });
+}
 test("private marked state resumes and refuses generation mismatch", (t) => {
   const o = fixture(t),
     state = prepareOwnedStateDirectories(o);
@@ -148,20 +158,24 @@ test("private marked state resumes and refuses generation mismatch", (t) => {
   o.registry.providerGeneration = "33333333-3333-4333-8333-333333333333";
   assert.throws(() => prepareOwnedStateDirectories(o));
 });
-for (const kind of ["nonempty", "symlink", "permissions"])
+for (const kind of ["nonempty", "symlink", "permissions"]) {
   test(`refuses unsafe ${kind} backend state`, (t) => {
     const o = fixture(t),
       dir = path.join(o.worktree, "packages/backend/.convex/local/default");
     fs.mkdirSync(path.dirname(dir), { recursive: true });
-    if (kind === "symlink") fs.symlinkSync(o.worktree, dir);
-    else {
+    if (kind === "symlink") {
+      fs.symlinkSync(o.worktree, dir);
+    } else {
       fs.mkdirSync(dir, { mode: 0o700 });
-      if (kind === "nonempty")
+      if (kind === "nonempty") {
         fs.writeFileSync(path.join(dir, "staging.sqlite"), "fixture");
-      else fs.chmodSync(dir, 0o755);
+      } else {
+        fs.chmodSync(dir, 0o755);
+      }
     }
     assert.throws(() => prepareOwnedStateDirectories(o));
   });
+}
 test("refuses unsafe existing data files inside marked state", (t) => {
   const o = fixture(t),
     state = prepareOwnedStateDirectories(o);

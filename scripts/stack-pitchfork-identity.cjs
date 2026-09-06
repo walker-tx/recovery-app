@@ -19,8 +19,9 @@ function createPitchforkIdentity({
     !Number.isSafeInteger(timeoutMs) ||
     timeoutMs < 1 ||
     timeoutMs > 30000
-  )
+  ) {
     throw failure();
+  }
   const env = Object.fromEntries(
     [
       "PATH",
@@ -39,7 +40,9 @@ function createPitchforkIdentity({
   );
   async function query(args, signal) {
     try {
-      if (signal?.aborted) throw failure();
+      if (signal?.aborted) {
+        throw failure();
+      }
       const { stdout } = await exec("pitchfork", args, {
         cwd,
         env,
@@ -49,16 +52,18 @@ function createPitchforkIdentity({
         maxBuffer: 65536,
         shell: false,
       });
-      if (typeof stdout !== "string" || Buffer.byteLength(stdout) > 65536)
+      if (typeof stdout !== "string" || Buffer.byteLength(stdout) > 65536) {
         throw failure();
+      }
       return stdout;
     } catch {
       throw failure();
     }
   }
   async function list(signal) {
-    if ((await query(["--version"], signal)).trim() !== "pitchfork 2.22.0")
+    if ((await query(["--version"], signal)).trim() !== "pitchfork 2.22.0") {
       throw failure();
+    }
     let rows;
     try {
       rows = JSON.parse(
@@ -67,7 +72,9 @@ function createPitchforkIdentity({
     } catch {
       throw failure();
     }
-    if (!Array.isArray(rows) || rows.length > 512) throw failure();
+    if (!Array.isArray(rows) || rows.length > 512) {
+      throw failure();
+    }
     const ids = new Set();
     for (const row of rows) {
       if (
@@ -90,8 +97,9 @@ function createPitchforkIdentity({
           (!Number.isSafeInteger(row.pid) ||
             row.pid < 1 ||
             row.pid > 2147483647))
-      )
+      ) {
         throw failure();
+      }
       ids.add(row.id);
     }
     return rows;
@@ -103,14 +111,19 @@ function createPitchforkIdentity({
       row.available !== false ||
       row.disabled !== false ||
       row.pid === null
-    )
+    ) {
       throw failure();
+    }
     try {
       const first = await inspectOS(row.pid, { signal });
       // Daemon metadata can retain an old PID after exit. Only independently
       // confirmed OS absence permits reuse; stopped status alone never does.
-      if (first === null) return null;
-      if (row.status !== "running") throw failure();
+      if (first === null) {
+        return null;
+      }
+      if (row.status !== "running") {
+        throw failure();
+      }
       const secondRow = (await list(signal)).find((r) => r.id === row.id);
       const second = await inspectOS(row.pid, { signal });
       if (
@@ -125,13 +138,20 @@ function createPitchforkIdentity({
         typeof first.startedAt !== "string" ||
         !first.startedAt.trim() ||
         first.startedAt.length > 256 ||
-        /[\x00-\x1f\x7f]/.test(first.startedAt) ||
+        [...first.startedAt].some(
+          (character) =>
+            character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+        ) ||
         typeof first.worktree !== "string" ||
         !path.isAbsolute(first.worktree) ||
         path.normalize(first.worktree) !== first.worktree ||
-        /[\x00-\x1f\x7f]/.test(first.worktree)
-      )
+        [...first.worktree].some(
+          (character) =>
+            character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+        )
+      ) {
         throw failure();
+      }
       return {
         pid: first.pid,
         startedAt: first.startedAt,
@@ -144,24 +164,34 @@ function createPitchforkIdentity({
   }
   return {
     async identify(id, { signal } = {}) {
-      if (!serviceId.test(id)) throw failure();
+      if (!serviceId.test(id)) {
+        throw failure();
+      }
       const row = (await list(signal)).find((r) => r.id === id);
-      if (!row || (row.status === "stopped" && row.pid === null)) return null;
+      if (!row || (row.status === "stopped" && row.pid === null)) {
+        return null;
+      }
       return attribute(row, signal);
     },
     async inspectProcess(pid, { signal } = {}) {
-      if (!Number.isSafeInteger(pid) || pid < 1) throw failure();
+      if (!Number.isSafeInteger(pid) || pid < 1) {
+        throw failure();
+      }
       const rows = (await list(signal)).filter((r) => r.pid === pid);
       if (rows.length === 0) {
         // Missing daemon metadata is not proof a recorded PID is gone.
         try {
-          if ((await inspectOS(pid, { signal })) === null) return null;
+          if ((await inspectOS(pid, { signal })) === null) {
+            return null;
+          }
         } catch {
           throw failure();
         }
         throw failure();
       }
-      if (rows.length !== 1) throw failure();
+      if (rows.length !== 1) {
+        throw failure();
+      }
       return attribute(rows[0], signal);
     },
   };

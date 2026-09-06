@@ -46,27 +46,37 @@ function validateSeed(seed) {
         Buffer.from(seed[k], "base64").length === 32 &&
         Buffer.from(seed[k], "base64").toString("base64") === seed[k],
     )
-  )
+  ) {
     reject();
+  }
   return { ...seed };
 }
 function validate(owned) {
-  if (!owned || typeof owned !== "object" || Array.isArray(owned)) reject();
-  if (!Object.hasOwn(owned, "CONVEX_URL")) return validateSeed(owned);
+  if (!owned || typeof owned !== "object" || Array.isArray(owned)) {
+    reject();
+  }
+  if (!Object.hasOwn(owned, "CONVEX_URL")) {
+    return validateSeed(owned);
+  }
   const extras = Object.fromEntries(
     extraSeedKeys
       .filter((k) => Object.hasOwn(owned, k))
       .map((k) => [k, owned[k]]),
   );
-  if (Object.keys(extras).length)
+  if (Object.keys(extras).length) {
     validateSeed(Object.fromEntries(seedKeys.map((k) => [k, owned[k]])));
+  }
   owned = Object.fromEntries(
     Object.entries(owned).filter(([k]) => !extraSeedKeys.includes(k)),
   );
   const port = (value) => {
-    if (typeof value !== "string") reject();
+    if (typeof value !== "string") {
+      reject();
+    }
     const url = new URL(value);
-    if (url.protocol !== "http:" || url.hostname !== "127.0.0.1") reject();
+    if (url.protocol !== "http:" || url.hostname !== "127.0.0.1") {
+      reject();
+    }
     return Number(url.port);
   };
   // Reuse the source-of-truth validator and compare every key; never guess a
@@ -104,8 +114,9 @@ function validate(owned) {
     !Object.keys(expected).every(
       (k) => Object.hasOwn(owned, k) && owned[k] === expected[k],
     )
-  )
+  ) {
     reject();
+  }
   return { ...expected, ...extras };
 }
 function snapshot(file) {
@@ -113,7 +124,9 @@ function snapshot(file) {
   try {
     stat = fs.lstatSync(file);
   } catch (error) {
-    if (error.code === "ENOENT") return null;
+    if (error.code === "ENOENT") {
+      return null;
+    }
     throw error;
   }
   if (
@@ -121,12 +134,15 @@ function snapshot(file) {
     stat.uid !== process.getuid() ||
     (stat.mode & 0o777) !== 0o600 ||
     stat.nlink !== 1
-  )
+  ) {
     reject();
+  }
   const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
   try {
     const opened = fs.fstatSync(fd);
-    if (opened.ino !== stat.ino || opened.dev !== stat.dev) reject();
+    if (opened.ino !== stat.ino || opened.dev !== stat.dev) {
+      reject();
+    }
     return { stat, bytes: fs.readFileSync(fd) };
   } finally {
     fs.closeSync(fd);
@@ -167,19 +183,24 @@ function persistLocalConfig({
   now = () => performance.now(),
 } = {}) {
   const checkDeadline = () => {
-    if (now() >= deadlineMs)
+    if (now() >= deadlineMs) {
       throw Object.assign(Error("Local stack config persistence rejected"), {
         ambiguousTimeout: true,
       });
+    }
   };
   let lock,
     temporary,
     locked = false;
   try {
     let values = validate(owned);
-    if (typeof file !== "string" || !path.isAbsolute(file)) reject();
+    if (typeof file !== "string" || !path.isAbsolute(file)) {
+      reject();
+    }
     const parent = path.dirname(file);
-    if (fs.realpathSync(parent) !== parent) reject();
+    if (fs.realpathSync(parent) !== parent) {
+      reject();
+    }
     lock = file + ".lock";
     fs.mkdirSync(lock, { mode: 0o700 });
     locked = true;
@@ -200,8 +221,11 @@ function persistLocalConfig({
         providerGeneration: values.RECOVERY_PROVIDER_GENERATION,
         run,
       });
-      for (const key of seedKeys)
-        if (Object.hasOwn(values, key) && values[key] !== seed[key]) reject();
+      for (const key of seedKeys) {
+        if (Object.hasOwn(values, key) && values[key] !== seed[key]) {
+          reject();
+        }
+      }
       values = validate({ ...values, ...seed });
     }
     temporary = path.join(parent, `.stack-config-${randomUUID()}.toml`);
@@ -211,35 +235,50 @@ function persistLocalConfig({
     });
     const invoke = (args, input) => {
       const result = run(args, input);
-      if (!result || result.status !== 0 || result.error) reject();
+      if (!result || result.status !== 0 || result.error) {
+        reject();
+      }
       return result.stdout;
     };
     const read = (key) =>
       invoke(["config", "get", "--file", temporary, `env.${key}`]);
     if (original) {
       for (const key of ["RECOVERY_STACK_ID", "RECOVERY_PROVIDER_GENERATION"]) {
-        if (read(key) !== values[key] + "\n") reject();
+        if (read(key) !== values[key] + "\n") {
+          reject();
+        }
       }
     }
-    for (const [key, value] of Object.entries(values))
+    for (const [key, value] of Object.entries(values)) {
       invoke(["set", "--file", temporary, "--stdin", key], value);
-    for (const [key, value] of Object.entries(values))
-      if (read(key) !== value + "\n") reject();
+    }
+    for (const [key, value] of Object.entries(values)) {
+      if (read(key) !== value + "\n") {
+        reject();
+      }
+    }
     snapshot(temporary); // Mise must not have weakened private permissions.
-    if (!same(original, snapshot(file))) reject();
+    if (!same(original, snapshot(file))) {
+      reject();
+    }
     checkDeadline(); // Synchronous Mise calls cannot deliver an AbortSignal timer.
     fs.renameSync(temporary, file);
     temporary = undefined;
     checkDeadline(); // Publication cannot be undone if the atomic syscall crossed the deadline.
   } catch (error) {
-    if (error?.ambiguousTimeout === true)
+    if (error?.ambiguousTimeout === true) {
       throw Object.assign(Error("Local stack config persistence rejected"), {
         ambiguousTimeout: true,
       });
+    }
     reject();
   } finally {
-    if (temporary) fs.rmSync(temporary, { force: true });
-    if (locked) fs.rmdirSync(lock);
+    if (temporary) {
+      fs.rmSync(temporary, { force: true });
+    }
+    if (locked) {
+      fs.rmdirSync(lock);
+    }
   }
 }
 function readScalar(file, key, run, optional = false) {
@@ -250,8 +289,9 @@ function readScalar(file, key, run, optional = false) {
     !result.error &&
     typeof result.stdout === "string" &&
     result.stdout.endsWith("\n")
-  )
+  ) {
     return result.stdout.slice(0, -1);
+  }
   const lines =
     typeof result?.stderr === "string" ? result.stderr.split("\n") : [];
   const prefix = `mise ERROR Key not found: env.${key} in `;
@@ -272,8 +312,9 @@ function readScalar(file, key, run, optional = false) {
     lines[2] ===
       "mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information" &&
     lines[3] === ""
-  )
+  ) {
     return null;
+  }
   reject();
 }
 function checkForbidden(file, run) {
@@ -282,18 +323,24 @@ function checkForbidden(file, run) {
     "CONVEX_DEPLOYMENT",
     "CONVEX_SELF_HOSTED_ADMIN_KEY",
     "WORKOS_ADMIN_API_KEY",
-  ])
-    if (readScalar(file, key, run, true) !== null) reject();
+  ]) {
+    if (readScalar(file, key, run, true) !== null) {
+      reject();
+    }
+  }
 }
 function readLocalSeed({ file, stackId, providerGeneration, run = runMise }) {
   try {
     if (
       !path.isAbsolute(file) ||
       fs.realpathSync(path.dirname(file)) !== path.dirname(file)
-    )
+    ) {
       reject();
+    }
     const original = snapshot(file);
-    if (!original) return null;
+    if (!original) {
+      return null;
+    }
     checkForbidden(file, run);
     const seed = validateSeed(
       Object.fromEntries(
@@ -304,8 +351,9 @@ function readLocalSeed({ file, stackId, providerGeneration, run = runMise }) {
       seed.RECOVERY_STACK_ID !== stackId ||
       seed.RECOVERY_PROVIDER_GENERATION !== providerGeneration ||
       !same(original, snapshot(file))
-    )
+    ) {
       reject();
+    }
     return seed;
   } catch {
     reject();

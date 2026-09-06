@@ -28,9 +28,12 @@ function fixture() {
       assert.deepEqual(opts.env, { PATH: "/bin" });
       assert.equal(opts.shell, false);
       assert.equal(opts.maxBuffer, 65536);
-      if (f.error) throw Error("private error never-copy");
-      if (args[0] === "--version")
+      if (f.error) {
+        throw Error("private error never-copy");
+      }
+      if (args[0] === "--version") {
         return { stdout: f.version || "pitchfork 2.22.0\n" };
+      }
       assert.deepEqual(args, [
         "list",
         "--json",

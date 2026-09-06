@@ -12,7 +12,8 @@ import { WorkOS } from "@workos-inc/node";
 import { acquireProvider, startProvider } from "../src/provider.ts";
 const directory = Effect.acquireRelease(
   Effect.promise(() => mkdtemp(join(tmpdir(), "persisted-identity-"))),
-  (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
+  (resource) =>
+    Effect.promise(() => rm(resource, { recursive: true, force: true })),
 );
 it.live("rejects malformed stored identities without replacing state", () =>
   Effect.gen(function* () {
@@ -201,7 +202,7 @@ it.live(
       yield* Effect.promise(() => first.close());
       const db = yield* Effect.acquireRelease(
         Effect.sync(() => new DatabaseSync(options.database)),
-        (db) => Effect.sync(() => db.close()),
+        (resource) => Effect.sync(() => resource.close()),
       );
       const saved = db.prepare("SELECT body FROM instance").get()?.body;
       assert.equal(typeof saved, "string");

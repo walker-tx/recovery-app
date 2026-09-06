@@ -26,13 +26,30 @@ async function fixture(t, overrides = {}) {
       calls.push(args);
     },
     portAvailable: async () => true,
-    inherited: new Proxy({}, { get() { throw Error("Environment read"); } }),
-    fetchImpl: async () => { throw Error("Unexpected HTTP probe"); },
-    connect: () => { throw Error("Unexpected transport probe"); },
+    inherited: new Proxy(
+      {},
+      {
+        get() {
+          throw Error("Environment read");
+        },
+      },
+    ),
+    fetchImpl: async () => {
+      throw Error("Unexpected HTTP probe");
+    },
+    connect: () => {
+      throw Error("Unexpected transport probe");
+    },
     startup: {
-      prepareSeed: () => { throw Error("Unexpected credential read"); },
-      bootstrap: () => { throw Error("Unexpected bootstrap"); },
-      persist: () => { throw Error("Unexpected configuration write"); },
+      prepareSeed: () => {
+        throw Error("Unexpected credential read");
+      },
+      bootstrap: () => {
+        throw Error("Unexpected bootstrap");
+      },
+      persist: () => {
+        throw Error("Unexpected configuration write");
+      },
     },
     ...overrides,
   });
@@ -57,22 +74,42 @@ test("status exposes configured URLs, unchecked readiness and scoped log referen
   const record = await f.runtime.reserve();
   const status = await f.runtime.status(record.stackId);
   assert.equal(status.worktree, await fs.realpath(f.worktree));
-  assert.match(status.guidance, /mise run zero -- --isolated <absolute-backend-executable>/);
+  assert.match(
+    status.guidance,
+    /mise run zero -- --isolated <absolute-backend-executable>/,
+  );
   assert.match(status.guidance, /Never clear locks/);
   for (const [service, port] of Object.entries(record.ports)) {
-    assert.equal(status.urls[service], `${service === "mailpitSmtp" ? "smtp" : "http"}://127.0.0.1:${port}`);
-    assert.deepEqual(status.readiness[service], { state: "unknown", reason: "not-probed" });
+    assert.equal(
+      status.urls[service],
+      `${service === "mailpitSmtp" ? "smtp" : "http"}://127.0.0.1:${port}`,
+    );
+    assert.deepEqual(status.readiness[service], {
+      state: "unknown",
+      reason: "not-probed",
+    });
     assert.equal(status.services[service], "stopped");
   }
-  assert.deepEqual(status.logs, Object.fromEntries(
-    ["mailpitHttp", "provider", "convexCloud", "metro"].map(service => [service, {
-      manager: "pitchfork", name: `recovery-local/recovery-${record.stackId}-${service}`,
-    }]),
-  ));
+  assert.deepEqual(
+    status.logs,
+    Object.fromEntries(
+      ["mailpitHttp", "provider", "convexCloud", "metro"].map((service) => [
+        service,
+        {
+          manager: "pitchfork",
+          name: `recovery-local/recovery-${record.stackId}-${service}`,
+        },
+      ]),
+    ),
+  );
   const output = [];
-  assert.equal(await runCli(["status", record.stackId], {
-    open: async () => f.runtime, write: line => output.push(line),
-  }), 0);
+  assert.equal(
+    await runCli(["status", record.stackId], {
+      open: async () => f.runtime,
+      write: (line) => output.push(line),
+    }),
+    0,
+  );
   assert.deepEqual(JSON.parse(output[0]), status);
   assert.deepEqual(f.calls, []);
 });
@@ -85,8 +122,12 @@ test("occupied listeners remain conflicts, never readiness evidence", async (t) 
   assert.equal(status.state, "conflict");
   assert.match(status.guidance, /Resume refused/);
   assert.doesNotMatch(status.guidance, /mise run zero/);
-  assert.ok(Object.values(status.services).every(state => state === "occupied"));
-  assert.ok(Object.values(status.readiness).every(value => value.state === "unknown"));
+  assert.ok(
+    Object.values(status.services).every((state) => state === "occupied"),
+  );
+  assert.ok(
+    Object.values(status.readiness).every((value) => value.state === "unknown"),
+  );
   assert.deepEqual(f.calls, []);
 });
 test("start refuses before registry or service effects", async (t) => {
@@ -177,7 +218,9 @@ test("composed stop verifies owned PID and sends only the exact stack daemon ID"
     inspector: { inspect: inspectProcess, close: async () => {} },
     identity: { inspectProcess, identify: async () => processIdentity },
     fetchImpl: async () => new Response("{}"),
-    connect: () => { throw Error("Unexpected socket"); },
+    connect: () => {
+      throw Error("Unexpected socket");
+    },
     run: async (command, args) => {
       calls.push([command, args]);
       processIdentity = null;
@@ -188,7 +231,8 @@ test("composed stop verifies owned PID and sends only the exact stack daemon ID"
     "running",
   );
   assert.deepEqual((await runtime.status(record.stackId)).readiness.provider, {
-    state: "ready", evidence: "protocol",
+    state: "ready",
+    evidence: "protocol",
   });
   await runtime.stop(record.stackId);
   assert.deepEqual(calls, [
@@ -247,17 +291,22 @@ async function startupFixture(t, failure) {
     connect: ({ host, port }) => {
       assert.equal(host, "127.0.0.1");
       const name = Object.keys(record.ports).find(
-        (name) => record.ports[name] === port,
+        (endpointName) => record.ports[endpointName] === port,
       );
       events.push("socket:" + name);
       const socket = new EventEmitter();
       socket.destroy = () => {};
       queueMicrotask(() => {
-        if (failure === "readiness") return;
-        if (name === "mailpitSmtp")
+        if (failure === "readiness") {
+          return;
+        }
+        if (name === "mailpitSmtp") {
           socket.emit("data", Buffer.from("220 fake SMTP\r\n"));
-        else if (name === "convexSite") socket.emit("connect");
-        else assert.fail("Unexpected socket");
+        } else if (name === "convexSite") {
+          socket.emit("connect");
+        } else {
+          assert.fail("Unexpected socket");
+        }
       });
       return socket;
     },
@@ -290,9 +339,12 @@ async function startupFixture(t, failure) {
     fetchImpl: async (url) => {
       if (!url.endsWith("/instance-info")) {
         events.push("http:" + new URL(url).pathname);
-        if (url.endsWith("/status"))
+        if (url.endsWith("/status")) {
           return new Response("packager-status:running");
-        if (url.endsWith("/instance_name")) return new Response("fake");
+        }
+        if (url.endsWith("/instance_name")) {
+          return new Response("fake");
+        }
         assert.ok(url.endsWith("/api/v1/info"));
         return Response.json({});
       }
@@ -337,21 +389,30 @@ async function startupFixture(t, failure) {
           },
       bootstrap: async () => {
         events.push("bootstrap");
-        if (failure === "push") throw Error("fake push failure");
-        if (failure === "ambiguous")
+        if (failure === "push") {
+          throw Error("fake push failure");
+        }
+        if (failure === "ambiguous") {
           throw Object.assign(Error("fake ambiguous failure"), {
             ambiguous: true,
           });
-        if (failure === "timeout") return new Promise(() => {});
+        }
+        if (failure === "timeout") {
+          return new Promise(() => {});
+        }
       },
       persist: async ({ owned, deadlineMs }) => {
-        if (failure === "syncDeadline") clock = deadlineMs ?? 180000;
+        if (failure === "syncDeadline") {
+          clock = deadlineMs ?? 180000;
+        }
         events.push("persist");
         assert.equal(
           owned.EXPO_PUBLIC_AUTH_ENVIRONMENT_ID,
           `${record.stackId}:${record.providerGeneration}`,
         );
-        if (failure === "persist") throw Error("fake persist failure");
+        if (failure === "persist") {
+          throw Error("fake persist failure");
+        }
       },
     },
   });
@@ -408,7 +469,9 @@ for (const failure of [
     const f = await startupFixture(t, failure);
     await assert.rejects(f.runtime.start());
     assert.ok(!f.events.includes("start:metro"));
-    if (failure === "selector") assert.deepEqual(f.events, []);
+    if (failure === "selector") {
+      assert.deepEqual(f.events, []);
+    }
     if (failure === "readiness") {
       assert.ok(f.events.includes("socket:mailpitSmtp"));
       assert.ok(!f.events.includes("bootstrap"));

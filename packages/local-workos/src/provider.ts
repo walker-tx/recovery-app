@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { lstatSync, openSync, closeSync, constants } from "node:fs";
@@ -49,8 +50,12 @@ const ClearConfirmation = Schema.Struct({
   operation: Schema.Literal("clear-provider-data"),
   database: Schema.String,
   providerGeneration: ProviderGeneration,
-  affectedDomains: Schema.Array(Schema.Literals(["users", "sessions", "challenges"])).check(
-    Schema.makeFilter(domains => domains.length === 3 && new Set(domains).size === 3),
+  affectedDomains: Schema.Array(
+    Schema.Literals(["users", "sessions", "challenges"]),
+  ).check(
+    Schema.makeFilter(
+      (domains) => domains.length === 3 && new Set(domains).size === 3,
+    ),
   ),
 });
 
@@ -75,8 +80,9 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
         !parent.isDirectory() ||
         parent.uid !== process.getuid?.() ||
         (parent.mode & 0o077) !== 0
-      )
+      ) {
         throw new Error("State parent must be an owner-only directory");
+      }
       for (const path of [
         options.database,
         options.database + "-journal",
@@ -89,10 +95,13 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
             !file.isFile() ||
             file.uid !== process.getuid?.() ||
             (file.mode & 0o077) !== 0
-          )
+          ) {
             throw new Error("State must be an owner-only regular file");
+          }
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw error;
+          }
         }
       }
       closeSync(
@@ -147,7 +156,9 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
         const [winner] = yield* sql<{
           body: string;
         }>`SELECT body FROM instance WHERE id=1`;
-        if (winner) return winner;
+        if (winner) {
+          return winner;
+        }
         yield* sql`INSERT INTO instance VALUES(1,${body})`;
         return { body };
       }),
@@ -155,35 +166,36 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
   }
   const identity = yield* Effect.try({
     try: () => {
-      const identity: {
+      const persistedIdentity: {
         generation: string;
         privateKey: JWK;
         publicKey: JWK;
       } = JSON.parse(saved.body);
       if (
-        !identity ||
-        typeof identity.generation !== "string" ||
-        !generationPattern.test(identity.generation) ||
-        identity.privateKey?.kty !== "RSA" ||
-        identity.publicKey?.kty !== "RSA" ||
-        typeof identity.privateKey.d !== "string" ||
-        typeof identity.publicKey.n !== "string" ||
-        typeof identity.publicKey.e !== "string" ||
-        identity.privateKey.n !== identity.publicKey.n ||
-        identity.privateKey.e !== identity.publicKey.e ||
+        !persistedIdentity ||
+        typeof persistedIdentity.generation !== "string" ||
+        !generationPattern.test(persistedIdentity.generation) ||
+        persistedIdentity.privateKey?.kty !== "RSA" ||
+        persistedIdentity.publicKey?.kty !== "RSA" ||
+        typeof persistedIdentity.privateKey.d !== "string" ||
+        typeof persistedIdentity.publicKey.n !== "string" ||
+        typeof persistedIdentity.publicKey.e !== "string" ||
+        persistedIdentity.privateKey.n !== persistedIdentity.publicKey.n ||
+        persistedIdentity.privateKey.e !== persistedIdentity.publicKey.e ||
         ["d", "p", "q", "dp", "dq", "qi", "oth"].some(
-          (field) => field in identity.publicKey,
+          (field) => field in persistedIdentity.publicKey,
         )
-      )
+      ) {
         throw new ProviderStartupError({
           message: "Invalid persisted signing identity",
         });
+      }
       return {
-        ...identity,
+        ...persistedIdentity,
         publicKey: {
-          ...identity.publicKey,
-          n: identity.publicKey.n,
-          e: identity.publicKey.e,
+          ...persistedIdentity.publicKey,
+          n: persistedIdentity.publicKey.n,
+          e: persistedIdentity.publicKey.e,
         },
       };
     },
@@ -196,16 +208,16 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
     const publicKey = yield* Effect.tryPromise(() =>
       importJWK(identity.publicKey, "RS256"),
     );
-    const key = yield* Effect.tryPromise(() =>
+    const privateKey = yield* Effect.tryPromise(() =>
       importJWK(identity.privateKey, "RS256"),
     );
     const signature = yield* Effect.tryPromise(() =>
       new CompactSign(new Uint8Array())
         .setProtectedHeader({ alg: "RS256" })
-        .sign(key),
+        .sign(privateKey),
     );
     yield* Effect.tryPromise(() => compactVerify(signature, publicKey));
-    return { key };
+    return { key: privateKey };
   }).pipe(
     Effect.mapError(
       () =>
@@ -217,12 +229,13 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
   if (
     options.providerGeneration !== undefined &&
     identity.generation !== options.providerGeneration
-  )
+  ) {
     return yield* Effect.fail(
       new ProviderStartupError({
         message: "Provider generation does not match persisted state",
       }),
     );
+  }
   const providerGeneration = yield* Schema.decodeUnknownEffect(
     ProviderGeneration,
   )(identity.generation);
@@ -260,50 +273,87 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
             clientId,
             providerGeneration,
             issuer,
-            port:
-              server.address._tag === "TcpAddress" ? server.address.port : 0,
+            port: Predicate.isTagged(server.address, "TcpAddress")
+              ? server.address.port
+              : 0,
           }),
         ),
       ),
     ),
   );
   yield* server.serve(app);
-  if (server.address._tag !== "TcpAddress")
+  if (!Predicate.isTagged(server.address, "TcpAddress")) {
     return yield* Effect.fail(
       new ProviderStartupError({ message: "Expected loopback TCP address" }),
     );
+  }
   return {
     // Local acquired-resource API only. No HTTP/console reset endpoint and no
     // new connection, credentials, signing identity or ambient configuration.
     clearData(input: unknown) {
       return Effect.gen(function* () {
-        const confirmation = yield* Schema.decodeUnknownEffect(ClearConfirmation)(input).pipe(
-          Effect.mapError(() => new ProviderClearError({ reason: "confirmation" })),
+        const confirmation = yield* Schema.decodeUnknownEffect(
+          ClearConfirmation,
+        )(input).pipe(
+          Effect.mapError(
+            () => new ProviderClearError({ reason: "confirmation" }),
+          ),
         );
-        if (confirmation.database !== options.database || confirmation.providerGeneration !== providerGeneration)
-          return yield* Effect.fail(new ProviderClearError({ reason: "confirmation" }));
-        return yield* sql.withTransaction(Effect.gen(function* () {
-          yield* Effect.try({
-            try: () => {
-              const file = lstatSync(options.database);
-              if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1 ||
-                  file.uid !== process.getuid?.() || (file.mode & 0o077) !== 0 ||
-                  file.dev !== ownedDatabase.dev || file.ino !== ownedDatabase.ino) throw Error();
-            },
-            catch: () => new ProviderClearError({ reason: "identity" }),
-          });
-          const [persisted] = yield* sql<{ body: string }>`SELECT body FROM instance WHERE id=1`;
-          // Compare the already-acquired signing identity without serializing it.
-          if (persisted?.body !== saved.body)
-            return yield* Effect.fail(new ProviderClearError({ reason: "identity" }));
-          yield* sql`DELETE FROM sessions`;
-          yield* sql`DELETE FROM challenges`;
-          yield* sql`DELETE FROM users`;
-          return { operation: "clear-provider-data" as const, providerGeneration,
-            cleared: ["users", "sessions", "challenges"] as const,
-            issuedAccessTokens: "valid-until-expiry" as const };
-        })).pipe(Effect.mapError(error => error instanceof ProviderClearError
-          ? error : new ProviderClearError({ reason: "storage" })));
+        if (
+          confirmation.database !== options.database ||
+          confirmation.providerGeneration !== providerGeneration
+        ) {
+          return yield* Effect.fail(
+            new ProviderClearError({ reason: "confirmation" }),
+          );
+        }
+        return yield* sql
+          .withTransaction(
+            Effect.gen(function* () {
+              yield* Effect.try({
+                try: () => {
+                  const file = lstatSync(options.database);
+                  if (
+                    !file.isFile() ||
+                    file.isSymbolicLink() ||
+                    file.nlink !== 1 ||
+                    file.uid !== process.getuid?.() ||
+                    (file.mode & 0o077) !== 0 ||
+                    file.dev !== ownedDatabase.dev ||
+                    file.ino !== ownedDatabase.ino
+                  ) {
+                    throw Error();
+                  }
+                },
+                catch: () => new ProviderClearError({ reason: "identity" }),
+              });
+              const [persisted] = yield* sql<{
+                body: string;
+              }>`SELECT body FROM instance WHERE id=1`;
+              // Compare the already-acquired signing identity without serializing it.
+              if (persisted?.body !== saved.body) {
+                return yield* Effect.fail(
+                  new ProviderClearError({ reason: "identity" }),
+                );
+              }
+              yield* sql`DELETE FROM sessions`;
+              yield* sql`DELETE FROM challenges`;
+              yield* sql`DELETE FROM users`;
+              return {
+                operation: "clear-provider-data" as const,
+                providerGeneration,
+                cleared: ["users", "sessions", "challenges"] as const,
+                issuedAccessTokens: "valid-until-expiry" as const,
+              };
+            }),
+          )
+          .pipe(
+            Effect.mapError((error) =>
+              error instanceof ProviderClearError
+                ? error
+                : new ProviderClearError({ reason: "storage" }),
+            ),
+          );
       });
     },
     port: server.address.port,
@@ -320,10 +370,11 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
           !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
           email.length > 254 ||
           !["GoogleOAuth", "AppleOAuth"].includes(input.provider)
-        )
+        ) {
           return yield* Effect.fail(
             new FixtureError({ message: "Invalid fixture" }),
           );
+        }
         const now = new Date(yield* Clock.currentTimeMillis).toISOString();
         const user: User = {
           id: yield* Schema.decodeUnknownEffect(UserId)(
@@ -374,7 +425,8 @@ export async function startProvider(
     let closePromise: Promise<void> | undefined;
     return {
       ...provider,
-      clearData: (input: unknown) => Effect.runPromise(provider.clearData(input)),
+      clearData: (input: unknown) =>
+        Effect.runPromise(provider.clearData(input)),
       createIdentityFixture: (
         input: Parameters<typeof provider.createIdentityFixture>[0],
       ) =>

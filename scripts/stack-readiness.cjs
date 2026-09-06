@@ -25,13 +25,16 @@ function allocatedPort(service, record) {
     throw Error("Unknown readiness endpoint");
   }
   const port = record?.ports?.[service];
-  if (!Number.isInteger(port) || port < 1 || port > 65535)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw Error("Invalid allocated port");
+  }
   return port;
 }
 
 function abortable(promise, signal) {
-  if (signal.aborted) return Promise.reject(signal.reason);
+  if (signal.aborted) {
+    return Promise.reject(signal.reason);
+  }
   return new Promise((resolve, reject) => {
     const abort = () => reject(signal.reason);
     signal.addEventListener("abort", abort, { once: true });
@@ -42,9 +45,12 @@ function abortable(promise, signal) {
 }
 
 async function readBoundedText(response, { signal, maxBytes = 8192 }) {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
     throw Error("Invalid byte limit");
-  if (!response.body) throw Error("Missing response body");
+  }
+  if (!response.body) {
+    throw Error("Missing response body");
+  }
   const reader = response.body.getReader();
   const chunks = [];
   let total = 0,
@@ -62,13 +68,17 @@ async function readBoundedText(response, { signal, maxBytes = 8192 }) {
         break;
       }
       total += value.byteLength;
-      if (total > maxBytes) throw Error("Response byte limit exceeded");
+      if (total > maxBytes) {
+        throw Error("Response byte limit exceeded");
+      }
       chunks.push(Buffer.from(value));
     }
     return Buffer.concat(chunks, total).toString("utf8");
   } finally {
     signal.removeEventListener("abort", cancel);
-    if (!complete) cancel();
+    if (!complete) {
+      cancel();
+    }
     reader.releaseLock();
   }
 }
@@ -78,12 +88,15 @@ function createReadiness({
   connect = net.createConnection,
   timeoutMs = 2000,
 } = {}) {
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000)
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) {
     throw Error("Invalid readiness timeout");
+  }
   async function bounded(operation, signal) {
     const controller = new AbortController();
     const abort = () => controller.abort(signal.reason);
-    if (signal?.aborted) throw signal.reason;
+    if (signal?.aborted) {
+      throw signal.reason;
+    }
     signal?.addEventListener("abort", abort, { once: true });
     const timer = setTimeout(
       () => controller.abort(Error("Readiness timeout")),
@@ -105,8 +118,9 @@ function createReadiness({
       signal,
     );
     if (response.status !== 200 || response.redirected) {
-      if (response.body)
+      if (response.body) {
         Promise.resolve(response.body.cancel()).catch(() => {});
+      }
       throw Error("Unexpected readiness HTTP response");
     }
     return readBoundedText(response, { signal });
@@ -118,7 +132,9 @@ function createReadiness({
       let greeting = Buffer.alloc(0),
         settled = false;
       function finish(error) {
-        if (settled) return;
+        if (settled) {
+          return;
+        }
         settled = true;
         signal.removeEventListener("abort", abort);
         socket.removeListener("data", data);
@@ -126,15 +142,19 @@ function createReadiness({
         socket.removeListener("end", ended);
         socket.removeListener("close", ended);
         socket.destroy(); // No EHLO, MAIL, RCPT or DATA: greeting only.
-        if (error) reject(error);
-        else resolve(true);
+        if (error) {
+          reject(error);
+        } else {
+          resolve(true);
+        }
       }
       const abort = () => finish(signal.reason);
       const failed = () => finish(Error("SMTP connection failed"));
       const ended = () => finish(Error("SMTP closed before greeting"));
       const data = (chunk) => {
-        if (greeting.length + chunk.length > 512)
+        if (greeting.length + chunk.length > 512) {
           return finish(Error("SMTP greeting byte limit exceeded"));
+        }
         greeting = Buffer.concat([greeting, chunk]);
         const text = greeting.toString("ascii");
         if (text.includes("\r\n")) {
@@ -150,7 +170,9 @@ function createReadiness({
       socket.once("end", ended);
       socket.once("close", ended);
       signal.addEventListener("abort", abort, { once: true });
-      if (signal.aborted) abort();
+      if (signal.aborted) {
+        abort();
+      }
     });
   }
 
@@ -159,15 +181,20 @@ function createReadiness({
       const socket = connect({ host: "127.0.0.1", port });
       let settled = false;
       function finish(error) {
-        if (settled) return;
+        if (settled) {
+          return;
+        }
         settled = true;
         signal.removeEventListener("abort", abort);
         socket.removeListener("connect", connected);
         socket.removeListener("error", failed);
         socket.removeListener("close", closed);
         socket.destroy(); // No HTTP request: application routes may not exist yet.
-        if (error) reject(error);
-        else resolve(true);
+        if (error) {
+          reject(error);
+        } else {
+          resolve(true);
+        }
       }
       const connected = () => finish();
       const failed = () => finish(Error("Site listener connection failed"));
@@ -177,7 +204,9 @@ function createReadiness({
       socket.once("error", failed);
       socket.once("close", closed);
       signal.addEventListener("abort", abort, { once: true });
-      if (signal.aborted) abort();
+      if (signal.aborted) {
+        abort();
+      }
     });
   }
 
@@ -191,14 +220,22 @@ function createReadiness({
   async function ready(service, record, { signal } = {}) {
     const port = allocatedPort(service, record);
     return bounded(async (inner) => {
-      if (service === "convexSite") return siteListener(port, inner);
-      if (service === "mailpitSmtp") return smtp(port, inner);
+      if (service === "convexSite") {
+        return siteListener(port, inner);
+      }
+      if (service === "mailpitSmtp") {
+        return smtp(port, inner);
+      }
       const text = await http(service, record, inner);
-      if (service === "metro" && text !== "packager-status:running")
+      if (service === "metro" && text !== "packager-status:running") {
         throw Error("Metro not ready");
-      if (service === "convexCloud" && !text.trim())
+      }
+      if (service === "convexCloud" && !text.trim()) {
         throw Error("Missing Convex instance name");
-      if (service === "provider" || service === "mailpitHttp") JSON.parse(text);
+      }
+      if (service === "provider" || service === "mailpitHttp") {
+        JSON.parse(text);
+      }
       return true;
     }, signal);
   }

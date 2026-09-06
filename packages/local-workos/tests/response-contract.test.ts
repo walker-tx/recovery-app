@@ -12,14 +12,14 @@ it.live(
     Effect.gen(function* () {
       const directory = yield* Effect.acquireRelease(
         Effect.promise(() => mkdtemp(join(tmpdir(), "workos-response-"))),
-        (directory) =>
-          Effect.promise(() => rm(directory, { recursive: true, force: true })),
+        (resource) =>
+          Effect.promise(() => rm(resource, { recursive: true, force: true })),
       );
       const database = join(directory, "state.sqlite");
       const apiKey = `sk_test_local_${"01".repeat(32)}`;
       const provider = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider({ database, apiKey })),
-        (provider) => Effect.promise(() => provider.close()),
+        (resource) => Effect.promise(() => resource.close()),
       );
       const user = yield* Effect.promise(() =>
         provider.createIdentityFixture({

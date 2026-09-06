@@ -46,8 +46,9 @@ test("constructs matching backend, provider and public mobile configuration", ()
     CONVEX_SITE_URL: "http://127.0.0.1:24001",
     AUTH_EMAIL_DELIVERY_URL: "http://127.0.0.1:24004/api/v1/send",
   };
-  for (const [key, value] of Object.entries(expected))
+  for (const [key, value] of Object.entries(expected)) {
     assert.ok(result.backend[key] === value, key);
+  }
   assert.ok(result.backend.WORKOS_API_KEY === credentials.apiKey);
   assert.ok(result.backend.LOCAL_WORKOS_API_KEY === credentials.apiKey);
   assert.ok(result.provider.LOCAL_WORKOS_API_KEY === credentials.apiKey);
@@ -60,8 +61,9 @@ test("constructs matching backend, provider and public mobile configuration", ()
   assert.ok(!("CONVEX_DEPLOY_KEY" in result.owned));
 });
 test("independently verifies every bootstrap claim and exact allocated port", () => {
-  for (const key of Object.keys(bootstrap))
+  for (const key of Object.keys(bootstrap)) {
     rejects({ bootstrap: { ...bootstrap, [key]: "wrong" } });
+  }
   rejects({ bootstrap: { ...bootstrap, issuer: `${issuer}/` } });
   rejects({ bootstrap: { ...bootstrap, port: 24004 } });
 });
@@ -86,8 +88,9 @@ test("rejects inherited deploy credentials, real targets and unowned credentials
     { WORKOS_API_KEY: "unowned-fixture" },
     { CONVEX_URL: "https://example.invalid" },
     { WORKOS_CLIENT_ID: "client_real_fixture" },
-  ])
+  ]) {
     rejects({ inherited });
+  }
   rejects({ existing: { RECOVERY_STACK_ID: providerGeneration } });
   rejects({ existing: { WORKOS_API_KEY: credentials.apiKey } });
 });

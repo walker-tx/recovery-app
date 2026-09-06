@@ -87,14 +87,16 @@ export const workosLayer = Layer.effect(
           body.client_id !== clientId ||
           typeof body.client_secret !== "string" ||
           !equal(body.client_secret, Redacted.value(apiKey))
-        )
+        ) {
           return yield* Effect.fail(
             new RequestRejected({ reason: "invalid_client" }),
           );
-        if (body.grant_type !== "password")
+        }
+        if (body.grant_type !== "password") {
           return yield* Effect.fail(
             new RequestRejected({ reason: "unsupported_grant_type" }),
           );
+        }
         // Invalid credentials still incur the synthetic-account derivation.
         const payload = yield* Schema.decodeUnknownEffect(
           PasswordAuthenticationRequestSchema,
@@ -111,10 +113,11 @@ export const workosLayer = Layer.effect(
           !payload ||
           !row?.verifier ||
           !timingSafeEqual(hash, Buffer.from(row.verifier, "hex"))
-        )
+        ) {
           return yield* Effect.fail(
             new RequestRejected({ reason: "invalid_grant" }),
           );
+        }
         const now = yield* Clock.currentTimeMillis;
         const user = yield* Schema.decodeUnknownEffect(UserSchema)(
           JSON.parse(row.body),
@@ -190,10 +193,11 @@ export const workosLayer = Layer.effect(
             Effect.gen(function* () {
               const rows =
                 yield* sql`SELECT id FROM users WHERE email=${email}`;
-              if (rows.length)
+              if (rows.length) {
                 return yield* Effect.fail(
                   new RequestRejected({ reason: "email_exists" }),
                 );
+              }
               return yield* Effect.fail(error);
             }),
           ),
@@ -207,10 +211,11 @@ export const workosLayer = Layer.effect(
           url.searchParams.has("before") ||
           (url.searchParams.has("order") &&
             !["asc", "desc"].includes(url.searchParams.get("order")!))
-        )
+        ) {
           return yield* Effect.fail(
             new RequestRejected({ reason: "unsupported_pagination" }),
           );
+        }
         const after = url.searchParams.get("after");
         if (
           after !== null &&
@@ -219,15 +224,17 @@ export const workosLayer = Layer.effect(
             Effect.catch(() => Effect.succeed(false)),
           )) ||
             !(yield* getUser(after)))
-        )
+        ) {
           return yield* Effect.fail(
             new RequestRejected({ reason: "invalid_cursor" }),
           );
+        }
         const limit = Number(url.searchParams.get("limit") ?? 10);
-        if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
           return yield* Effect.fail(
             new RequestRejected({ reason: "invalid_limit" }),
           );
+        }
         const email = url.searchParams.get("email")?.trim().toLowerCase();
         const descending = url.searchParams.get("order") === "desc";
         const rows = yield* sql.unsafe<Row>(
@@ -253,10 +260,11 @@ export const workosLayer = Layer.effect(
           Effect.mapError(() => new RequestRejected({ reason: "not_found" })),
         );
         const row = yield* getUser(userId);
-        if (!row)
+        if (!row) {
           return yield* Effect.fail(
             new RequestRejected({ reason: "not_found" }),
           );
+        }
         return yield* Effect.try({
           try: (): unknown => JSON.parse(row[field]),
           catch: (error) => error,

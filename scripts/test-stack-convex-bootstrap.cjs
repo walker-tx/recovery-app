@@ -2,8 +2,11 @@ const { test, beforeEach, afterEach } = require("node:test");
 let ambient;
 beforeEach(() => {
   ambient = { ...process.env };
-  for (const key of Object.keys(process.env))
-    if (key.startsWith("CONVEX_")) delete process.env[key];
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith("CONVEX_")) {
+      delete process.env[key];
+    }
+  }
 });
 afterEach(() => {
   process.env = ambient;
@@ -222,7 +225,10 @@ test("rejects mismatched runtime URLs and inherited selectors before effects", a
     await assert.rejects(bootstrapLocalConvex(g));
     assert.equal(g.events.length, 0);
   } finally {
-    if (saved === undefined) delete process.env.CONVEX_DEPLOY_KEY;
-    else process.env.CONVEX_DEPLOY_KEY = saved;
+    if (saved === undefined) {
+      delete process.env.CONVEX_DEPLOY_KEY;
+    } else {
+      process.env.CONVEX_DEPLOY_KEY = saved;
+    }
   }
 });

@@ -54,7 +54,7 @@ function launch(args: string[], credential = key) {
       resolve(code);
     }),
   );
-  const ready = new Promise<Record<string, any>>((resolve, reject) => {
+  const ready = new Promise<Record<string, unknown>>((resolve, reject) => {
     child.stdout.on("data", () => {
       if (stdout.includes("\n")) {
         try {
@@ -87,7 +87,9 @@ async function portAvailable(port: number): Promise<boolean> {
     await reservePort(port);
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") return false;
+    if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+      return false;
+    }
     throw error;
   }
 }
@@ -102,11 +104,15 @@ async function retryReadiness<T>(
       return await start(port);
     } catch (error) {
       // Only initial readiness is retryable, and only with fresh collision evidence.
-      if (attempt === 3) throw error;
+      if (attempt === 3) {
+        throw error;
+      }
       const isAvailable = await available(port).catch(() => {
         throw error;
       });
-      if (isAvailable) throw error;
+      if (isAvailable) {
+        throw error;
+      }
     }
   }
 }
@@ -138,8 +144,8 @@ it.live(
     Effect.gen(function* () {
       const dir = yield* Effect.acquireRelease(
         Effect.promise(() => mkdtemp(join(tmpdir(), "local-workos-cli-"))),
-        (dir) =>
-          Effect.promise(() => rm(dir, { recursive: true, force: true })),
+        (resource) =>
+          Effect.promise(() => rm(resource, { recursive: true, force: true })),
       );
       const generation = randomUUID();
       const argsForPort = (port: number) => [
@@ -248,7 +254,9 @@ it.live(
         const exitCode = yield* Effect.promise(() => p.exited);
         assert.equal(exitCode, 1);
         assert.ok(!p.output().includes(key));
-        if (credential !== "") assert.ok(!p.output().includes(credential));
+        if (credential !== "") {
+          assert.ok(!p.output().includes(credential));
+        }
         assert.ok(!p.output().includes("providerGeneration"));
       }
     }),
@@ -263,7 +271,9 @@ it.live("readiness retries a probed collision on a fresh reservation", () =>
     const result = await retryReadiness(
       async (port) => {
         attempts.push(port);
-        if (attempts.length === 1) throw failure;
+        if (attempts.length === 1) {
+          throw failure;
+        }
         return port;
       },
       async () => nextPort++,
@@ -322,8 +332,9 @@ it.live("readiness probes a forced occupied port before retrying", () =>
       retryReadiness(
         async (candidate) => {
           attempts.push(candidate);
-          if (candidate === occupied)
+          if (candidate === occupied) {
             throw new Error("generic startup failure");
+          }
           return candidate;
         },
         async () => (reservations++ === 0 ? occupied : reservePort()),

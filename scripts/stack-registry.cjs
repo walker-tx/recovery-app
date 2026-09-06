@@ -46,8 +46,9 @@ function validateRegistry(data) {
     Object.keys(data).length !== 2 ||
     data.version !== 1 ||
     !object(data.stacks)
-  )
+  ) {
     throw Error("Invalid registry; manual repair required");
+  }
   const ports = new Set(),
     stackIds = new Set(),
     generations = new Set();
@@ -83,8 +84,9 @@ function validateRegistry(data) {
         port < 1 ||
         port > 65535 ||
         ports.has(port)
-      )
+      ) {
         throw Error("Invalid reservation ports; manual repair required");
+      }
       ports.add(port);
     }
   }
@@ -110,10 +112,23 @@ function createRegistry({
   },
   lockTimeoutMs = 1000,
 }) {
-  if (!path.isAbsolute(registryPath))
+  if (!path.isAbsolute(registryPath)) {
     throw Error("Registry path must be absolute");
+  }
   const file = path.join(registryPath, "registry.json"),
     lock = path.join(registryPath, "lock");
+  async function releaseOwnedLock(token) {
+    // An externally replaced lock is not ours to remove. A crash leaves a
+    // bounded, actionable busy result rather than an unsafe PID-based steal.
+    const current = JSON.parse(
+      await fs.readFile(path.join(lock, "owner.json"), "utf8"),
+    );
+    if (current.token !== token) {
+      throw Error("Lock ownership changed; manual repair required");
+    }
+    await fs.rm(path.join(lock, "owner.json"));
+    await fs.rmdir(lock);
+  }
   async function transact(worktree, change) {
     const canonical = await fs.realpath(worktree);
     const stat = await fs.stat(canonical);
@@ -124,21 +139,26 @@ function createRegistry({
       !rootStat.isDirectory() ||
       rootStat.uid !== process.getuid() ||
       rootStat.mode & 0o077
-    )
+    ) {
       throw Error("Registry directory ownership/permissions unsafe");
+    }
     const deadline = Date.now() + lockTimeoutMs;
     while (true) {
       try {
         await fs.mkdir(lock, { mode: 0o700 });
         break;
       } catch (error) {
-        if (error.code !== "EEXIST") throw error;
-        if (Date.now() >= deadline)
-          throw Error(
-            "Registry locked; manual ownership investigation required (no automatic lock reclamation)",
-          );
-        await delay(10);
+        if (error.code !== "EEXIST") {
+          throw error;
+        }
       }
+      // Only EEXIST reaches this boundary; do not retain filesystem error data.
+      if (Date.now() >= deadline) {
+        throw Error(
+          "Registry locked; manual ownership investigation required (no automatic lock reclamation)",
+        );
+      }
+      await delay(10);
     }
     const token = randomUUID();
     try {
@@ -151,13 +171,16 @@ function createRegistry({
       try {
         data = JSON.parse(await fs.readFile(file, "utf8"));
       } catch (error) {
-        if (error.code !== "ENOENT") throw error;
+        if (error.code !== "ENOENT") {
+          throw error;
+        }
         data = { version: 1, stacks: {} };
       }
       validateRegistry(data);
       const record = data.stacks[canonical];
-      if (record && record.owner !== owner)
+      if (record && record.owner !== owner) {
         throw Error("Worktree ownership mismatch; manual repair required");
+      }
       const before = JSON.stringify(data);
       const result = await change(data, record, canonical, owner);
       if (JSON.stringify(data) !== before) {
@@ -174,15 +197,7 @@ function createRegistry({
       }
       return result;
     } finally {
-      // An externally replaced lock is not ours to remove. A crash leaves a
-      // bounded, actionable busy result rather than an unsafe PID-based steal.
-      const current = JSON.parse(
-        await fs.readFile(path.join(lock, "owner.json"), "utf8"),
-      );
-      if (current.token !== token)
-        throw Error("Lock ownership changed; manual repair required");
-      await fs.rm(path.join(lock, "owner.json"));
-      await fs.rmdir(lock);
+      await releaseOwnedLock(token);
     }
   }
   async function observe(record) {
@@ -199,29 +214,36 @@ function createRegistry({
       if (
         states[service] === "stopped" &&
         !(await available(record.ports[service]))
-      )
+      ) {
         states[service] = "occupied";
+      }
     }
     return states;
   }
   function owned(record, stackId) {
-    if (!stackId || (record && record.stackId !== stackId))
+    if (!stackId || (record && record.stackId !== stackId)) {
       throw Error("Stack ownership mismatch");
+    }
   }
   return {
-    readOwned: (worktree, stackId) => transact(worktree, async (_data, record) => {
-      owned(record, stackId);
-      if (!record) throw Error("Stack ownership missing");
-      return record;
-    }),
+    readOwned: (worktree, stackId) =>
+      transact(worktree, async (_data, record) => {
+        owned(record, stackId);
+        if (!record) {
+          throw Error("Stack ownership missing");
+        }
+        return record;
+      }),
     reserve: (worktree) =>
       transact(worktree, async (data, record, canonical, owner) => {
         if (record) {
           const states = Object.values(await observe(record));
-          if (states.includes("mismatched"))
+          if (states.includes("mismatched")) {
             throw Error("Process ownership mismatch; manual repair required");
-          if (states.includes("occupied"))
+          }
+          if (states.includes("occupied")) {
             throw Error("Reserved port occupied; manual repair required");
+          }
           return record;
         }
         const used = new Set(
@@ -233,12 +255,14 @@ function createRegistry({
           while (
             candidate < 25000 &&
             (used.has(candidate) || !(await available(candidate)))
-          )
+          ) {
             candidate++;
-          if (candidate >= 25000)
+          }
+          if (candidate >= 25000) {
             throw Error(
               "Port allocation exhausted (24000-24999); no reservations changed",
             );
+          }
           ports[service] = candidate++;
         }
         record = {
@@ -254,7 +278,9 @@ function createRegistry({
       }),
     status: (worktree) =>
       transact(worktree, async (_data, record) => {
-        if (!record) return { state: "absent" };
+        if (!record) {
+          return { state: "absent" };
+        }
         const states = await observe(record);
         return {
           stackId: record.stackId,
@@ -279,35 +305,42 @@ function createRegistry({
           new Set(endpoints).size !== endpoints.length ||
           !endpoints.every((name) => services.includes(name)) ||
           !validIdentity(identity, record)
-        )
+        ) {
           throw Error("Invalid process ownership");
-        if (!isDeepStrictEqual(await inspectProcess(identity.pid), identity))
+        }
+        if (!isDeepStrictEqual(await inspectProcess(identity.pid), identity)) {
           throw Error("Process ownership mismatch");
-        for (const service of endpoints) {
-          const previous = record.processes[service];
+        }
+        for (const endpoint of endpoints) {
+          const previous = record.processes[endpoint];
           if (
             previous &&
             !isDeepStrictEqual(previous, identity) &&
             (await inspectProcess(previous.pid)) !== null
-          )
+          ) {
             throw Error("Existing process ownership unresolved");
+          }
         }
-        for (const service of endpoints)
-          record.processes[service] = {
+        for (const endpoint of endpoints) {
+          record.processes[endpoint] = {
             pid: identity.pid,
             startedAt: identity.startedAt,
             worktree: identity.worktree,
             stackId: identity.stackId,
           };
+        }
       }),
     release: (worktree, stackId) =>
       transact(worktree, async (data, record, canonical) => {
         owned(record, stackId);
-        if (!record) return { released: false };
-        if (Object.values(await observe(record)).some((s) => s !== "stopped"))
+        if (!record) {
+          return { released: false };
+        }
+        if (Object.values(await observe(record)).some((s) => s !== "stopped")) {
           throw Error(
             "Cannot release: process/port remains occupied or ownership mismatched",
           );
+        }
         delete data.stacks[canonical];
         return { released: true };
       }),

@@ -11,7 +11,8 @@ const fixture = () =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
       Effect.promise(() => mkdtemp(join(tmpdir(), "workos-core-"))),
-      (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
+      (resource) =>
+        Effect.promise(() => rm(resource, { recursive: true, force: true })),
     );
     return {
       dir,
@@ -43,16 +44,18 @@ it.live("lock failures are bounded and corrupt startup can recover", () =>
       Effect.sync(() => vi.spyOn(DatabaseSync.prototype, "close")),
       (spy) => Effect.sync(() => spy.mockRestore()),
     );
-    const { dir, options } = yield* fixture();
+    const { options } = yield* fixture();
     let p = yield* Effect.acquireRelease(
       Effect.promise(() => startProvider(options)),
-      (provider) => Effect.promise(() => provider.close()),
+      (resource) => Effect.promise(() => resource.close()),
     );
     yield* Effect.promise(() => p.close());
     const db = new DatabaseSync(options.database);
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        if (db.isTransaction) db.exec("ROLLBACK");
+        if (db.isTransaction) {
+          db.exec("ROLLBACK");
+        }
         db.close();
       }),
     );
@@ -82,7 +85,7 @@ it.live("lock failures are bounded and corrupt startup can recover", () =>
       db.prepare("UPDATE instance SET body=?").run(original);
       p = yield* Effect.acquireRelease(
         Effect.promise(() => startProvider(options)),
-        (provider) => Effect.promise(() => provider.close()),
+        (resource) => Effect.promise(() => resource.close()),
       );
       yield* Effect.promise(() => p.close());
     }
@@ -90,10 +93,10 @@ it.live("lock failures are bounded and corrupt startup can recover", () =>
 );
 it.live("bounded requests, explicit paging and trusted social fixtures", () =>
   Effect.gen(function* () {
-    const { dir, options } = yield* fixture();
+    const { options } = yield* fixture();
     const p = yield* Effect.acquireRelease(
       Effect.promise(() => startProvider(options)),
-      (provider) => Effect.promise(() => provider.close()),
+      (resource) => Effect.promise(() => resource.close()),
     );
     const sdk = new WorkOS(options.apiKey, {
       apiHostname: "127.0.0.1",
@@ -178,7 +181,7 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
     );
     const db = yield* Effect.acquireRelease(
       Effect.sync(() => new DatabaseSync(options.database)),
-      (db) => Effect.sync(() => db.close()),
+      (resource) => Effect.sync(() => resource.close()),
     );
     assert.equal(db.prepare("SELECT count(*) AS n FROM sessions").get()?.n, 0);
     for (const provider of ["GoogleOAuth", "AppleOAuth"] as const) {
@@ -210,7 +213,7 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
       const page = yield* Effect.promise(() =>
         sdk.userManagement.listUsers({ limit: 1, after }),
       );
-      ids.push(...page.data.map((u) => u.id));
+      ids.push(...page.data.map((user) => user.id));
       after = page.listMetadata.after ?? undefined;
     } while (after);
     assert.equal(new Set(ids).size, 3);
@@ -234,7 +237,7 @@ it.live(
   "existing sidecars require owner-only permissions and concurrent initialization agrees",
   () =>
     Effect.gen(function* () {
-      const { dir, options } = yield* fixture();
+      const { options } = yield* fixture();
       for (const suffix of ["-journal", "-wal", "-shm"]) {
         yield* Effect.promise(() =>
           writeFile(options.database + suffix, "", { mode: 0o644 }),
@@ -250,7 +253,7 @@ it.live(
         [1, 2].map(() =>
           Effect.acquireRelease(
             Effect.promise(() => startProvider(options)),
-            (provider) => Effect.promise(() => provider.close()),
+            (resource) => Effect.promise(() => resource.close()),
           ),
         ),
         { concurrency: "unbounded" },

@@ -93,7 +93,10 @@ test("parallel stacks start independently; healthy resume runs no command; stop 
   assert.equal((await f.registry.reserve(f.worktree)).stackId, a.stackId);
   assert.ok(
     f.calls.every(
-      (c) => !c.args.some((a) => ["--force", "--bump", "--all"].includes(a)),
+      (c) =>
+        !c.args.some((argument) =>
+          ["--force", "--bump", "--all"].includes(argument),
+        ),
     ),
   );
 });

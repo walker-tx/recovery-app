@@ -20,7 +20,7 @@ const absolute = (value) =>
   !value.includes("\0") &&
   path.isAbsolute(value) &&
   path.normalize(value) === value;
-function validate({ registry: r, worktree, backendBinary, seed } = {}) {
+function validate({ registry: r, worktree, backendBinary } = {}) {
   if (
     !absolute(worktree) ||
     fs.realpathSync(worktree) !== worktree ||
@@ -31,15 +31,19 @@ function validate({ registry: r, worktree, backendBinary, seed } = {}) {
     r.stackId === r.providerGeneration ||
     !r.ports ||
     Object.keys(r.ports).length !== 6
-  )
+  ) {
     throw Error();
+  }
   const ports = names.map((n) => r.ports[n]);
   if (
     !ports.every((p) => Number.isSafeInteger(p) && p > 0 && p <= 65535) ||
     new Set(ports).size !== 6
-  )
+  ) {
     throw Error();
-  if (backendBinary !== undefined && !absolute(backendBinary)) throw Error();
+  }
+  if (backendBinary !== undefined && !absolute(backendBinary)) {
+    throw Error();
+  }
   return {
     backend: path.join(worktree, "packages/backend/.convex/local/default"),
     provider: path.join(worktree, ".recovery-stack/provider"),
@@ -64,8 +68,9 @@ function buildStackServices(options = {}) {
           !seed[k].includes("\0"),
       ) ||
       !/^sk_test_local_[a-f0-9]{64}$/.test(seed.LOCAL_WORKOS_API_KEY)
-    )
+    ) {
       throw Error();
+    }
     const p = r.ports,
       origin = (n) => `http://127.0.0.1:${p[n]}`;
     const privateCommand = (args) => [
@@ -154,7 +159,9 @@ function prepareOwnedStateDirectories(options = {}) {
       try {
         fs.mkdirSync(dir, { mode: 0o700 });
       } catch (e) {
-        if (e.code !== "EEXIST") throw e;
+        if (e.code !== "EEXIST") {
+          throw e;
+        }
       }
       const st = fs.lstatSync(dir);
       if (
@@ -163,8 +170,9 @@ function prepareOwnedStateDirectories(options = {}) {
         st.uid !== uid ||
         (st.mode & 0o022) !== 0 ||
         (privateMode && (st.mode & 0o077) !== 0)
-      )
+      ) {
         throw Error();
+      }
     }
     // Inspect every ancestor below the canonical worktree; never follow a state symlink.
     for (const dir of [state.backend, state.root, state.provider]) {
@@ -183,10 +191,13 @@ function prepareOwnedStateDirectories(options = {}) {
           (st.mode & 0o077) !== 0 ||
           st.nlink !== 1 ||
           fs.readFileSync(file, "utf8") !== marker
-        )
+        ) {
           throw Error();
+        }
       } else {
-        if (fs.readdirSync(dir).length !== 0) throw Error();
+        if (fs.readdirSync(dir).length !== 0) {
+          throw Error();
+        }
         fs.writeFileSync(file, marker, { flag: "wx", mode: 0o600 });
       }
     }
@@ -199,9 +210,12 @@ function prepareOwnedStateDirectories(options = {}) {
           st.uid !== uid ||
           (st.mode & 0o077) !== 0 ||
           (!st.isDirectory() && (!st.isFile() || st.nlink !== 1))
-        )
+        ) {
           throw Error();
-        if (st.isDirectory()) inspectContents(file);
+        }
+        if (st.isDirectory()) {
+          inspectContents(file);
+        }
       }
     }
     inspectContents(state.backend);

@@ -31,16 +31,18 @@ function buildStackConfiguration({
     !uuid(registry.providerGeneration) ||
     registry.stackId === registry.providerGeneration ||
     !object(registry.ports)
-  )
+  ) {
     reject();
+  }
   const ports = services.map((name) => registry.ports[name]);
   if (
     !ports.every(
       (port) => Number.isSafeInteger(port) && port > 0 && port <= 65535,
     ) ||
     new Set(ports).size !== ports.length
-  )
+  ) {
     reject();
+  }
   const { stackId, providerGeneration } = registry;
   const clientId = `client_local${providerGeneration.replaceAll("-", "")}`;
   const issuer = `https://local-workos.invalid/instances/${providerGeneration}`;
@@ -50,8 +52,9 @@ function buildStackConfiguration({
     bootstrap.clientId !== clientId ||
     bootstrap.issuer !== issuer ||
     bootstrap.port !== registry.ports.provider
-  )
+  ) {
     reject();
+  }
   // Credentials are explicitly supplied by the trusted launcher, NOT bootstrap.
   // The reserved format rejects accidental reuse of real-provider test keys;
   // cryptographic generation/persistence remains the launcher's responsibility.
@@ -61,8 +64,9 @@ function buildStackConfiguration({
     credentials.providerGeneration !== providerGeneration ||
     typeof credentials.apiKey !== "string" ||
     !/^sk_test_local_[0-9a-f]{64}$/.test(credentials.apiKey)
-  )
+  ) {
     reject();
+  }
   const origin = (name) => `http://127.0.0.1:${registry.ports[name]}`;
   const backend = {
     WORKOS_MODE: "local",
@@ -92,7 +96,9 @@ function buildStackConfiguration({
     ...mobile,
   };
   for (const source of [existing, inherited]) {
-    if (!object(source)) reject();
+    if (!object(source)) {
+      reject();
+    }
     // No deployment selector/admin credential may leak in from an ambient shell.
     for (const key of [
       "CONVEX_DEPLOY_KEY",
@@ -100,19 +106,24 @@ function buildStackConfiguration({
       "CONVEX_SELF_HOSTED_ADMIN_KEY",
       "WORKOS_ADMIN_API_KEY",
     ]) {
-      if (key in source) reject();
+      if (key in source) {
+        reject();
+      }
     }
     const hasOwnership =
       source.RECOVERY_STACK_ID === stackId &&
       source.RECOVERY_PROVIDER_GENERATION === providerGeneration;
     for (const key of Object.keys(owned)) {
-      if (key in source && source[key] !== owned[key]) reject();
+      if (key in source && source[key] !== owned[key]) {
+        reject();
+      }
     }
     if (
       ("WORKOS_API_KEY" in source || "LOCAL_WORKOS_API_KEY" in source) &&
       !hasOwnership
-    )
+    ) {
       reject();
+    }
   }
   // Merge only the explicit existing config, never the inherited environment.
   return {

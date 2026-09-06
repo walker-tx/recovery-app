@@ -10,8 +10,9 @@ async function createProcessInspector({
   platform = process.platform,
   exec = promisify(execFile),
 } = {}) {
-  if (!["linux", "darwin"].includes(platform))
+  if (!["linux", "darwin"].includes(platform)) {
     throw Error("Precise process inspection unsupported");
+  }
   let directory,
     binary,
     closed = false;
@@ -45,10 +46,15 @@ async function createProcessInspector({
   }
   return {
     async inspect(pid, { signal } = {}) {
-      if (closed) throw Error("Process inspector closed");
-      if (!Number.isSafeInteger(pid) || pid < 1 || pid > 2147483647)
+      if (closed) {
+        throw Error("Process inspector closed");
+      }
+      if (!Number.isSafeInteger(pid) || pid < 1 || pid > 2147483647) {
         throw Error("Invalid process PID");
-      if (platform === "linux") return inspectLinuxProcess(pid, { signal });
+      }
+      if (platform === "linux") {
+        return inspectLinuxProcess(pid, { signal });
+      }
       try {
         const { stdout } = await exec(binary, [String(pid)], {
           env,
@@ -58,7 +64,9 @@ async function createProcessInspector({
           shell: false,
         });
         const evidence = JSON.parse(stdout);
-        if (evidence === null) return null;
+        if (evidence === null) {
+          return null;
+        }
         if (
           !evidence ||
           evidence.pid !== pid ||
@@ -68,8 +76,9 @@ async function createProcessInspector({
           !path.isAbsolute(evidence.worktree) ||
           path.normalize(evidence.worktree) !== evidence.worktree ||
           evidence.worktree.includes("\0")
-        )
+        ) {
           throw Error();
+        }
         return {
           pid,
           startedAt: evidence.startedAt,
@@ -80,9 +89,13 @@ async function createProcessInspector({
       }
     },
     async close() {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       closed = true;
-      if (directory) await fs.rm(directory, { recursive: true, force: true });
+      if (directory) {
+        await fs.rm(directory, { recursive: true, force: true });
+      }
     },
   };
 }
