@@ -1,0 +1,52 @@
+name: Code style
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Node and pnpm
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          version: 2026.8.8
+          install_args: node github:pnpm/pnpm
+      - name: Install dependencies
+        run: mise exec -- pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check formatting
+        run: mise exec -- pnpm run format:check
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Node and pnpm
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          version: 2026.8.8
+          install_args: node github:pnpm/pnpm
+      - name: Install dependencies
+        run: mise exec -- pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check lint
+        run: mise exec -- pnpm run lint
