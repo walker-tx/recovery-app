@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { WorkOS } from "@workos-inc/node";
-import { decodeJwt } from "jose";
+import { decodeJwt, createLocalJWKSet, jwtVerify } from "jose";
 import { startProvider } from "../src/provider.ts";
 const fixture = (sessionSeconds = 604800, accessTokenSeconds = 300) => Effect.gen(function* () {
   const dir = yield* Effect.acquireRelease(Effect.promise(() => mkdtemp(join(tmpdir(), "refresh-fixture-"))), dir => Effect.promise(() => rm(dir, { recursive: true, force: true })));
@@ -18,6 +18,7 @@ const fixture = (sessionSeconds = 604800, accessTokenSeconds = 300) => Effect.ge
   const user = yield* Effect.promise(() => sdk().userManagement.createUser({ email: "refresh@example.test", password: "Synthetic-password-refresh-48", emailVerified: true }));
   const signIn = () => sdk().userManagement.authenticateWithPassword({ clientId: provider.clientId, email: user.email, password: "Synthetic-password-refresh-48" });
   return { db, sdk, user, options, signIn, refresh: (refreshToken: string, maxRetries?: number) => sdk(maxRetries).userManagement.authenticateWithRefreshToken({ clientId: provider.clientId, refreshToken }),
+    provider: () => provider,
     stop: () => Effect.promise(() => provider.close()),
     restart: () => Effect.gen(function* () { yield* Effect.promise(() => provider.close()); provider = yield* acquire(); }),
     clear: () => Effect.promise(() => provider.clearData({ operation: "clear-provider-data", database: options.database, providerGeneration: provider.providerGeneration, affectedDomains: ["users", "sessions", "challenges"] })) };
@@ -133,4 +134,93 @@ it.live("revocation/reset/clear override replay; encrypted result tampering fail
   yield* f.clear(); yield* f.restart();
   for (const token of [third.refreshToken, thirdRotated.refreshToken]) yield* Effect.promise(() => assert.rejects(f.refresh(token), invalid));
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM refresh_replays").get()?.n, 0);
+}));
+
+it.live("SDK deletion cascades replay and reset state, preserves other users and never reuses subjects", () => Effect.gen(function* () {
+  const f = yield* fixture();
+  const original = yield* Effect.promise(f.signIn);
+  const rotated = yield* Effect.promise(() => f.refresh(original.refreshToken));
+  const reset = yield* Effect.promise(() => f.sdk().userManagement.createPasswordReset({ email: f.user.email }));
+  const other = yield* Effect.promise(() => f.sdk().userManagement.createUser({ email: "other@example.test", password: "Synthetic-password-refresh-48", emailVerified: true }));
+  const jwks = yield* Effect.promise(async () => (await fetch(`http://127.0.0.1:${f.provider().port}/sso/jwks/${f.provider().clientId}`)).json());
+  const target = `http://127.0.0.1:${f.provider().port}/user_management/users/${f.user.id}`;
+  const unauthorized = yield* Effect.promise(() => fetch(target, { method: "DELETE" }));
+  assert.equal(unauthorized.status, 401);
+  const alias = yield* Effect.promise(() => fetch(target.replace("/users/", "/%75sers/"), { method: "DELETE", headers: { Authorization: `Bearer ${f.options.apiKey}` } }));
+  assert.equal(alias.status, 404);
+  f.db.exec("CREATE TRIGGER reject_delete AFTER DELETE ON users BEGIN SELECT RAISE(ABORT, 'synthetic-private-delete'); END");
+  yield* Effect.promise(() => assert.rejects(f.sdk(0).userManagement.deleteUser(f.user.id), (e: unknown) => e instanceof Error && !e.message.includes("synthetic-private-delete") && "status" in e && e.status === 500));
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM refresh_replays").get()?.n, 1);
+  assert.deepEqual(yield* Effect.promise(() => f.refresh(original.refreshToken)), rotated);
+  f.db.exec("DROP TRIGGER reject_delete");
+  yield* Effect.promise(() => f.sdk().userManagement.deleteUser(f.user.id));
+  yield* f.restart();
+  for (const token of [original.refreshToken, rotated.refreshToken]) yield* Effect.promise(() => assert.rejects(f.refresh(token), invalid));
+  yield* Effect.promise(() => assert.rejects(f.sdk().userManagement.resetPassword({ token: reset.passwordResetToken, newPassword: "Synthetic-password-refresh-49" })));
+  yield* Effect.promise(() => assert.rejects(f.sdk().userManagement.deleteUser(f.user.id), (e: unknown) => e instanceof Error && "status" in e && e.status === 404));
+  assert.equal((yield* Effect.promise(() => f.sdk().userManagement.getUser(other.id))).id, other.id);
+  for (const table of ["sessions", "challenges", "refresh_replays"]) assert.equal(f.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()?.n, 0);
+  const replacement = yield* Effect.promise(() => f.sdk().userManagement.createUser({ email: f.user.email, password: "Synthetic-password-refresh-48", emailVerified: true }));
+  assert.notEqual(replacement.id, f.user.id);
+  const verified = yield* Effect.promise(() => jwtVerify(original.accessToken, createLocalJWKSet(jwks), { issuer: f.provider().issuer, audience: f.provider().clientId }));
+  assert.equal(verified.payload.sub, f.user.id); // Provider deletion is not immediate JWT/Convex/device erasure.
+}));
+it.live("valid ciphertext swapped between live replay rows fails closed without losing legitimate current tokens", () => Effect.gen(function* () {
+  const f = yield* fixture();
+  const originals = yield* Effect.promise(() => Promise.all([f.signIn(), f.signIn()]));
+  const rotated = yield* Effect.promise(() => Promise.all(originals.map(pair => f.refresh(pair.refreshToken))));
+  const rows = f.db.prepare("SELECT old_hash, encrypted_result FROM refresh_replays ORDER BY old_hash").all();
+  assert.equal(rows.length, 2);
+  f.db.prepare("UPDATE refresh_replays SET encrypted_result=? WHERE old_hash=?").run(rows[1].encrypted_result!, rows[0].old_hash!);
+  f.db.prepare("UPDATE refresh_replays SET encrypted_result=? WHERE old_hash=?").run(rows[0].encrypted_result!, rows[1].old_hash!);
+  yield* f.restart();
+  for (const pair of originals) yield* Effect.promise(() => assert.rejects(f.refresh(pair.refreshToken, 0), (e: unknown) => e instanceof Error && "status" in e && e.status === 500));
+  for (const pair of rotated) yield* Effect.promise(() => f.refresh(pair.refreshToken));
+}));
+it.live("owner revoke-all is user-bound and atomic for present sessions while later sign-in remains allowed", () => Effect.gen(function* () {
+  const f = yield* fixture();
+  const originals = yield* Effect.promise(() => Promise.all([f.signIn(), f.signIn()]));
+  const rotated = yield* Effect.promise(() => Promise.all(originals.map(pair => f.refresh(pair.refreshToken))));
+  const other = yield* Effect.promise(() => f.sdk().userManagement.createUser({ email: "other@example.test", password: "Synthetic-password-refresh-48", emailVerified: true }));
+  const otherSession = yield* Effect.promise(() => f.sdk().userManagement.authenticateWithPassword({ clientId: f.provider().clientId, email: other.email, password: "Synthetic-password-refresh-48" }));
+  const confirmation = { operation: "revoke-user-sessions", database: f.options.database, providerGeneration: f.provider().providerGeneration, userId: f.user.id };
+  for (const input of [undefined, { ...confirmation, userId: "invalid" }, { ...confirmation, database: "/foreign" }, { ...confirmation, providerGeneration: "foreign" }]) {
+    yield* Effect.promise(() => assert.rejects(f.provider().revokeUserSessions(input)));
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM sessions").get()?.n, 3);
+  }
+  f.db.exec("CREATE TRIGGER reject_revoke AFTER DELETE ON sessions BEGIN SELECT RAISE(ABORT, 'synthetic-private'); END");
+  yield* Effect.promise(() => assert.rejects(f.provider().revokeUserSessions(confirmation), (e: unknown) => e instanceof Error && !e.message.includes("synthetic-private")));
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM refresh_replays").get()?.n, 2);
+  f.db.exec("DROP TRIGGER reject_revoke");
+  const savedIdentity = f.db.prepare("SELECT body FROM instance WHERE id=1").get()!.body!;
+  f.db.prepare("UPDATE instance SET body=? WHERE id=1").run("{}");
+  yield* Effect.promise(() => assert.rejects(f.provider().revokeUserSessions(confirmation)));
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM sessions").get()?.n, 3);
+  f.db.prepare("UPDATE instance SET body=? WHERE id=1").run(savedIdentity);
+  const result = yield* Effect.promise(() => f.provider().revokeUserSessions(confirmation));
+  assert.equal(result.issuedAccessTokens, "valid-until-expiry");
+  yield* f.restart();
+  for (const pair of [...originals, ...rotated]) yield* Effect.promise(() => assert.rejects(f.refresh(pair.refreshToken), invalid));
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM refresh_replays").get()?.n, 0);
+  yield* Effect.promise(() => f.refresh(otherSession.refreshToken));
+  const later = yield* Effect.promise(f.signIn);
+  yield* Effect.promise(() => f.refresh(later.refreshToken));
+}));
+
+it.live("concurrent refresh versus owner revocation or SDK deletion leaves no surviving token generation", () => Effect.gen(function* () {
+  for (const operation of ["revoke", "delete"]) {
+    const f = yield* fixture();
+    const original = yield* Effect.promise(f.signIn);
+    const outcomes = yield* Effect.promise(() => Promise.allSettled([
+      f.refresh(original.refreshToken),
+      operation === "delete" ? f.sdk().userManagement.deleteUser(f.user.id) : f.provider().revokeUserSessions({ operation: "revoke-user-sessions", database: f.options.database, providerGeneration: f.provider().providerGeneration, userId: f.user.id }),
+    ]));
+    assert.equal(outcomes[1].status, "fulfilled");
+    yield* Effect.promise(() => assert.rejects(f.refresh(original.refreshToken), invalid));
+    const refresh = outcomes[0];
+    if (refresh.status === "fulfilled" && refresh.value && "refreshToken" in refresh.value)
+      yield* Effect.promise(() => assert.rejects(f.refresh(refresh.value.refreshToken as string), invalid));
+    else if (refresh.status === "rejected") assert.ok(invalid(refresh.reason));
+    for (const table of ["sessions", "refresh_replays"]) assert.equal(f.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()?.n, 0);
+  }
 }));

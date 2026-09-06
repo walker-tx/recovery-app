@@ -152,6 +152,7 @@ const api = HttpApi.make("localWorkOS").add(
       params: { id: Schema.String },
       success: EmailVerificationSchema,
     }),
+    HttpApiEndpoint.delete("deleteUser", "/user_management/users/:id", { params: { id: Schema.String }, success: Schema.Void }),
     HttpApiEndpoint.get("getUser", "/user_management/users/:id", {
       params: { id: Schema.String },
       success: UserSchema,
@@ -220,7 +221,7 @@ export function makeHttpApp(scope: Scope.Scope) {
       instanceInfo,
       authenticate,
       createUser,
-      createPasswordReset, resetPassword, revokeSession,
+      createPasswordReset, resetPassword, revokeSession, deleteUser,
       listUsers,
       getUser,
       getIdentities,
@@ -274,6 +275,11 @@ export function makeHttpApp(scope: Scope.Scope) {
             access: "bearer", path: endpoint.path,
           }),
         )
+        .handleRaw("deleteUser", ({ endpoint }) =>
+          workosResponse(apiKey, (_, request) => deleteUser(rawUserId(request.url)).pipe(Effect.as(Response.empty({ status: 204 }))), {
+            access: "bearer", path: endpoint.path,
+          }),
+        )
         .handleRaw("getUser", ({ endpoint }) =>
           workosResponse(
             apiKey,
@@ -313,7 +319,7 @@ export function makeHttpApp(scope: Scope.Scope) {
     const app = Effect.gen(function* () {
       const request = yield* HttpServerRequest;
       // HttpRouter otherwise implicitly serves GET endpoints for HEAD.
-      if (request.method !== "GET" && request.method !== "POST")
+      if (request.method !== "GET" && request.method !== "POST" && request.method !== "DELETE")
         return yield* unsupported;
       return yield* routed.pipe(
         Effect.catch((error) =>

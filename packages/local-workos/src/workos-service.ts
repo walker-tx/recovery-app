@@ -60,6 +60,7 @@ export class WorkOSService extends Context.Service<
     readonly createPasswordReset: (body: Record<string, unknown>) => Effect.Effect<PasswordReset, RequestFailure>;
     readonly resetPassword: (body: Record<string, unknown>) => Effect.Effect<{ user: User }, RequestFailure>;
     readonly revokeSession: (body: Record<string, unknown>) => Effect.Effect<void, RequestFailure>;
+    readonly deleteUser: (id: string) => Effect.Effect<void, RequestFailure>;
     readonly getUser: (id: string) => Effect.Effect<User, RequestFailure>;
     readonly getEmailVerification: (id: string) => Effect.Effect<EmailVerification, RequestFailure>;
     readonly getIdentities: (
@@ -421,6 +422,14 @@ export const workosLayer = Layer.effect(
         }));
       }).pipe(Effect.catch(operationFailure)),
 
+      deleteUser: Effect.fn("deleteUser")(function* (id: string) {
+        const userId = yield* Schema.decodeUnknownEffect(UserId)(id).pipe(
+          Effect.mapError(() => new RequestRejected({ reason: "not_found" })),
+        );
+        // One statement atomically cascades sessions, replay results and challenges.
+        const deleted = yield* sql`DELETE FROM users WHERE id=${userId} RETURNING id`;
+        if (deleted.length === 0) return yield* Effect.fail(new RequestRejected({ reason: "not_found" }));
+      }, Effect.catch(operationFailure)),
       listUsers,
       getEmailVerification: (id) => Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;

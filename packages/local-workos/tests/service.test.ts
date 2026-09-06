@@ -77,6 +77,7 @@ it.effect(
             createPasswordReset: () => unavailable,
             resetPassword: () => unavailable,
             revokeSession: () => unavailable,
+            deleteUser: () => unavailable,
           }),
         );
         const scope = yield* Scope.Scope;

@@ -46,6 +46,15 @@ export class FixtureError extends Data.TaggedError("FixtureError")<{
 export class ProviderClearError extends Data.TaggedError("ProviderClearError")<{
   reason: "confirmation" | "identity" | "storage";
 }> {}
+export class ProviderSessionError extends Schema.TaggedError<ProviderSessionError>()("ProviderSessionError", {
+  reason: Schema.Literals(["confirmation", "identity", "storage", "not_found"]),
+}) {}
+const RevokeUserConfirmation = Schema.Struct({
+  operation: Schema.Literal("revoke-user-sessions"),
+  database: Schema.String,
+  providerGeneration: ProviderGeneration,
+  userId: UserId,
+});
 const ClearConfirmation = Schema.Struct({
   operation: Schema.Literal("clear-provider-data"),
   database: Schema.String,
@@ -295,9 +304,39 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
     return yield* Effect.fail(
       new ProviderStartupError({ message: "Expected loopback TCP address" }),
     );
+  const requireOwnedIdentity = Effect.gen(function* () {
+    yield* Effect.try({
+      try: () => {
+        const file = lstatSync(options.database);
+        if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1 ||
+            file.uid !== process.getuid?.() || (file.mode & 0o077) !== 0 ||
+            file.dev !== ownedDatabase.dev || file.ino !== ownedDatabase.ino) throw Error();
+      },
+      catch: () => new ProviderClearError({ reason: "identity" }),
+    });
+    const [persisted] = yield* sql<{ body: string }>`SELECT body FROM instance WHERE id=1`;
+    // Compare the already-acquired signing identity without serializing it.
+    if (persisted?.body !== saved.body)
+      return yield* Effect.fail(new ProviderClearError({ reason: "identity" }));
+  });
   return {
     // Local acquired-resource API only. No HTTP/console reset endpoint and no
     // new connection, credentials, signing identity or ambient configuration.
+    revokeUserSessions: Effect.fn("revokeUserSessions")(function* (input: unknown) {
+      const confirmation = yield* Schema.decodeUnknownEffect(RevokeUserConfirmation)(input).pipe(
+        Effect.mapError(() => new ProviderSessionError({ reason: "confirmation" })),
+      );
+      if (confirmation.database !== options.database || confirmation.providerGeneration !== providerGeneration)
+        return yield* Effect.fail(new ProviderSessionError({ reason: "confirmation" }));
+      return yield* sql.withTransaction(Effect.gen(function* () {
+        yield* requireOwnedIdentity;
+        const [user] = yield* sql`SELECT id FROM users WHERE id=${confirmation.userId}`;
+        if (!user) return yield* Effect.fail(new ProviderSessionError({ reason: "not_found" }));
+        yield* sql`DELETE FROM sessions WHERE user_id=${confirmation.userId}`;
+        return { userId: confirmation.userId, issuedAccessTokens: "valid-until-expiry" as const };
+      })).pipe(Effect.mapError(error => error instanceof ProviderSessionError ? error
+        : new ProviderSessionError({ reason: error instanceof ProviderClearError ? error.reason : "storage" })));
+    }),
     clearData(input: unknown) {
       return Effect.gen(function* () {
         const confirmation = yield* Schema.decodeUnknownEffect(ClearConfirmation)(input).pipe(
@@ -306,19 +345,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
         if (confirmation.database !== options.database || confirmation.providerGeneration !== providerGeneration)
           return yield* Effect.fail(new ProviderClearError({ reason: "confirmation" }));
         return yield* sql.withTransaction(Effect.gen(function* () {
-          yield* Effect.try({
-            try: () => {
-              const file = lstatSync(options.database);
-              if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1 ||
-                  file.uid !== process.getuid?.() || (file.mode & 0o077) !== 0 ||
-                  file.dev !== ownedDatabase.dev || file.ino !== ownedDatabase.ino) throw Error();
-            },
-            catch: () => new ProviderClearError({ reason: "identity" }),
-          });
-          const [persisted] = yield* sql<{ body: string }>`SELECT body FROM instance WHERE id=1`;
-          // Compare the already-acquired signing identity without serializing it.
-          if (persisted?.body !== saved.body)
-            return yield* Effect.fail(new ProviderClearError({ reason: "identity" }));
+          yield* requireOwnedIdentity;
           yield* sql`DELETE FROM sessions`;
           yield* sql`DELETE FROM challenges`;
           yield* sql`DELETE FROM users`;
@@ -397,6 +424,7 @@ export async function startProvider(
     let closePromise: Promise<void> | undefined;
     return {
       ...provider,
+      revokeUserSessions: (input: unknown) => Effect.runPromise(provider.revokeUserSessions(input)),
       clearData: (input: unknown) => Effect.runPromise(provider.clearData(input)),
       createIdentityFixture: (
         input: Parameters<typeof provider.createIdentityFixture>[0],
