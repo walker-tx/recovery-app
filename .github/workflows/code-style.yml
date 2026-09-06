@@ -48,5 +48,7 @@ jobs:
           install_args: node github:pnpm/pnpm
       - name: Install dependencies
         run: mise exec -- pnpm install --frozen-lockfile --ignore-scripts
+      - name: Prepare Effect lint integration
+        run: mise exec -- pnpm --filter @recovery/local-workos run prepare
       - name: Check lint
         run: mise exec -- pnpm run lint
