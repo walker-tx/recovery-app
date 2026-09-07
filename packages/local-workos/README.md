@@ -11,6 +11,132 @@ mise exec -- pnpm --filter @recovery/local-workos test
 mise exec -- pnpm --filter @recovery/local-workos check
 ```
 
+## Local administration CLI
+
+The package-owned `src/mock.ts` entry point uses the existing Effect 4 RC CLI.
+It selects the caller's Git worktree (including nested directories and symlinks),
+or an explicit `--worktree <path>`, and reads the existing stack registry. It does
+not start, reserve, repair, stop, or reset a stack.
+
+From the delivery checkout root:
+
+```sh
+mise run mock -- status
+mise run mock -- --worktree /absolute/path/to/another/worktree users list
+mise exec -- ./scripts/mock.sh --json status
+mise exec -- ./scripts/mock.sh --json users list --limit 20
+```
+
+**Mise runner limitation:** installed Mise 2026.8.8 appends a task-failure line to
+stderr when `mise run` receives a nonzero child exit, even with task quiet/raw
+settings. Use `mise exec -- ./scripts/mock.sh ...` for strict single-object JSON
+failures and unchanged exit codes. The direct wrapper itself adds no banners.
+From a nested directory, use the absolute wrapper path with `mise exec`; discovery
+still uses that nested cwd. This is an explicit difference from the originally
+proposed all-purpose `mise run mock` invocation, not a claim that Mise's extra
+failure output is JSON. Runner/bootstrap failures before the Node entry point can
+also produce runner diagnostics; consumers must require both complete JSON and
+the documented exit status.
+
+### Commands and confirmations
+
+Commands are `status`; `users list/get/create/update/verify/delete`;
+`sessions list/revoke/revoke-all`; and `inbox list/read`. Use `--help` for the
+command-specific flags. No wizard, pager, prompt, browser, email initiation,
+provider token inspection, inbox waiting, or stack teardown is added.
+
+Obtain the selected `stackId` and `providerGeneration` from status. Every provider
+mutation requires both assertions; they do not select another target:
+
+```sh
+printf %s 'synthetic development password' | mise exec -- ./scripts/mock.sh \
+  users create --email developer@example.invalid --password-stdin \
+  --expect-stack STACK_UUID --expect-generation GENERATION_UUID
+
+mise exec -- ./scripts/mock.sh users update USER_ID --first-name '' \
+  --expect-stack STACK_UUID --expect-generation GENERATION_UUID
+
+mise exec -- ./scripts/mock.sh users verify USER_ID --verified true \
+  --expect-stack STACK_UUID --expect-generation GENERATION_UUID
+
+mise exec -- ./scripts/mock.sh sessions revoke-all --user USER_ID \
+  --expect-stack STACK_UUID --expect-generation GENERATION_UUID
+
+mise exec -- ./scripts/mock.sh users delete USER_ID \
+  --confirm-email developer@example.invalid \
+  --expect-stack STACK_UUID --expect-generation GENERATION_UUID
+```
+
+Use synthetic credentials only. Password creation accepts explicit non-TTY stdin,
+not argv or an ambient password variable. It preserves exact UTF-8 bytes,
+including a trailing newline, with a 4 KiB input cap before the provider password
+policy. Omitted update fields stay unchanged; explicitly empty names clear them.
+Verification override is setup, not proof of the real email verification flow.
+Deletion additionally checks the user's current email atomically on the server.
+Revocation does not require email confirmation. Provider deletion/revocation
+preserves Convex data, device storage, and captured mail. Already-issued access
+JWTs may remain accepted until expiry. Recreating an email does not restore its
+old subject or application data.
+
+### Private target and output boundary
+
+The OS account is the administration trust boundary: root and same-user
+processes are trusted, not isolated tenants. A short socket path is derived by
+one registry-owned rule from the existing persisted stack UUID:
+`<canonical /tmp>/recovery-admin-<uid>/<stackId>.sock`. This keeps the six-field
+version-1 shared registry compatible with older sibling worktrees. Explicit
+normal lifecycle restart with the new code adds the listener for existing
+reservations without recreating identity or data. An old running provider is
+not silently restarted by the CLI.
+
+The parent is owner-only 0700; the published socket is 0600. Occupied, insecure,
+stale, or ambiguous endpoints are refused rather than unlinked. CLI reads check
+precise recorded PID/start-time/canonical-cwd continuity, then validate live
+socket stack/generation identity. Startup/stop ownership remains in the existing
+lifecycle implementation. Administration reads do not query or start Pitchfork.
+Mailpit access additionally verifies the allocated loopback listener belongs to
+the recorded process. This uses native `lsof` on macOS; Linux requires `lsof`
+available and readable process evidence, otherwise inbox access fails closed.
+Linux runtime behavior is not proven by the macOS tests.
+
+Human output escapes untrusted terminal controls. `--json` emits one version-1
+success object on stdout, or one sanitized failure object on stderr when normal
+error rendering succeeds. Help/version are non-service commands with `target:
+null`. Exit codes: 0 success; 2 invalid invocation; 3 target/confirmation refusal;
+4 unavailable/deadline before mutation dispatch; 5 uncertain mutation outcome;
+1 other failure; SIGINT 130. Never infer success from incomplete JSON or partial
+output after a broken pipe. Writes are not automatically retried.
+
+The operation deadline defaults to 5000 ms (`--timeout-ms`, maximum 30000), with
+at most 3000 ms additional cleanup grace. HTTP request/response streams are capped
+at 1 MiB. Lists default to 50, accept limits 1 through 100, and return an opaque
+`nextCursor` or null. No command automatically scans all pages.
+
+### Captured inbox
+
+```sh
+mise exec -- ./scripts/mock.sh --json inbox list --to developer@example.invalid
+mise exec -- ./scripts/mock.sh --json inbox read MESSAGE_ID
+```
+
+Listing is nonmutating and projects out Mailpit body snippets and attachments.
+**Metadata is still sensitive:** subjects can contain a code or reset link.
+`--to` compares exact case-insensitive structured To addresses in one bounded
+ordinary-list page, not Mailpit search syntax, display names, Cc, or Bcc. `scanned`
+counts raw summaries examined; an empty filtered page can have a continuation.
+Cursors bind target/inbox epoch/filter/limit. Mailpit offset continuation is
+best-effort: arrivals, deletions, and tied timestamps can duplicate or omit mail.
+
+**Reading marks the message read**, including when a later response-size,
+transport, or output failure prevents delivery to the caller. It never restores
+unread afterward. Successful reads disclose `sensitive: true`,
+`readStateEffect: marks-read`, and `textProvenance: mailpit-parsed-or-derived`;
+Mailpit may have derived Text from HTML. Empty usable text is represented as null.
+The CLI does not render HTML, open links, fetch assets, download attachments, or
+extract/submit codes. Reading does not complete verification/reset or change
+native authentication. Mail may outlive provider-user deletion and generations;
+select the actual timestamped message for the native attempt.
+
 ## Effect linting
 
 `check` runs TypeScript and then Oxlint with zero warnings allowed. `.oxlintrc.json`

@@ -1,0 +1,122 @@
+import { assert, it } from "@effect/vitest";
+import { Effect, Exit, Schema } from "effect";
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- Real filesystem fixture proves refusal before state acquisition.
+import { mkdtemp, realpath, rm, readdir, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- Pure fixture path construction.
+import { join } from "node:path";
+import { AdminIdentity, AdminRequest } from "../src/admin-contract.ts";
+import { acquireProvider } from "../src/provider.ts";
+
+const uuid = "11111111-1111-4111-8111-111111111111";
+it.effect(
+  "admin identity and request schemas reject missing malformed and oversized UUIDs",
+  () =>
+    Effect.gen(function* () {
+      for (const schema of [AdminIdentity, AdminRequest]) {
+        for (const field of ["stackId", "providerGeneration"]) {
+          for (const value of [
+            undefined,
+            "",
+            "bad",
+            "11111111-1111-1111-8111-111111111111",
+            "x".repeat(4097),
+          ]) {
+            const result = yield* Schema.decodeUnknownEffect(schema)({
+              stackId: uuid,
+              providerGeneration: uuid,
+              worktree: "/tmp",
+              operation: "status",
+              input: {},
+              [field]: value,
+            }).pipe(Effect.exit);
+            assert.ok(Exit.isFailure(result));
+          }
+        }
+      }
+      for (const worktree of [
+        undefined,
+        "",
+        "relative",
+        "/tmp/../tmp",
+        "/" + "é".repeat(2048),
+        "/tmp\0",
+      ]) {
+        const result = yield* Schema.decodeUnknownEffect(AdminIdentity)({
+          stackId: uuid,
+          providerGeneration: uuid,
+          worktree,
+        }).pipe(Effect.exit);
+        assert.ok(Exit.isFailure(result));
+      }
+    }),
+);
+
+it.live(
+  "invalid admin identities fail before database or socket acquisition",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const dir = yield* Effect.acquireRelease(
+          Effect.promise(() =>
+            mkdtemp(join(tmpdir(), "admin-id-")).then((path) => realpath(path)),
+          ),
+          (path) =>
+            Effect.promise(() => rm(path, { recursive: true, force: true })),
+        );
+        const alias = join(dir, "alias");
+        yield* Effect.promise(() => symlink(dir, alias));
+        for (const field of ["stackId", "worktree", "providerGeneration"]) {
+          const values =
+            field === "worktree"
+              ? [
+                  undefined,
+                  "",
+                  "relative",
+                  dir + "/../" + dir.split("/").at(-1),
+                  alias,
+                  join(dir, "missing"),
+                  "/" + "é".repeat(2048),
+                ]
+              : [
+                  undefined,
+                  "",
+                  "bad",
+                  "11111111-1111-1111-8111-111111111111",
+                  "x".repeat(4097),
+                ];
+          for (const value of values) {
+            // Omitted generation remains supported by provider auto-generation.
+            if (field === "providerGeneration" && value === undefined) {
+              continue;
+            }
+            const admin = {
+              socketPath: join(dir, "a.sock"),
+              stackId: uuid,
+              worktree: dir,
+            };
+            const options = {
+              database: join(dir, "state.sqlite"),
+              apiKey: `sk_test_local_${"a".repeat(64)}`,
+              providerGeneration: uuid,
+              admin,
+            };
+            const target = field === "providerGeneration" ? options : admin;
+            if (value === undefined) {
+              Reflect.deleteProperty(target, field);
+            } else {
+              Reflect.set(target, field, value);
+            }
+            const result = yield* Effect.scoped(acquireProvider(options)).pipe(
+              Effect.exit,
+            );
+            assert.ok(Exit.isFailure(result));
+            assert.deepEqual(yield* Effect.promise(() => readdir(dir)), [
+              "alias",
+            ]);
+          }
+        }
+      }),
+    ),
+  { timeout: 10000 },
+);

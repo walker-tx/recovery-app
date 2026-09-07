@@ -38,7 +38,8 @@ import {
   ClientId,
   type ProviderOptions,
 } from "./config.ts";
-import { workosLayer } from "./workos-service.ts";
+import { acquireAdminServer } from "./admin-http.ts";
+import { WorkOSService, workosLayer } from "./workos-service.ts";
 export class ProviderStartupError extends Data.TaggedError(
   "ProviderStartupError",
 )<{ message: string }> {}
@@ -319,30 +320,32 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
     host: "127.0.0.1",
     port: options.port ?? 0,
   }).pipe(Effect.uninterruptible);
-  const app = yield* makeHttpApp(scope).pipe(
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- Server entrypoint assembles services in the caller-owned scope.
-    Effect.provide(
-      workosLayer.pipe(
-        Layer.provide(Layer.succeedContext(databaseContext)),
-        Layer.provide(Layer.succeed(ConfigService, options)),
-        Layer.provide(
-          Layer.succeed(SigningIdentity, {
-            key,
-            replayKey: deriveReplayKey(
-              identity.privateKey.d,
-              identity.generation,
-            ),
-            jwks,
-            clientId,
-            providerGeneration,
-            issuer,
-            port: Predicate.isTagged(server.address, "TcpAddress")
-              ? server.address.port
-              : 0,
-          }),
-        ),
+  const serviceContext = yield* Layer.buildWithScope(
+    workosLayer.pipe(
+      Layer.provide(Layer.succeedContext(databaseContext)),
+      Layer.provide(Layer.succeed(ConfigService, options)),
+      Layer.provide(
+        Layer.succeed(SigningIdentity, {
+          key,
+          replayKey: deriveReplayKey(
+            identity.privateKey.d,
+            identity.generation,
+          ),
+          jwks,
+          clientId,
+          providerGeneration,
+          issuer,
+          port: Predicate.isTagged(server.address, "TcpAddress")
+            ? server.address.port
+            : 0,
+        }),
       ),
     ),
+    scope,
+  );
+  const service = Context.get(serviceContext, WorkOSService);
+  const app = yield* makeHttpApp(scope).pipe(
+    Effect.provideService(WorkOSService, service),
   );
   yield* server.serve(app);
   if (!Predicate.isTagged(server.address, "TcpAddress")) {
@@ -377,6 +380,15 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
     }
     return undefined;
   });
+  if (options.admin) {
+    yield* acquireAdminServer(
+      options.admin,
+      providerGeneration,
+      sql,
+      service,
+      requireOwnedIdentity,
+    );
+  }
   return {
     // Local acquired-resource API only. No HTTP/console reset endpoint and no
     // new connection, credentials, signing identity or ambient configuration.

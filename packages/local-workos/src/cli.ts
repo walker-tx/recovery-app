@@ -2,9 +2,16 @@
 // oxlint-disable-next-line effecttsgo/node-builtin-import
 import { isAbsolute } from "node:path";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Cause, ConfigProvider, Effect, Exit, Schema } from "effect";
+import { Cause, ConfigProvider, Effect, Exit, Schema, Option } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
-import { loadProviderConfig, ConfigService } from "./config.ts";
+import {
+  loadProviderConfig,
+  ConfigService,
+  ConfigurationError,
+  AdminStackId,
+  AdminWorktree,
+  ProviderGeneration,
+} from "./config.ts";
 import { acquireConfiguredProvider } from "./provider.ts";
 
 const command = Command.make(
@@ -23,13 +30,43 @@ const command = Command.make(
           ),
       ),
     ),
+    adminSocket: Flag.string("admin-socket").pipe(Flag.optional),
+    stackId: Flag.string("stack-id").pipe(
+      Flag.withSchema(AdminStackId),
+      Flag.optional,
+    ),
+    worktree: Flag.string("worktree").pipe(
+      Flag.withSchema(AdminWorktree),
+      Flag.optional,
+    ),
     providerGeneration: Flag.string("provider-generation").pipe(
-      Flag.withSchema(Schema.String.check(Schema.isUUID())),
+      Flag.withSchema(ProviderGeneration),
     ),
   },
   (options) =>
     Effect.gen(function* () {
-      const config = yield* loadProviderConfig(options);
+      const adminSocket = Option.getOrUndefined(options.adminSocket);
+      const stackId = Option.getOrUndefined(options.stackId);
+      const worktree = Option.getOrUndefined(options.worktree);
+      if (
+        [adminSocket, stackId, worktree].some((value) => value !== undefined) &&
+        [adminSocket, stackId, worktree].some((value) => value === undefined)
+      ) {
+        return yield* Effect.fail(
+          new ConfigurationError({
+            message:
+              "Admin socket, stack ID and worktree must be supplied together",
+          }),
+        );
+      }
+      const config = yield* loadProviderConfig({
+        ...options,
+        ...(adminSocket !== undefined &&
+        stackId !== undefined &&
+        worktree !== undefined
+          ? { admin: { socketPath: adminSocket, stackId, worktree } }
+          : {}),
+      });
       // NodeRuntime owns interruption. This watchdog also bounds an in-flight
       // uninterruptible acquisition or a Promise finalizer that never settles.
       yield* Effect.acquireRelease(

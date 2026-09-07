@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { createRegistry } = require("./stack-registry.cjs");
+const { createRegistry, adminSocketPath } = require("./stack-registry.cjs");
 async function fixture(t, options = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "recovery-registry-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -495,4 +495,89 @@ test("Git common-directory resolution refuses legacy name claims", async (t) => 
   await assert.rejects(resolve(worktree), /legacy/i);
   assert.equal(await fs.readFile(file, "utf8"), before);
   assert.equal((await resolve(linked)).stdout.trim(), expected);
+});
+
+test("six-field reservations remain readable by baseline siblings without migration", async (t) => {
+  const { execFileSync } = require("node:child_process");
+  const Module = require("node:module");
+  const filename = path.join(__dirname, "stack-registry.cjs");
+  const baseline = new Module(filename, module);
+  baseline.filename = filename;
+  baseline.paths = module.paths;
+  // Node exposes historical CommonJS source loading only through Module._compile.
+  // eslint-disable-next-line no-underscore-dangle
+  baseline._compile(
+    execFileSync("git", ["show", "ed2f4e6:scripts/stack-registry.cjs"], {
+      encoding: "utf8",
+    }),
+    filename,
+  );
+  const { registry, registryPath, worktree, sibling } = await fixture(t);
+  const old = baseline.exports.createRegistry({
+    registryPath,
+    portAvailable: async () => true,
+  });
+  const a = await old.reserve(worktree);
+  const b = await registry.reserve(sibling);
+  assert.equal(Object.keys(b).length, 6);
+  assert.deepEqual(await old.readOwned(sibling, b.stackId), b);
+  assert.deepEqual(await old.readOwned(worktree, a.stackId), a);
+  const file = path.join(registryPath, "registry.json");
+  const before = await fs.readFile(file);
+  const snapshot = await fs.stat(file);
+  assert.deepEqual(await registry.reserve(worktree), a);
+  assert.deepEqual(await registry.readOwned(worktree), a);
+  assert.notEqual(adminSocketPath(a), adminSocketPath(b));
+  assert.ok(Buffer.byteLength(adminSocketPath(a)) <= 100);
+  assert.equal(
+    adminSocketPath(a),
+    path.join(
+      await fs.realpath("/tmp"),
+      `recovery-admin-${process.getuid()}`,
+      `${a.stackId}.sock`,
+    ),
+  );
+  assert.deepEqual(await fs.readFile(file), before);
+  assert.equal((await fs.stat(file)).mtimeMs, snapshot.mtimeMs);
+  assert.deepEqual(await registry.readOwned(sibling), b);
+  assert.throws(() => adminSocketPath({ ...a, stackId: "../unsafe" }));
+});
+
+test("socket derivation is read-only and rejects oversized paths or invalid owner context", async (t) => {
+  const { registry, worktree } = await fixture(t);
+  const record = await registry.reserve(worktree);
+  const before = structuredClone(record);
+  const sync = require("node:fs");
+  t.mock.method(sync, "realpathSync", () => "/" + "x".repeat(100));
+  assert.throws(() => adminSocketPath(record), /path too long/);
+  t.mock.method(process, "getuid", () => -1);
+  assert.throws(() => adminSocketPath(record), /identity/);
+  assert.deepEqual(record, before);
+});
+
+test("v1 rejects optional administration fields rather than serializing them", async (t) => {
+  const { registry, registryPath, worktree } = await fixture(t);
+  const record = await registry.reserve(worktree);
+  const file = path.join(registryPath, "registry.json");
+  const data = JSON.parse(await fs.readFile(file, "utf8"));
+  data.stacks[record.worktree].adminSocket = adminSocketPath(record);
+  const bytes = JSON.stringify(data);
+  await fs.writeFile(file, bytes);
+  await assert.rejects(registry.readOwned(worktree), /Invalid reservation/);
+  assert.equal(await fs.readFile(file, "utf8"), bytes);
+});
+
+test("readOwned can discover registration and cancellation never steals a lock", async (t) => {
+  const { registry, registryPath, worktree } = await fixture(t);
+  const a = await registry.reserve(worktree);
+  assert.deepEqual(await registry.readOwned(worktree), a);
+  await fs.mkdir(path.join(registryPath, "lock"));
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), 20);
+  const started = Date.now();
+  await assert.rejects(
+    registry.readOwned(worktree, a.stackId, { signal: controller.signal }),
+  );
+  assert.ok(Date.now() - started < 500);
+  assert.ok((await fs.stat(path.join(registryPath, "lock"))).isDirectory());
 });
