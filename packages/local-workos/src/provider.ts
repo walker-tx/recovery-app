@@ -329,7 +329,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
           Layer.succeed(SigningIdentity, {
             key,
             replayKey: deriveReplayKey(
-              identity.privateKey.d!,
+              identity.privateKey.d,
               identity.generation,
             ),
             jwks,
@@ -375,6 +375,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
     if (persisted?.body !== saved.body) {
       return yield* Effect.fail(new ProviderClearError({ reason: "identity" }));
     }
+    return undefined;
   });
   return {
     // Local acquired-resource API only. No HTTP/console reset endpoint and no
@@ -417,7 +418,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
         )
         .pipe(
           Effect.mapError((error) =>
-            error instanceof ProviderSessionError
+            Schema.is(ProviderSessionError)(error)
               ? error
               : new ProviderSessionError({
                   reason:

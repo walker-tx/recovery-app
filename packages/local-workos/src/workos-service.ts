@@ -47,6 +47,11 @@ import {
 const derive = promisify(scrypt);
 const UserJson = Schema.fromJsonString(UserSchema);
 const IdentitiesJson = Schema.fromJsonString(IdentitiesSchema);
+const AuthenticationJson = Schema.fromJsonString(AuthenticationSchema);
+const EmailVerificationJson = Schema.fromJsonString(EmailVerificationSchema);
+const ReplayAadJson = Schema.fromJsonString(
+  Schema.Tuple([Schema.String, Schema.String, Schema.Number]),
+);
 type Row = {
   id: string;
   email: string;
@@ -129,23 +134,21 @@ export const workosLayer = Layer.effect(
       const expires =
         existing?.expires_at ?? now + lifetimes.sessionSeconds * 1000;
       const refresh = randomBytes(32).toString("base64url");
-      const access = yield* Effect.tryPromise({
-        try: () =>
-          new SignJWT({ client_id: clientId, sid })
-            .setProtectedHeader({ alg: "RS256", kid: generation })
-            .setIssuer(issuer)
-            .setAudience(clientId)
-            .setSubject(user.id)
-            .setIssuedAt(Math.floor(now / 1000))
-            .setExpirationTime(
-              Math.min(
-                Math.floor(expires / 1000),
-                Math.floor(now / 1000) + lifetimes.accessTokenSeconds,
-              ),
-            )
-            .sign(key),
-        catch: (error) => error,
-      });
+      const access = yield* Effect.tryPromise(() =>
+        new SignJWT({ client_id: clientId, sid })
+          .setProtectedHeader({ alg: "RS256", kid: generation })
+          .setIssuer(issuer)
+          .setAudience(clientId)
+          .setSubject(user.id)
+          .setIssuedAt(Math.floor(now / 1000))
+          .setExpirationTime(
+            Math.min(
+              Math.floor(expires / 1000),
+              Math.floor(now / 1000) + lifetimes.accessTokenSeconds,
+            ),
+          )
+          .sign(key),
+      );
       if (existing) {
         yield* sql`UPDATE sessions SET refresh_hash=${digest(refresh)} WHERE id=${sid}`;
       } else {
@@ -194,10 +197,14 @@ export const workosLayer = Layer.effect(
                 const plaintext = yield* openReplay(
                   replayKey,
                   replay.encrypted_result,
-                  JSON.stringify([hash, replay.session_id, replay.expires_at]),
+                  yield* Schema.encodeEffect(ReplayAadJson)([
+                    hash,
+                    replay.session_id,
+                    replay.expires_at,
+                  ]).pipe(Effect.orDie),
                 );
-                return yield* Schema.decodeUnknownEffect(AuthenticationSchema)(
-                  JSON.parse(plaintext),
+                return yield* Schema.decodeEffect(AuthenticationJson)(
+                  plaintext,
                 ).pipe(Effect.orDie);
               }
               const [session] = yield* sql<{
@@ -226,15 +233,21 @@ export const workosLayer = Layer.effect(
               if (!row) {
                 return null;
               }
-              const user = yield* Schema.decodeUnknownEffect(UserSchema)(
-                JSON.parse(row.body),
-              ).pipe(Effect.orDie);
+              const user = yield* Schema.decodeEffect(UserJson)(row.body).pipe(
+                Effect.orDie,
+              );
               const pair = yield* issueSession(user, now, session);
               const expires = Math.min(now + 30000, session.expires_at);
               const encrypted = yield* sealReplay(
                 replayKey,
-                JSON.stringify(pair),
-                JSON.stringify([hash, session.id, expires]),
+                yield* Schema.encodeEffect(AuthenticationJson)(pair).pipe(
+                  Effect.orDie,
+                ),
+                yield* Schema.encodeEffect(ReplayAadJson)([
+                  hash,
+                  session.id,
+                  expires,
+                ]).pipe(Effect.orDie),
               );
               yield* sql`INSERT INTO refresh_replays VALUES(${hash},${session.id},${expires},${encrypted})`;
               return pair;
@@ -282,9 +295,9 @@ export const workosLayer = Layer.effect(
                 yield* sql`DELETE FROM challenges WHERE id=${challenge.id}`;
                 return null;
               }
-              const verification = yield* Schema.decodeUnknownEffect(
-                EmailVerificationSchema,
-              )(JSON.parse(challenge.body)).pipe(Effect.orDie);
+              const verification = yield* Schema.decodeEffect(
+                EmailVerificationJson,
+              )(challenge.body).pipe(Effect.orDie);
               if (
                 typeof body.code !== "string" ||
                 !equal(body.code, verification.code)
@@ -300,15 +313,15 @@ export const workosLayer = Layer.effect(
               if (!row || verification.user_id !== challenge.user_id) {
                 return null;
               }
-              const saved = yield* Schema.decodeUnknownEffect(UserSchema)(
-                JSON.parse(row.body),
-              ).pipe(Effect.orDie);
+              const saved = yield* Schema.decodeEffect(UserJson)(row.body).pipe(
+                Effect.orDie,
+              );
               const user = {
                 ...saved,
                 email_verified: true,
                 updated_at: DateTime.formatIso(DateTime.makeUnsafe(now)),
               };
-              yield* sql`UPDATE users SET body=${JSON.stringify(user)} WHERE id=${user.id}`;
+              yield* sql`UPDATE users SET body=${yield* Schema.encodeEffect(UserJson)(user).pipe(Effect.orDie)} WHERE id=${user.id}`;
               yield* sql`DELETE FROM challenges WHERE id=${challenge.id}`;
               return yield* issueSession(user, now);
             }),
@@ -381,7 +394,7 @@ export const workosLayer = Layer.effect(
                 updated_at: timestamp,
               };
               yield* sql`INSERT INTO challenges VALUES(${id},${user.id},${digest(pending)},${now + lifetimes.verificationSeconds * 1000})`;
-              yield* sql`INSERT INTO email_verifications (challenge_id, body) VALUES(${id},${JSON.stringify(verification)})`;
+              yield* sql`INSERT INTO email_verifications (challenge_id, body) VALUES(${id},${yield* Schema.encodeEffect(EmailVerificationJson)(verification).pipe(Effect.orDie)})`;
               return new VerificationRequired({
                 id,
                 pending: Redacted.make(pending),
@@ -416,9 +429,9 @@ export const workosLayer = Layer.effect(
               new RequestRejected({ reason: "not_found" }),
             );
           }
-          const user = yield* Schema.decodeUnknownEffect(UserSchema)(
-            JSON.parse(row.body),
-          ).pipe(Effect.orDie);
+          const user = yield* Schema.decodeEffect(UserJson)(row.body).pipe(
+            Effect.orDie,
+          );
           const now = yield* Clock.currentTimeMillis;
           const expires = now + lifetimes.passwordResetSeconds * 1000;
           const id = `password_reset_${randomUUID()}`;
@@ -449,11 +462,11 @@ export const workosLayer = Layer.effect(
         Effect.mapError(() => new RequestRejected({ reason: "invalid_user" })),
       );
       const salt = randomBytes(16).toString("hex");
-      const verifier = (
-        (yield* Effect.tryPromise(() =>
-          derive(payload.new_password, salt, 64),
-        )) as Buffer
-      ).toString("hex");
+      const verifier = (yield* Effect.tryPromise(() =>
+        derive(payload.new_password, salt, 64),
+      ).pipe(
+        Effect.flatMap(Schema.decodeUnknownEffect(Schema.instanceOf(Buffer))),
+      )).toString("hex");
       const result = yield* sql.withTransaction(
         Effect.gen(function* () {
           const now = yield* Clock.currentTimeMillis;
@@ -473,15 +486,15 @@ export const workosLayer = Layer.effect(
           if (!row) {
             return null;
           }
-          const saved = yield* Schema.decodeUnknownEffect(UserSchema)(
-            JSON.parse(row.body),
-          ).pipe(Effect.orDie);
+          const saved = yield* Schema.decodeEffect(UserJson)(row.body).pipe(
+            Effect.orDie,
+          );
           const user = {
             ...saved,
             email_verified: true,
             updated_at: DateTime.formatIso(DateTime.makeUnsafe(now)),
           };
-          yield* sql`UPDATE users SET body=${JSON.stringify(user)},salt=${salt},verifier=${verifier} WHERE id=${user.id}`;
+          yield* sql`UPDATE users SET body=${yield* Schema.encodeEffect(UserJson)(user).pipe(Effect.orDie)},salt=${salt},verifier=${verifier} WHERE id=${user.id}`;
           yield* sql`DELETE FROM sessions WHERE user_id=${user.id}`;
           yield* sql`DELETE FROM challenges WHERE user_id=${user.id}`;
           return { user };
@@ -634,6 +647,7 @@ export const workosLayer = Layer.effect(
               );
             }
             yield* sql`DELETE FROM sessions WHERE id=${payload.session_id}`;
+            return undefined;
           }),
         );
       }, Effect.catch(operationFailure)),
@@ -650,6 +664,7 @@ export const workosLayer = Layer.effect(
             new RequestRejected({ reason: "not_found" }),
           );
         }
+        return undefined;
       }, Effect.catch(operationFailure)),
       listUsers,
       getEmailVerification: Effect.fn("getEmailVerification")(function* (
@@ -664,9 +679,9 @@ export const workosLayer = Layer.effect(
             new RequestRejected({ reason: "not_found" }),
           );
         }
-        return yield* Schema.decodeUnknownEffect(EmailVerificationSchema)(
-          JSON.parse(row.body),
-        ).pipe(Effect.orDie);
+        return yield* Schema.decodeEffect(EmailVerificationJson)(row.body).pipe(
+          Effect.orDie,
+        );
       }, Effect.catch(operationFailure)),
       instanceInfo: Effect.succeed({
         clientId,
