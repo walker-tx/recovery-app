@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/@effect/tsgo/oxlint-schema.json",
+  "extends": [
+    "../../.oxlintrc.json",
+    "./node_modules/@effect/tsgo/oxlint-presets/correctness.json",
+    "./node_modules/@effect/tsgo/oxlint-presets/antipattern.json",
+    "./node_modules/@effect/tsgo/oxlint-presets/effect-native.json"
+  ],
+  "overrides": [
+    {
+      "files": [
+        "tests/cli-command.test.ts",
+        "tests/cli.test.ts",
+        "tests/config.test.ts",
+        "tests/core.test.ts",
+        "tests/hardening.test.ts",
+        "tests/http-acquisition.test.ts",
+        "tests/persisted-identity.test.ts",
+        "tests/request-contract.test.ts",
+        "tests/response-contract.test.ts",
+        "tests/routing-contract.test.ts",
+        "tests/service.test.ts",
+        "tests/sql-lifecycle.test.ts",
+        "tests/startup-contract.test.ts"
+      ],
+      "rules": {
+        "effecttsgo/node-builtin-import": "off"
+      }
+    }
+  ]
+}
