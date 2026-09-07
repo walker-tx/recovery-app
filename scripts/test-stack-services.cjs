@@ -71,7 +71,14 @@ test("six endpoint definitions, loopback and explicit state", (t) => {
       defs[2].command.includes("24003"),
   );
   assert.ok(defs[3].readiness.http === "http://127.0.0.1:24004/instance-info");
-  assert.ok(defs[4].command.includes("127.0.0.1:24006"));
+  for (const [flag, address] of [
+    ["--listen", "127.0.0.1:24005"],
+    ["--smtp", "127.0.0.1:24006"],
+  ]) {
+    const index = defs[4].command.indexOf(flag);
+    assert.ok(index >= 0);
+    assert.equal(defs[4].command[index + 1], address);
+  }
   assert.ok(!fs.existsSync(path.join(o.worktree, ".recovery-stack")));
 });
 test("Metro uses an explicit mobile project with its exact allocated port", (t) => {

@@ -354,13 +354,14 @@ module.exports = { createRegistry, portAvailable };
 // domain teardown can be revalidated, including route ownership.
 if (require.main === module) {
   (async () => {
-    const [command, stackId] = process.argv.slice(2);
+    const [command, stackId, ...extra] = process.argv.slice(2);
     if (
       !["reserve", "status", "release"].includes(command) ||
-      (command === "release" && !stackId)
+      extra.length !== 0 ||
+      (command === "release" ? !stackId : stackId !== undefined)
     ) {
       throw Error(
-        "Usage: node scripts/stack-registry.cjs reserve|status|release <stack-uuid> (reservation bookkeeping only)",
+        "Usage: node scripts/stack-registry.cjs reserve|status OR release <stack-uuid> (reservation bookkeeping only)",
       );
     }
     const { execFile } = require("node:child_process");

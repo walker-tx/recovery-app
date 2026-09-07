@@ -178,10 +178,18 @@ for (const mode of ["failed", "timeout"]) {
     assert.equal(status.services.provider, "running");
     assert.match(status.guidance, /Resume refused/);
     assert.doesNotMatch(status.guidance, /mise run zero/);
-    assert.deepEqual(status.readiness.provider, {
-      state: "not-ready",
-      reason: "probe-failed",
-    });
+    for (const service of ["provider", "metro", "convexCloud", "mailpitHttp"]) {
+      assert.deepEqual(status.readiness[service], {
+        state: "not-ready",
+        reason: "probe-failed",
+      });
+    }
+    for (const service of ["convexSite", "mailpitSmtp"]) {
+      assert.deepEqual(status.readiness[service], {
+        state: "ready",
+        evidence: service === "convexSite" ? "transport" : "protocol",
+      });
+    }
     assert.equal(JSON.stringify(status).includes("secret"), false);
     if (mode === "timeout") {
       assert.ok(f.signals.every((signal) => signal.aborted));

@@ -157,7 +157,7 @@ The explicit local runtime API also exposes `destroyProvider(confirmation)` for 
 Confirmation names `operation: "destroy-provider-identity"`, the exact canonical
 `worktree`, `stackId`, `providerGeneration`, and both `affectedDomains`:
 `["provider-data", "provider-signing-identity"]`. This removes only the owned
-provider SQLite database and its present WAL/SHM files, which contain provider
+provider SQLite database and its present rollback journal/WAL/SHM files, which contain provider
 records and signing keys. It does not clear Convex, Mailpit, device state, admin
 seed, ownership markers, routes, or reservations, and does not rotate registry
 identity or re-pair trust.

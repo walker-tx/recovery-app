@@ -38,6 +38,9 @@ async function fixture(t, overrides = {}) {
       ids.set(args[1], identity.pid);
       const record = await registry.reserve(options.cwd);
       const name = args[1].split("-").at(-1);
+      const portIndex = args.indexOf("--expected-port");
+      assert.ok(portIndex >= 0);
+      assert.equal(args[portIndex + 1], String(record.ports[name]));
       const endpoints =
         name === "mailpitHttp"
           ? ["mailpitHttp", "mailpitSmtp"]

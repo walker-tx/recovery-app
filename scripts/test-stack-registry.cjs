@@ -306,3 +306,22 @@ test("group ownership transaction rejects conflicts without partially recording 
     before,
   );
 });
+
+for (const args of [
+  ["status", "unexpected-uuid"],
+  ["reserve", "unexpected-uuid"],
+  ["release", "uuid", "extra"],
+]) {
+  test(`registry CLI rejects unexpected operands: ${args.join(" ")}`, async (t) => {
+    const { spawnSync } = require("node:child_process");
+    const { worktree } = await fixture(t);
+    const result = spawnSync(
+      process.execPath,
+      [path.join(__dirname, "stack-registry.cjs"), ...args],
+      { cwd: worktree, encoding: "utf8", timeout: 3000 },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /^Usage:/);
+    assert.equal(result.stdout, "");
+  });
+}

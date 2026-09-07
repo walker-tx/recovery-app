@@ -170,6 +170,8 @@ test("SMTP rejects wrong/oversize greetings and closes stalled/cancelled sockets
   controller.abort();
   await assert.rejects(pending);
   assert.equal(socket.destroyed, true);
+  assert.deepEqual(socket.eventNames(), []);
+  assert.deepEqual(getEventListeners(controller.signal, "abort"), []);
 });
 
 test("site pre-push readiness is only an independent TCP connect, never HTTP", async () => {
@@ -208,4 +210,51 @@ test("site connection respects caller cancellation and destroys socket", async (
   assert.equal(socket.destroyed, true);
   assert.equal(socket.eventNames().length, 0);
   assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+});
+
+for (const parts of [
+  ["220-first\r\n220 ready\r\n"],
+  ["220-first\r", "\n220-second\r\n22", "0 ready\r\n"],
+]) {
+  test(`SMTP accepts bounded multiline greeting in ${parts.length} chunks`, async () => {
+    const socket = socketFake(parts);
+    const adapter = createReadiness({ connect: () => socket });
+    assert.equal(await adapter.ready("mailpitSmtp", record), true);
+    assert.equal(socket.destroyed, true);
+    assert.deepEqual(socket.eventNames(), []);
+  });
+}
+for (const parts of [
+  ["220-first\r\n550 invalid\r\n"],
+  ["220-first\r\n"],
+  ["220-first\r\n" + "x".repeat(501)],
+  ["220-final\r\n220 ready\r\nextra"],
+]) {
+  test(`SMTP rejects malformed or incomplete multiline greeting ${parts[0].length}`, async () => {
+    const socket = socketFake(parts);
+    const adapter = createReadiness({ timeoutMs: 15, connect: () => socket });
+    await assert.rejects(adapter.ready("mailpitSmtp", record));
+    assert.equal(socket.destroyed, true);
+    assert.deepEqual(socket.eventNames(), []);
+  });
+}
+
+test("rejects redirected HTTP even when final status is 200", async () => {
+  let cancelled = false;
+  const adapter = createReadiness({
+    fetchImpl: async () => ({
+      status: 200,
+      redirected: true,
+      body: {
+        cancel: async () => {
+          cancelled = true;
+        },
+      },
+    }),
+  });
+  await assert.rejects(
+    adapter.ready("provider", record),
+    /Unexpected readiness HTTP response/,
+  );
+  assert.equal(cancelled, true);
 });

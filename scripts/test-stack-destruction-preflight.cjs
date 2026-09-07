@@ -369,6 +369,17 @@ for (const adapter of ["inspectProcess", "portAvailable"]) {
     ]);
     clearTimeout(timer);
     assert.notEqual(result, null, "preflight must return before watchdog");
+    const code =
+      adapter === "inspectProcess" ? "process-not-stopped" : "ports-unknown";
+    const domains = adapter === "inspectProcess" ? ["provider"] : names;
+    for (const domain of domains) {
+      assert.ok(
+        result.blockers.some(
+          (blocker) => blocker.code === code && blocker.domain === domain,
+        ),
+        JSON.stringify(result),
+      );
+    }
     assert.equal(result.readyForTeardown, false);
     assert.equal(result.destructionImplemented, false);
     assert.equal(result.reservationReleaseAllowed, false);

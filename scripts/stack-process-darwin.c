@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
     if (proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &paths, sizeof(paths)) != sizeof(paths)) return reject();
     const char *cwd = paths.pvi_cdir.vip_path;
     size_t length = strnlen(cwd, sizeof(paths.pvi_cdir.vip_path));
-    if (length == 0 || length >= sizeof(paths.pvi_cdir.vip_path) - 1 || cwd[0] != '/') return reject();
+    if (length == 0 || length >= sizeof(paths.pvi_cdir.vip_path) || cwd[0] != '/') return reject();
     char canonical[PATH_MAX];
     if (!realpath(cwd, canonical)) return reject();
     /* Reject non-ASCII rather than silently corrupt arbitrary filesystem bytes

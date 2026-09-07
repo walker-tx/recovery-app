@@ -469,6 +469,14 @@ for (const failure of [
     const f = await startupFixture(t, failure);
     await assert.rejects(f.runtime.start());
     assert.ok(!f.events.includes("start:metro"));
+    if (failure === "push") {
+      assert.ok(f.events.includes("bootstrap"));
+      assert.ok(!f.events.includes("persist"));
+    }
+    if (failure === "persist") {
+      assert.ok(f.events.includes("bootstrap"));
+      assert.ok(f.events.includes("persist"));
+    }
     if (failure === "selector") {
       assert.deepEqual(f.events, []);
     }
@@ -534,7 +542,14 @@ for (const missing of [
   test(`missing dependency ${missing} fails before daemon startup`, async (t) => {
     const f = await startupFixture(t);
     await fs.unlink(path.join(f.worktree, missing));
-    await assert.rejects(f.runtime.start(), /preflight/);
+    const checkpoint = missing.startsWith("bin/")
+      ? path.basename(missing)
+      : missing;
+    await assert.rejects(f.runtime.start(), (error) => {
+      assert.ok(error.message.includes(`preflight failed at ${checkpoint}`));
+      assert.ok(!error.message.includes(f.worktree));
+      return true;
+    });
     assert.deepEqual(f.events, []);
   });
 }

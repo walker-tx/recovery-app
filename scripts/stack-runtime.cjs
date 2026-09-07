@@ -318,11 +318,13 @@ async function createRuntime({
             "Startup preflight requires an absolute backend executable",
           );
         }
+        let checkpoint = "backend executable";
         try {
           if (!(await fs.stat(backendBinary)).isFile()) {
             throw Error();
           }
           await fs.access(backendBinary, constants.X_OK);
+          checkpoint = "provider source";
           const providerFile = path.join(
             worktree,
             "packages/local-workos/src/cli.ts",
@@ -335,6 +337,7 @@ async function createRuntime({
             "apps/mobile/node_modules/expo/bin/cli",
             "packages/backend/node_modules/.bin/convex",
           ]) {
+            checkpoint = relative;
             const file = path.join(worktree, relative);
             if (!(await fs.stat(file)).isFile()) {
               throw Error();
@@ -345,6 +348,7 @@ async function createRuntime({
             );
           }
           for (const command of ["node", "pnpm", "mailpit"]) {
+            checkpoint = command;
             let found = false;
             for (const directory of (inherited.PATH ?? "").split(
               path.delimiter,
@@ -370,7 +374,7 @@ async function createRuntime({
           }
         } catch {
           throw Error(
-            "Startup preflight requires provider source, backend executable, and installed node/pnpm/mailpit/Expo/Convex dependencies",
+            `Startup preflight failed at ${checkpoint}; requires readable provider/Expo source and executable backend/Convex/node/pnpm/mailpit dependencies. PATH lookup uses only absolute entries.`,
           );
         }
         return lifecycle.start(worktree, (record, prepared) =>
