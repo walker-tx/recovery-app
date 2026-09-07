@@ -1,4 +1,6 @@
 import { Config, Context, Data, Effect, Redacted, Schema } from "effect";
+// Pure schema predicate; no filesystem access or Effect service is needed.
+// oxlint-disable-next-line effecttsgo/node-builtin-import
 import { isAbsolute } from "node:path";
 import type { importJWK } from "jose";
 import type { Jwks } from "./contracts.ts";

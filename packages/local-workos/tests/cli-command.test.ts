@@ -21,25 +21,27 @@ it.live(
       const credential = "synthetic-bootstrap-observer-secret";
       for (const source of ["process.exitCode = 1", "process.exit(1)"]) {
         for (const present of [true, false]) {
-          const result = yield* Effect.tryPromise(
-            () =>
-              new Promise<{
-                code: number | string | null | undefined;
-                output: string;
-              }>((resolve) => {
-                execFile(
-                  process.execPath,
-                  ["--import", assertBootstrapConsumed, "--eval", source],
-                  {
-                    env: present ? { LOCAL_WORKOS_API_KEY: credential } : {},
-                    timeout: 5000,
-                  },
-                  (error, stdout, stderr) => {
-                    resolve({ code: error?.code, output: stdout + stderr });
-                  },
+          const result = yield* Effect.callback<{
+            code: number | string | null | undefined;
+            output: string;
+          }>((resume) => {
+            execFile(
+              process.execPath,
+              ["--import", assertBootstrapConsumed, "--eval", source],
+              {
+                env: present ? { LOCAL_WORKOS_API_KEY: credential } : {},
+                timeout: 5000,
+              },
+              (error, stdout, stderr) => {
+                resume(
+                  Effect.succeed({
+                    code: error?.code,
+                    output: stdout + stderr,
+                  }),
                 );
-              }),
-          );
+              },
+            );
+          });
           expect(result.code).toBe(present ? 97 : 1);
           expect(result.output).not.toContain(credential);
           expect(result.output).toBe("");
@@ -130,33 +132,32 @@ it.live("CLI schema failures do not reflect argument values", () =>
         "private-invalid-generation",
       ],
     ]) {
-      const result = yield* Effect.promise(
-        () =>
-          new Promise<{
-            code: number | string | null | undefined;
-            output: string;
-          }>((resolve) => {
-            execFile(
-              process.execPath,
-              [
-                "--experimental-strip-types",
-                "--import",
-                assertBootstrapConsumed,
-                fileURLToPath(new URL("../src/cli.ts", import.meta.url)),
-                ...args,
-              ],
-              {
-                env: {
-                  LOCAL_WORKOS_API_KEY: "sk_test_local_" + "a".repeat(64),
-                },
-                timeout: 5000,
-              },
-              (error, stdout, stderr) => {
-                resolve({ code: error?.code, output: stdout + stderr });
-              },
+      const result = yield* Effect.callback<{
+        code: number | string | null | undefined;
+        output: string;
+      }>((resume) => {
+        execFile(
+          process.execPath,
+          [
+            "--experimental-strip-types",
+            "--import",
+            assertBootstrapConsumed,
+            fileURLToPath(new URL("../src/cli.ts", import.meta.url)),
+            ...args,
+          ],
+          {
+            env: {
+              LOCAL_WORKOS_API_KEY: "sk_test_local_" + "a".repeat(64),
+            },
+            timeout: 5000,
+          },
+          (error, stdout, stderr) => {
+            resume(
+              Effect.succeed({ code: error?.code, output: stdout + stderr }),
             );
-          }),
-      );
+          },
+        );
+      });
       expect(result.code).toBe(1);
       expect(result.output).toContain(
         "Local provider startup failed; check explicit configuration and owned state.\n",

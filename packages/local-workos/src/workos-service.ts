@@ -1,4 +1,12 @@
-import { Context, Effect, Layer, Redacted, Schema, Clock } from "effect";
+import {
+  Context,
+  Effect,
+  Layer,
+  Redacted,
+  Schema,
+  Clock,
+  DateTime,
+} from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { randomUUID, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
@@ -23,6 +31,8 @@ import {
   type Jwks,
 } from "./contracts.ts";
 const derive = promisify(scrypt);
+const UserJson = Schema.fromJsonString(UserSchema);
+const IdentitiesJson = Schema.fromJsonString(IdentitiesSchema);
 type Row = {
   id: string;
   email: string;
@@ -40,7 +50,7 @@ type InstanceInfo = {
 export class WorkOSService extends Context.Service<
   WorkOSService,
   {
-    readonly apiKey: Redacted.Redacted<string>;
+    readonly apiKey: Redacted.Redacted;
     readonly instanceInfo: Effect.Effect<InstanceInfo>;
     readonly jwks: Effect.Effect<Jwks>;
     readonly authenticate: (
@@ -104,11 +114,11 @@ export const workosLayer = Layer.effect(
         const email = payload?.email.trim().toLowerCase() ?? "";
         const [row] = yield* sql<Row>`SELECT * FROM users WHERE email=${email}`;
         const password = payload?.password ?? "";
-        const hash = (yield* Effect.tryPromise({
-          try: () =>
-            derive(password, row?.salt ?? "synthetic-missing-user", 64),
-          catch: (error) => error,
-        })) as Buffer;
+        const hash = yield* Effect.tryPromise(() =>
+          derive(password, row?.salt ?? "synthetic-missing-user", 64),
+        ).pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.instanceOf(Buffer))),
+        );
         if (
           !payload ||
           !row?.verifier ||
@@ -119,9 +129,9 @@ export const workosLayer = Layer.effect(
           );
         }
         const now = yield* Clock.currentTimeMillis;
-        const user = yield* Schema.decodeUnknownEffect(UserSchema)(
-          JSON.parse(row.body),
-        ).pipe(Effect.orDie);
+        const user = yield* Schema.decodeEffect(UserJson)(row.body).pipe(
+          Effect.orDie,
+        );
         if (!user.email_verified) {
           const id = `email_verification_${randomUUID()}`,
             pending = randomBytes(32).toString("base64url");
@@ -134,18 +144,16 @@ export const workosLayer = Layer.effect(
           `session_${randomUUID()}`,
         ).pipe(Effect.orDie);
         const refresh = randomBytes(32).toString("base64url");
-        const access = yield* Effect.tryPromise({
-          try: () =>
-            new SignJWT({ client_id: clientId, sid })
-              .setProtectedHeader({ alg: "RS256", kid: generation })
-              .setIssuer(issuer)
-              .setAudience(clientId)
-              .setSubject(user.id)
-              .setIssuedAt(Math.floor(now / 1000))
-              .setExpirationTime(Math.floor(now / 1000) + 300)
-              .sign(key),
-          catch: (error) => error,
-        });
+        const access = yield* Effect.tryPromise(() =>
+          new SignJWT({ client_id: clientId, sid })
+            .setProtectedHeader({ alg: "RS256", kid: generation })
+            .setIssuer(issuer)
+            .setAudience(clientId)
+            .setSubject(user.id)
+            .setIssuedAt(Math.floor(now / 1000))
+            .setExpirationTime(Math.floor(now / 1000) + 300)
+            .sign(key),
+        );
         yield* sql`INSERT INTO sessions VALUES(${sid},${user.id},${digest(refresh)},${now + 7 * 86400000})`;
         return {
           user,
@@ -166,13 +174,13 @@ export const workosLayer = Layer.effect(
         );
         const email = payload.email.trim().toLowerCase();
         const salt = randomBytes(16).toString("hex");
-        const verifier = (
-          (yield* Effect.tryPromise({
-            try: () => derive(payload.password, salt, 64),
-            catch: (error) => error,
-          })) as Buffer
-        ).toString("hex");
-        const now = new Date(yield* Clock.currentTimeMillis).toISOString();
+        const verifier = (yield* Effect.tryPromise(() =>
+          derive(payload.password, salt, 64),
+        ).pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.instanceOf(Buffer))),
+        )).toString("hex");
+        const timestamp = yield* Clock.currentTimeMillis;
+        const now = DateTime.formatIso(DateTime.makeUnsafe(timestamp));
         const user: User = {
           id: yield* Schema.decodeUnknownEffect(UserId)(
             `user_${randomUUID()}`,
@@ -188,7 +196,10 @@ export const workosLayer = Layer.effect(
           external_id: null,
           metadata: {},
         };
-        yield* sql`INSERT INTO users VALUES(${user.id},${email},${JSON.stringify(user)},${salt},${verifier},${"[]"})`.pipe(
+        const userJson = yield* Schema.encodeEffect(UserJson)(user).pipe(
+          Effect.orDie,
+        );
+        yield* sql`INSERT INTO users VALUES(${user.id},${email},${userJson},${salt},${verifier},${"[]"})`.pipe(
           Effect.catch((error) =>
             Effect.gen(function* () {
               const rows =
@@ -244,9 +255,7 @@ export const workosLayer = Layer.effect(
         return {
           object: "list" as const,
           data: yield* Effect.forEach(rows.slice(0, limit), (row) =>
-            Schema.decodeUnknownEffect(UserSchema)(JSON.parse(row.body)).pipe(
-              Effect.orDie,
-            ),
+            Schema.decodeEffect(UserJson)(row.body).pipe(Effect.orDie),
           ),
           list_metadata: {
             before: null,
@@ -265,10 +274,7 @@ export const workosLayer = Layer.effect(
             new RequestRejected({ reason: "not_found" }),
           );
         }
-        return yield* Effect.try({
-          try: (): unknown => JSON.parse(row[field]),
-          catch: (error) => error,
-        });
+        return row[field];
       }).pipe(Effect.catch(operationFailure));
     }
 
@@ -287,15 +293,13 @@ export const workosLayer = Layer.effect(
       getUser: (id) =>
         readUser(id, "body").pipe(
           Effect.flatMap((value) =>
-            Schema.decodeUnknownEffect(UserSchema)(value).pipe(Effect.orDie),
+            Schema.decodeEffect(UserJson)(value).pipe(Effect.orDie),
           ),
         ),
       getIdentities: (id) =>
         readUser(id, "identities").pipe(
           Effect.flatMap((value) =>
-            Schema.decodeUnknownEffect(IdentitiesSchema)(value).pipe(
-              Effect.orDie,
-            ),
+            Schema.decodeEffect(IdentitiesJson)(value).pipe(Effect.orDie),
           ),
         ),
     });

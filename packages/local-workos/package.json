@@ -6,16 +6,21 @@
     "jose": "6.2.10"
   },
   "devDependencies": {
+    "@effect/tsgo": "0.41.0",
     "@effect/vitest": "4.0.0-rc.112",
     "@types/node": "~24.10.15",
     "@workos-inc/node": "10.11.0",
+    "oxlint": "1.81.0",
+    "oxlint-tsgolint": "7.0.2001",
     "typescript": "~6.0.3",
     "vitest": "4.1.11"
   },
   "name": "@recovery/local-workos",
   "private": true,
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && pnpm run lint",
+    "lint": "oxlint --deny-warnings --report-unused-disable-directives src tests",
+    "prepare": "effect-tsgo patch --no-typescript --oxlint",
     "start": "node --experimental-strip-types src/cli.ts",
     "test": "vitest run"
   },

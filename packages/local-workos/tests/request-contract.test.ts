@@ -1,5 +1,10 @@
 import { it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect, Exit, Schema } from "effect";
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+} from "effect/unstable/http";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -119,68 +124,83 @@ it.live("request validation preserves ordering and never echoes secrets", () =>
       })),
     ];
     for (const test of cases) {
-      const response = yield* Effect.promise(() =>
-        fetch(`${base}/user_management/${test.path}`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            ...(test.authorized ? headers : {}),
-          },
-          body: JSON.stringify(test.body),
-        }),
-      );
-      const text = yield* Effect.promise(() => response.text());
+      const request = yield* HttpClientRequest.post(
+        `${base}/user_management/${test.path}`,
+        {
+          headers: test.authorized ? headers : {},
+        },
+      ).pipe(HttpClientRequest.bodyJson(test.body));
+      const response = yield* HttpClient.execute(request);
+      const text = yield* response.text;
       assert.equal(response.status, test.status, text);
-      const result = JSON.parse(text);
+      const result = yield* Schema.decodeUnknownEffect(
+        Schema.fromJsonString(
+          Schema.Struct({
+            code: Schema.optional(Schema.String),
+            error: Schema.optional(Schema.String),
+          }),
+        ),
+      )(text);
       assert.equal(result.code ?? result.error, test.code);
       assert.ok(!text.includes(password));
       assert.ok(!text.includes(`sk_test_local_${"04".repeat(32)}`));
     }
-  }),
+  }).pipe(
+    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- The live test is the HTTP client layer entry point.
+    Effect.provide(FetchHttpClient.layer),
+  ),
 );
 
 it.live("declared schemas validate supported request fields", () =>
-  Effect.sync(() => {
+  Effect.gen(function* () {
     assert.equal(
-      Schema.decodeUnknownSync(PasswordAuthenticationRequestSchema)({
+      (yield* Schema.decodeUnknownEffect(PasswordAuthenticationRequestSchema)({
         client_id: "client",
         client_secret: "key",
         grant_type: "password",
         email: "valid@example.test",
         password: "SENTINEL_PASSWORD_12345",
         invitation_token: "ignored-sdk-field",
-      }).grant_type,
+      })).grant_type,
       "password",
     );
     assert.equal(
-      Schema.decodeUnknownSync(CreateUserRequestSchema)({
+      (yield* Schema.decodeUnknownEffect(CreateUserRequestSchema)({
         email: " valid@example.test ",
         password: "😀".repeat(128),
         metadata: { ignored: "sdk-field" },
-      }).password,
+      })).password,
       "😀".repeat(128),
     );
     assert.equal(
-      Schema.decodeUnknownSync(CreateUserRequestSchema)({
+      (yield* Schema.decodeUnknownEffect(CreateUserRequestSchema)({
         email: "valid@example.test",
         password: "SENTINEL_PASSWORD_12345",
-      }).email,
+      })).email,
       "valid@example.test",
     );
-    assert.throws(() =>
-      Schema.decodeUnknownSync(PasswordAuthenticationRequestSchema)({
-        grant_type: "password",
-        client_id: "client",
-        client_secret: "key",
-        email: "e",
-        password: 123,
-      }),
+    assert.ok(
+      Exit.isFailure(
+        yield* Effect.exit(
+          Schema.decodeUnknownEffect(PasswordAuthenticationRequestSchema)({
+            grant_type: "password",
+            client_id: "client",
+            client_secret: "key",
+            email: "e",
+            password: 123,
+          }),
+        ),
+      ),
     );
-    assert.throws(() =>
-      Schema.decodeUnknownSync(CreateUserRequestSchema)({
-        email: "bad",
-        password: "SENTINEL_PASSWORD_12345",
-      }),
+    assert.ok(
+      Exit.isFailure(
+        yield* Effect.exit(
+          Schema.decodeUnknownEffect(CreateUserRequestSchema)({
+            email: "bad",
+            password: "SENTINEL_PASSWORD_12345",
+          }),
+        ),
+      ),
     );
   }),
 );

@@ -1,10 +1,12 @@
 import { it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Cause, Effect, Schema } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ConfigurationError } from "../src/config.ts";
 import { startProvider } from "../src/provider.ts";
 it.live(
   "bootstrap-owned generation and port survive restart and reject mismatched state",
@@ -30,18 +32,22 @@ it.live(
         `https://local-workos.invalid/instances/${generation}`,
       );
       assert.equal(provider.providerGeneration, generation);
-      const infoResponse = yield* Effect.promise(() =>
-        fetch(`http://127.0.0.1:${provider.port}/instance-info`),
+      const infoResponse = yield* HttpClient.get(
+        `http://127.0.0.1:${provider.port}/instance-info`,
       );
       assert.equal(infoResponse.status, 200);
-      const info = yield* Effect.promise(() => infoResponse.json());
+      const info = yield* infoResponse.json;
       assert.deepEqual(info, {
         providerGeneration: generation,
         issuer: provider.issuer,
         clientId: provider.clientId,
         port: provider.port,
       });
-      assert.ok(!JSON.stringify(info).includes(options.apiKey));
+      assert.ok(
+        !(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+          info,
+        )).includes(options.apiKey),
+      );
       const port = provider.port;
       yield* Effect.promise(() => provider.close());
       yield* Effect.promise(() =>
@@ -64,10 +70,15 @@ it.live(
           startProvider({ ...options, port }),
           (error: unknown) =>
             error instanceof Error &&
-            (error.cause as NodeJS.ErrnoException)?.code === "EADDRINUSE",
+            error.cause instanceof Error &&
+            "code" in error.cause &&
+            error.cause.code === "EADDRINUSE",
         ),
       );
-    }),
+    }).pipe(
+      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- Test entrypoint owns the HTTP client layer.
+      Effect.provide(FetchHttpClient.layer),
+    ),
 );
 it.live("invalid explicit startup generation and ports are rejected", () =>
   Effect.gen(function* () {
@@ -80,22 +91,47 @@ it.live("invalid explicit startup generation and ports are rejected", () =>
       database: join(dir, "state.sqlite"),
       apiKey: `sk_test_local_${"02".repeat(32)}`,
     };
+    const context = yield* Effect.context();
     for (const port of [-1, 65536, 0.5, NaN]) {
       yield* Effect.promise(() =>
-        assert.rejects(async () => {
-          const unexpected = await startProvider({ ...options, port });
-          await unexpected.close();
-        }, /port/i),
+        assert.rejects(
+          Effect.runPromiseWith(context)(
+            Effect.gen(function* () {
+              const unexpected = yield* Effect.tryPromise(() =>
+                startProvider({ ...options, port }),
+              );
+              yield* Effect.promise(() => unexpected.close());
+            }),
+          ),
+          (error: unknown) => {
+            assert.ok(Cause.isUnknownError(error));
+            assert.ok(error.cause instanceof ConfigurationError);
+            assert.match(error.cause.message, /port/i);
+            return true;
+          },
+        ),
       );
     }
     yield* Effect.promise(() =>
-      assert.rejects(async () => {
-        const unexpected = await startProvider({
-          ...options,
-          providerGeneration: "not-a-uuid",
-        });
-        await unexpected.close();
-      }, /generation/i),
+      assert.rejects(
+        Effect.runPromiseWith(context)(
+          Effect.gen(function* () {
+            const unexpected = yield* Effect.tryPromise(() =>
+              startProvider({
+                ...options,
+                providerGeneration: "not-a-uuid",
+              }),
+            );
+            yield* Effect.promise(() => unexpected.close());
+          }),
+        ),
+        (error: unknown) => {
+          assert.ok(Cause.isUnknownError(error));
+          assert.ok(error.cause instanceof ConfigurationError);
+          assert.match(error.cause.message, /generation/i);
+          return true;
+        },
+      ),
     );
   }),
 );

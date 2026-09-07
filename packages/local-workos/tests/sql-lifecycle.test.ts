@@ -48,6 +48,7 @@ it.live(
     Effect.gen(function* () {
       const dir = yield* directory;
       const connections = new Set<DatabaseSync>();
+      // oxlint-disable-next-line typescript/unbound-method -- The interceptor explicitly forwards the native database receiver.
       const originalExec = DatabaseSync.prototype.exec;
       yield* Effect.acquireRelease(
         Effect.sync(() =>
@@ -106,6 +107,7 @@ it.live(
   () =>
     Effect.gen(function* () {
       const dir = yield* directory;
+      // oxlint-disable-next-line typescript/unbound-method -- The interceptor explicitly forwards the native database receiver.
       const originalExec = DatabaseSync.prototype.exec;
       yield* Effect.acquireRelease(
         Effect.sync(() =>
@@ -150,6 +152,7 @@ it.live("interrupted signing cannot continue into a session write", () =>
     const started = yield* Deferred.make<void>();
     // SignJWT.sign is a Promise API; only its completion is controlled here.
     let finishSigning!: (token: string) => void;
+    // oxlint-disable-next-line effecttsgo/new-promise -- The jose sign mock must return a manually completed native Promise even after its Effect consumer is interrupted.
     const signing = new Promise<string>((resolve) => {
       finishSigning = resolve;
     });
@@ -234,6 +237,7 @@ it.live("interrupted signing cannot continue into a session write", () =>
           n: number;
         }>`SELECT count(*) AS n FROM sessions`;
         assert.equal(row.n, 0);
+        // oxlint-disable-next-line typescript/unbound-method -- Access the installed spy for restoration, not invocation.
         vi.mocked(SignJWT.prototype.sign).mockRestore();
         const clock = yield* Clock.Clock;
         const now = 1700000000123;
@@ -247,6 +251,7 @@ it.live("interrupted signing cannot continue into a session write", () =>
           })
           .pipe(
             Effect.provideService(Clock.Clock, {
+              // oxlint-disable-next-line typescript/no-misused-spread -- The clock stub copies instance state and explicitly delegates every required prototype method below.
               ...clock,
               currentTimeMillis: Effect.succeed(now),
               currentTimeMillisUnsafe: () => now,
@@ -286,7 +291,7 @@ it.live("interrupting the owning scope closes its SQLite connection", () =>
           scope,
         );
         yield* Deferred.succeed(acquired, undefined);
-        yield* Effect.never;
+        return yield* Effect.never;
       }),
     ).pipe(Effect.forkScoped);
     yield* Deferred.await(acquired);
@@ -310,13 +315,14 @@ it.live(
             apiKey: `sk_test_local_${"08".repeat(32)}`,
           });
           yield* Deferred.succeed(acquired, provider.port);
-          yield* Effect.never;
+          return yield* Effect.never;
         }),
       ).pipe(Effect.forkScoped);
       const port = yield* Deferred.await(acquired);
       yield* Fiber.interrupt(owner);
       assert.equal(close.mock.calls.length, 1);
       yield* Effect.promise(() =>
+        // oxlint-disable-next-line effecttsgo/global-fetch-in-effect -- Assert native client connection rejection after HTTP scope disposal.
         assert.rejects(fetch(`http://127.0.0.1:${port}/instance-info`)),
       );
     }),
