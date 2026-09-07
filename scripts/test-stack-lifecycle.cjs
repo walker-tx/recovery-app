@@ -90,6 +90,10 @@ test("parallel stacks start independently; healthy resume runs no command; stop 
   assert.equal(f.calls.length, 2);
   await f.lifecycle.stop(f.worktree, a.stackId);
   assert.equal(
+    (await f.registry.status(f.worktree)).services.provider,
+    "stopped",
+  );
+  assert.equal(
     (await f.registry.status(f.sibling)).services.provider,
     "running",
   );

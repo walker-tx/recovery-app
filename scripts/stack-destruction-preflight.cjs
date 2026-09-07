@@ -254,6 +254,7 @@ async function preflightDestruction({
           identity.pid <= 0 ||
           typeof identity.startedAt !== "string" ||
           !identity.startedAt.trim() ||
+          identity.startedAt.includes("\0") ||
           identity.stackId !== record.stackId ||
           identity.worktree !== worktree ||
           (await observe(() => inspectProcess(identity.pid))) !== null)

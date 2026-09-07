@@ -85,6 +85,9 @@ function prepareBootstrapSeed({
     seed.LOCAL_CONVEX_ADMIN_KEY = result.stdout.endsWith("\n")
       ? result.stdout.slice(0, -1)
       : result.stdout;
+    if (seed.LOCAL_CONVEX_ADMIN_KEY === "pending") {
+      throw Error();
+    }
     validateSeed(seed);
     persistLocalConfig({ file, owned: seed, run });
     return seed;

@@ -224,12 +224,15 @@ for (const failure of [
   "write",
   "file-sync",
   "directory-sync",
+  "close",
   "write-and-close",
 ]) {
   test(`${failure} failure prevents every unlink and retains exclusion`, async (t) => {
     const f = await fixture(t),
       open = fs.open;
     let unlinks = 0;
+    let failedWrites = 0;
+    let failedCloses = 0;
     t.mock.method(fs, "unlink", async () => {
       unlinks++;
       throw Error("unexpected unlink");
@@ -244,8 +247,10 @@ for (const failure of [
       const handle = await open(file, ...args);
       if (file === path.join(f.root, "provider-retirement.json")) {
         return {
+          // Combined failure verifies cleanup does not mask the write failure.
           writeFile: ["write", "write-and-close"].includes(failure)
             ? async () => {
+                failedWrites++;
                 throw Error("failure");
               }
             : handle.writeFile.bind(handle),
@@ -255,13 +260,13 @@ for (const failure of [
                   throw Error("failure");
                 }
               : handle.sync.bind(handle),
-          close:
-            failure === "write-and-close"
-              ? async () => {
-                  await handle.close();
-                  throw Error("secret-close-canary");
-                }
-              : handle.close.bind(handle),
+          close: ["close", "write-and-close"].includes(failure)
+            ? async () => {
+                await handle.close();
+                failedCloses++;
+                throw Error("secret-close-canary");
+              }
+            : handle.close.bind(handle),
         };
       }
       if (file === f.root && failure === "directory-sync") {
@@ -285,6 +290,14 @@ for (const failure of [
       Object.values(result.storage).every((state) => state === "not-attempted"),
     );
     assert.equal(unlinks, 0);
+    assert.equal(
+      failedWrites,
+      ["write", "write-and-close"].includes(failure) ? 1 : 0,
+    );
+    assert.equal(
+      failedCloses,
+      failure === "close" ? 2 : failure === "write-and-close" ? 1 : 0,
+    );
     assert.ok(!JSON.stringify(result).includes("private-open-canary"));
     await fs.lstat(path.join(f.provider, "state.sqlite"));
     await assert.rejects(

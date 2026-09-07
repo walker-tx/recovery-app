@@ -10,7 +10,7 @@ test(
   { skip: process.platform !== "darwin" },
   async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-darwin-"));
-    let child;
+    let child, exited;
     try {
       const source = path.join(__dirname, "stack-process-darwin.c");
       const compile = (input, output) => {
@@ -30,6 +30,7 @@ test(
         ["-e", 'process.stdout.write("ready\\n"); setInterval(() => {}, 1000)'],
         { cwd: dir, stdio: ["ignore", "pipe", "ignore"] },
       );
+      exited = once(child, "exit");
       await once(child.stdout, "data");
       const first = run(binary, child.pid);
       assert.equal(first.status, 0, first.stderr);
@@ -43,7 +44,6 @@ test(
       assert.match(evidence.startedAt, /^darwin:\d+:\d+$/);
       assert.equal(evidence.worktree, fs.realpathSync(dir));
       assert.deepEqual(JSON.parse(run(binary, child.pid).stdout), evidence);
-      const exited = once(child, "exit");
       child.kill();
       await exited;
       assert.equal(run(binary, child.pid).stdout.trim(), "null");
@@ -110,6 +110,9 @@ int main(int argc, char **argv) { if (argc != 2) return 99; mode = atoi(argv[1])
     } finally {
       if (child && child.exitCode === null && child.signalCode === null) {
         child.kill();
+      }
+      if (exited) {
+        await exited;
       }
       fs.rmSync(dir, { recursive: true, force: true });
     }

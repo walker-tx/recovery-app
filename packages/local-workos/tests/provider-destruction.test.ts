@@ -226,16 +226,22 @@ layer(NodeServices.layer, { excludeTestServices: true })(
           // Read-only open cannot accidentally recreate the deleted SQL/signing store.
           assert.throws(() => new DatabaseSync(database, { readOnly: true }));
           const reserve = registry.reserve;
+          let allocations = 0;
           registry.reserve = () => {
-            throw Error("must not allocate retired identity");
+            allocations++;
+            throw Error("unexpected allocation");
           };
           yield* Effect.promise(() =>
             assert.rejects(
               lifecycle.start(worktree, () => []),
-              /retired/,
+              {
+                message:
+                  "Provider retired; deliberate trust re-pairing and ownership reconciliation required",
+              },
             ),
           );
           registry.reserve = reserve;
+          assert.equal(allocations, 0);
           assert.equal(prepared, false);
           assert.equal(commands, 0);
           assert.equal(yield* fs.exists(database), false);

@@ -260,6 +260,44 @@ for (const existing of [false, true]) {
   });
 }
 
+test("elapsed publication deadline retains the lock and blocks another writer", (t) => {
+  const { file, dir } = fixture(t);
+  const values = {};
+  const run = (args, input) => {
+    const key = args.at(-1).replace(/^env\./, "");
+    if (args[0] === "set") {
+      values[key] = input;
+      return { status: 0, stdout: "" };
+    }
+    return { status: 0, stdout: values[key] + "\n" };
+  };
+  let checks = 0;
+  assert.throws(
+    () =>
+      persistLocalConfig({
+        file,
+        owned,
+        run,
+        deadlineMs: 10,
+        now: () => {
+          checks += 1;
+          assert.equal(fs.existsSync(file), checks === 2);
+          return checks === 2 ? 10 : 0;
+        },
+      }),
+    (error) =>
+      error.ambiguousTimeout === true &&
+      error.message === "Local stack config persistence rejected",
+  );
+  assert.equal(checks, 2);
+  assert.deepEqual(fs.readdirSync(dir).sort(), [
+    "mise.local.toml",
+    "mise.local.toml.lock",
+  ]);
+  assert.throws(() => persistLocalConfig({ file, owned, run }));
+  assert.ok(fs.existsSync(file + ".lock"));
+});
+
 test("seed rejects inherited required values even with matching own-key count", () => {
   const { validateSeed } = require("./stack-local-config.cjs");
   const seed = {

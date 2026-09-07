@@ -216,7 +216,13 @@ test("composed stop verifies owned PID and sends only the exact stack daemon ID"
     registryPath,
     portAvailable: async () => true,
     inspector: { inspect: inspectProcess, close: async () => {} },
-    identity: { inspectProcess, identify: async () => processIdentity },
+    identity: {
+      inspectProcess,
+      identify: async (id) => {
+        assert.equal(id, `recovery-local/recovery-${record.stackId}-provider`);
+        return processIdentity;
+      },
+    },
     fetchImpl: async () => new Response("{}"),
     connect: () => {
       throw Error("Unexpected socket");
@@ -279,7 +285,10 @@ async function startupFixture(t, failure) {
   const runtime = await createRuntime({
     now: () => clock,
     worktree,
-    backendBinary,
+    backendBinary:
+      failure === "unnormalized"
+        ? `${worktree}/bin/../fake-backend`
+        : backendBinary,
     registryPath: path.join(root, "registry"),
     inherited: {
       PATH: path.join(worktree, "bin"),
@@ -606,3 +615,12 @@ for (const alias of [false, true]) {
     });
   });
 }
+
+test("startup rejects an unnormalized absolute executable before effects", async (t) => {
+  const f = await startupFixture(t, "unnormalized");
+  await assert.rejects(f.runtime.start(), /absolute backend executable/);
+  assert.deepEqual(f.events, []);
+  await assert.rejects(fs.stat(path.join(f.worktree, "registry")), {
+    code: "ENOENT",
+  });
+});

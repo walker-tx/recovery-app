@@ -132,6 +132,9 @@ function createRegistry({
   async function transact(worktree, change) {
     const canonical = await fs.realpath(worktree);
     const stat = await fs.stat(canonical);
+    if (!stat.isDirectory()) {
+      throw Error("Worktree must be a directory");
+    }
     const owner = `${stat.dev}:${stat.ino}`;
     await fs.mkdir(registryPath, { recursive: true, mode: 0o700 });
     const rootStat = await fs.lstat(registryPath);

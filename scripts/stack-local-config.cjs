@@ -193,7 +193,8 @@ function persistLocalConfig({
   };
   let lock,
     temporary,
-    locked = false;
+    locked = false,
+    retainLock = false;
   try {
     let values = validate(owned);
     if (typeof file !== "string" || !path.isAbsolute(file)) {
@@ -266,7 +267,9 @@ function persistLocalConfig({
     checkDeadline(); // Synchronous Mise calls cannot deliver an AbortSignal timer.
     fs.renameSync(temporary, file);
     temporary = undefined;
+    retainLock = true; // Keep ambiguous publication fenced until manual recovery.
     checkDeadline(); // Publication cannot be undone if the atomic syscall crossed the deadline.
+    retainLock = false;
   } catch (error) {
     if (error?.ambiguousTimeout === true) {
       throw Object.assign(Error("Local stack config persistence rejected"), {
@@ -278,7 +281,7 @@ function persistLocalConfig({
     if (temporary) {
       fs.rmSync(temporary, { force: true });
     }
-    if (locked) {
+    if (locked && !retainLock) {
       fs.rmdirSync(lock);
     }
   }

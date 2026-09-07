@@ -129,7 +129,17 @@ async function fixture(t, mode = "ready") {
 test("status probes verified original daemons once and labels site transport only", async (t) => {
   const f = await fixture(t);
   const status = await f.runtime.status(f.record.stackId);
-  assert.equal(f.probes.length, 6);
+  assert.deepEqual(
+    [...f.probes].sort(),
+    [
+      `http://127.0.0.1:${f.record.ports.provider}/instance-info`,
+      `http://127.0.0.1:${f.record.ports.metro}/status`,
+      `http://127.0.0.1:${f.record.ports.convexCloud}/instance_name`,
+      `http://127.0.0.1:${f.record.ports.mailpitHttp}/api/v1/info`,
+      f.record.ports.convexSite,
+      f.record.ports.mailpitSmtp,
+    ].sort(),
+  );
   assert.equal(f.mappings.length, 4);
   assert.match(
     status.guidance,
@@ -174,7 +184,17 @@ for (const mode of ["failed", "timeout"]) {
   test(`status sanitizes ${mode} probes without changing ownership state`, async (t) => {
     const f = await fixture(t, mode);
     const status = await f.runtime.status(f.record.stackId);
-    assert.equal(f.probes.length, 6);
+    assert.deepEqual(
+      [...f.probes].sort(),
+      [
+        `http://127.0.0.1:${f.record.ports.provider}/instance-info`,
+        `http://127.0.0.1:${f.record.ports.metro}/status`,
+        `http://127.0.0.1:${f.record.ports.convexCloud}/instance_name`,
+        `http://127.0.0.1:${f.record.ports.mailpitHttp}/api/v1/info`,
+        f.record.ports.convexSite,
+        f.record.ports.mailpitSmtp,
+      ].sort(),
+    );
     assert.equal(status.services.provider, "running");
     assert.match(status.guidance, /Resume refused/);
     assert.doesNotMatch(status.guidance, /mise run zero/);

@@ -323,7 +323,8 @@ async function createRuntime({
         if (
           typeof backendBinary !== "string" ||
           !path.isAbsolute(backendBinary) ||
-          backendBinary.includes("\0")
+          backendBinary.includes("\0") ||
+          path.normalize(backendBinary) !== backendBinary
         ) {
           throw Error(
             "Startup preflight requires an absolute backend executable",

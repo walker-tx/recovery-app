@@ -325,3 +325,21 @@ for (const args of [
     assert.equal(result.stdout, "");
   });
 }
+
+for (const alias of [false, true]) {
+  test(`canonical regular-file worktree rejects before registry creation (alias=${alias})`, async (t) => {
+    const f = await fixture(t);
+    const file = path.join(f.worktree, "file");
+    await fs.writeFile(file, "untouched");
+    const selected = alias ? path.join(f.worktree, "alias") : file;
+    if (alias) {
+      await fs.symlink(file, selected);
+    }
+    await assert.rejects(
+      f.registry.reserve(selected),
+      /Worktree must be a directory/,
+    );
+    await assert.rejects(fs.stat(f.registryPath), { code: "ENOENT" });
+    assert.equal(await fs.readFile(file, "utf8"), "untouched");
+  });
+}

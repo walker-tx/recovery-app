@@ -51,6 +51,14 @@ test("six endpoint definitions, loopback and explicit state", (t) => {
     ],
   );
   const cloud = defs[0].command;
+  for (const [flag, port] of [
+    ["--port", "24001"],
+    ["--site-proxy-port", "24002"],
+  ]) {
+    const index = cloud.indexOf(flag);
+    assert.ok(index >= 0);
+    assert.equal(cloud[index + 1], port);
+  }
   assert.ok(cloud[0] === "/bin/sh" && cloud[2] === 'umask 077; exec "$@"');
   assert.ok(
     cloud.includes("--interface") &&
@@ -191,4 +199,14 @@ test("refuses unsafe existing data files inside marked state", (t) => {
     path.join(state.root, "mailpit.sqlite"),
   );
   assert.throws(() => prepareOwnedStateDirectories(o));
+});
+
+test("refuses hardlinked database files inside marked state", (t) => {
+  const o = fixture(t),
+    state = prepareOwnedStateDirectories(o);
+  const outside = path.join(o.worktree, "outside.sqlite");
+  fs.writeFileSync(outside, "preserve", { mode: 0o600 });
+  fs.linkSync(outside, path.join(state.root, "mailpit.sqlite"));
+  assert.throws(() => prepareOwnedStateDirectories(o));
+  assert.equal(fs.readFileSync(outside, "utf8"), "preserve");
 });

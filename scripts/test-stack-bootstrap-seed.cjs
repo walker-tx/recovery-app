@@ -248,3 +248,18 @@ for (const searchPath of [
     assert.equal(fs.existsSync(options.file), false);
   });
 }
+
+for (const stdout of ["pending", "pending\n"]) {
+  test(`rejects reserved keygen sentinel before persistence (${JSON.stringify(stdout)})`, (t) => {
+    const { options } = fixture(t);
+    assert.throws(
+      () =>
+        prepareBootstrapSeed({
+          ...options,
+          exec: () => ({ status: 0, stdout }),
+        }),
+      { message: "Local stack bootstrap seed rejected" },
+    );
+    assert.ok(!fs.existsSync(options.file));
+  });
+}

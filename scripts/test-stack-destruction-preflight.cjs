@@ -617,3 +617,29 @@ test("unsupported route evidence stays unobserved and cannot enable teardown", a
   );
   assert.deepEqual(snapshot(f.root), before);
 });
+
+test("NUL-bearing process start identity fails closed before observation", async (t) => {
+  const f = fixture(t);
+  f.record.processes.provider = {
+    pid: 123,
+    startedAt: "boot\0start",
+    stackId: f.record.stackId,
+    worktree: f.worktree,
+  };
+  f.save();
+  let observations = 0;
+  f.options.inspectProcess = async () => {
+    observations += 1;
+    return null;
+  };
+  const result = await preflightDestruction(f.options);
+  assert.ok(
+    result.blockers.some(
+      ({ code, domain }) =>
+        code === "process-not-stopped" && domain === "provider",
+    ),
+  );
+  assert.equal(observations, 0);
+  assert.equal(result.readyForTeardown, false);
+  assert.equal(result.reservationReleaseAllowed, false);
+});

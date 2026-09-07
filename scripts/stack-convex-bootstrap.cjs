@@ -200,6 +200,8 @@ async function bootstrapLocalConvex({
     );
     await verify();
     const env = {
+      CONVEX_SELF_HOSTED_URL: url,
+      CONVEX_SELF_HOSTED_ADMIN_KEY: seed.LOCAL_CONVEX_ADMIN_KEY,
       CONVEX_URL: url,
       CONVEX_CLOUD_URL: url,
       CONVEX_SITE_URL: site,
@@ -221,17 +223,7 @@ async function bootstrapLocalConvex({
       (signal) =>
         exec(
           "pnpm",
-          [
-            "--filter",
-            "@recovery/backend",
-            "exec",
-            "convex",
-            "deploy",
-            "--url",
-            url,
-            "--admin-key",
-            seed.LOCAL_CONVEX_ADMIN_KEY,
-          ],
+          ["--filter", "@recovery/backend", "exec", "convex", "deploy"],
           { cwd: worktree, env, signal, shell: false, stdio: "ignore" },
         ),
       120000,

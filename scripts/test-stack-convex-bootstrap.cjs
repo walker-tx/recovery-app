@@ -1,7 +1,10 @@
 const { test, beforeEach, afterEach } = require("node:test");
+const environmentReference = process.env;
 let ambient;
 beforeEach(() => {
-  ambient = { ...process.env };
+  ambient = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key.startsWith("CONVEX_")),
+  );
   for (const key of Object.keys(process.env)) {
     if (key.startsWith("CONVEX_")) {
       delete process.env[key];
@@ -9,7 +12,9 @@ beforeEach(() => {
   }
 });
 afterEach(() => {
-  process.env = ambient;
+  for (const [key, value] of Object.entries(ambient)) {
+    process.env[key] = value;
+  }
 });
 const assert = require("node:assert/strict");
 const { buildStackConfiguration } = require("./stack-configuration.cjs");
@@ -108,12 +113,17 @@ test("verifies before each effect, synchronizes only custom keys, deploys explic
     "exec",
     "convex",
     "deploy",
-    "--url",
-    "http://127.0.0.1:24000",
-    "--admin-key",
-    f.seed.LOCAL_CONVEX_ADMIN_KEY,
   ]);
   assert.equal(child.options.env.CONVEX_URL, "http://127.0.0.1:24000");
+  assert.equal(
+    child.options.env.CONVEX_SELF_HOSTED_URL,
+    "http://127.0.0.1:24000",
+  );
+  assert.equal(
+    child.options.env.CONVEX_SELF_HOSTED_ADMIN_KEY,
+    f.seed.LOCAL_CONVEX_ADMIN_KEY,
+  );
+  assert.ok(!child.args.includes(f.seed.LOCAL_CONVEX_ADMIN_KEY));
   assert.equal(child.options.env.NODE_OPTIONS, undefined);
   assert.equal(child.options.env.CONVEX_DEPLOY_KEY, undefined);
 });
@@ -126,16 +136,18 @@ test("wrong instance, redirects, failure and oversized response never write", as
     new Response("x".repeat(8193)),
   ]) {
     const f = fixture();
-    let calls = 0;
-    f.fetchImpl = async () => {
-      calls++;
+    const requests = [];
+    f.fetchImpl = async (url, options) => {
+      requests.push({ url, method: options.method ?? "GET" });
       return response;
     };
     await assert.rejects(
       bootstrapLocalConvex(f),
       /^Error: Local Convex bootstrap rejected$/,
     );
-    assert.equal(calls, 1);
+    assert.deepEqual(requests, [
+      { url: "http://127.0.0.1:24000/instance_name", method: "GET" },
+    ]);
     assert.equal(f.events.length, 0);
   }
 });
@@ -257,4 +269,11 @@ test("signal-terminated deploy is sanitized and ambiguous after environment sync
       error.ambiguous === true,
   );
   assert.equal(f.events.length, 3);
+});
+
+test("environment hooks preserve the original environment object", () => {
+  assert.ok(
+    process.env === environmentReference,
+    "environment object was replaced",
+  );
 });
