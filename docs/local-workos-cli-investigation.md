@@ -182,12 +182,13 @@ The design records the verified API facts and the approved read-status decision.
 
 ### Reproduction and limits
 
-Retained temporary workspace: `/tmp/recovery-mailpit-spike.4dxvVU`. It contains `client.mjs`, `harness.mjs`, `test.mjs`, `discover.mjs`, `cutoff.mjs`, exact dependency metadata/lockfile, `README.md`, `results-initial.json`, and final `results.json`. Synthetic databases/logs remain under that owned directory. Temporary paths may disappear during cleanup.
+The historical Mailpit spike used a disposable workspace containing client, harness, discovery, cutoff and test scripts, pinned dependency metadata, a README, and captured results. These artifacts were local research evidence, not committed reproduction tools; they may have been removed during cleanup.
+
+Current checked-in Mailpit coverage can be run from a Mise-enabled Recovery checkout:
 
 ```sh
-mise exec -- mailpit version --no-release-check
-mise exec -- node /tmp/recovery-mailpit-spike.4dxvVU/test.mjs
-mise exec -- node /tmp/recovery-mailpit-spike.4dxvVU/cutoff.mjs
+mise exec -- pnpm --filter @recovery/local-workos exec vitest run tests/admin-inbox.test.ts tests/admin-inbox-transport.test.ts
+mise exec -- node --test scripts/test-mock-integration.cjs
 ```
 
 The harness uses the installed pinned binary, private temporary directories, explicit independent database paths, allocated loopback HTTP/SMTP ports, a minimal child environment and temporary HOME/cwd. Version checking and SMTP reverse DNS were disabled. No relay configuration or live inbox was used. Local asset traps saw zero requests, but external networking was not OS-blocked or packet-captured.
@@ -243,25 +244,22 @@ Authentication references:
 
 ## Retained disposable artifacts
 
-These paths existed when this note was written. They are temporary local artifacts, not committed or durable storage, and may disappear during cleanup:
+The research used temporary, uncommitted workspaces. Their names are not portable reproduction paths, and their contents may have been removed during cleanup.
 
-| Directory | Contents |
+| Historical experiment | Evidence produced |
 | --- | --- |
-| `/tmp/effect-cli-spike.fbFWZl` | Baseline and machine TypeScript variants, tests, captured results, README and limitations |
-| `/tmp/recovery-worktree-discovery.OJqne7` | Repeatable real-Git-worktree discovery proof |
-| `/tmp/recovery-admin-transport.5rIKhb` | HTTP identity/generation/failure-contract proof |
-| `/tmp/recovery-uds-spike.6KBaUV` | Effect socket proof, exact dependency pins, lockfile and README |
+| Effect CLI | Baseline and machine TypeScript variants, tests, captured results, README and limitations |
+| Worktree discovery | Real-Git-worktree discovery proof |
+| Admin transport | HTTP identity/generation/failure-contract proof |
+| Unix socket | Effect socket proof, exact dependency pins, lockfile and README |
 
-From a Mise-enabled Recovery checkout, while those artifacts and their dependencies remain available:
+For current implementation coverage, use the checked-in tests instead:
 
 ```sh
-mise exec -- node /tmp/effect-cli-spike.fbFWZl/test.mjs
-mise exec -- node /tmp/effect-cli-spike.fbFWZl/machine-test.mjs
-mise exec -- node /tmp/recovery-worktree-discovery.OJqne7/probe.mjs
-mise exec -- node /tmp/recovery-admin-transport.5rIKhb/probe.mjs
-mise exec -- node /tmp/recovery-uds-spike.6KBaUV/proof.mjs
+mise exec -- pnpm --filter @recovery/local-workos test
+mise exec -- node --test scripts/test-mock-target.cjs scripts/test-mock-wrapper.cjs scripts/test-mock-integration.cjs
 ```
 
-Run baseline and machine CLI tests sequentially because they share synthetic fixtures. The baseline uses the disposable installation's `tsx`; the machine variant runs on Node's native TypeScript stripping. The initial baseline install encountered pnpm build-script policy warnings; no build scripts were approved. The retained socket proof was installed from cached packages with scripts ignored.
+The historical baseline and machine CLI tests ran sequentially because they shared synthetic fixtures. The baseline used the disposable installation's `tsx`; the machine variant ran on Node's native TypeScript stripping. The initial baseline install encountered pnpm build-script policy warnings; no build scripts were approved. The retained socket proof was installed from cached packages with scripts ignored.
 
-No full repository check was claimed for the throwaway experiments. Further delivery requires reconciliation of the approved specification/issue, safe ownership of an implementation branch, real admin/inbox integration tests, and the repository's normal verification and review safeguards.
+No full repository check was claimed for the throwaway experiments. At the research checkpoint, delivery still required reconciliation of the approved specification/issue, safe ownership of an implementation branch, real admin/inbox integration tests, and the repository's normal verification and review safeguards. Current delivery evidence belongs to issue #51 and its PR, not to the historical spike results.

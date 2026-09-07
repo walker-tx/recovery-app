@@ -59,7 +59,12 @@ async function fixture(t) {
       assert.equal(
         await fs.lstat(socket).then(
           () => true,
-          () => false,
+          (error) => {
+            if (error.code === "ENOENT") {
+              return false;
+            }
+            throw error;
+          },
         ),
         false,
         "provider leaked owned socket",
@@ -110,6 +115,7 @@ async function fixture(t) {
       "string",
       "registry identity must determine admin endpoint",
     );
+    sockets.push(socketPath);
     const state = path.join(worktree, ".recovery-stack/provider");
     await fs.mkdir(state, { recursive: true, mode: 0o700 });
     const child = spawn(
@@ -164,7 +170,6 @@ async function fixture(t) {
       });
     });
     assert.equal(ready.providerGeneration, record.providerGeneration);
-    sockets.push(socketPath);
     owners.set(child.pid, record.stackId);
     const identity = {
       ...(await inspector.inspect(child.pid)),

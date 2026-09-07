@@ -40,12 +40,15 @@ const owned: {
   target: InboxTarget;
 }[] = [];
 // oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-async function start(stackId: string) {
+async function start(
+  stackId: string,
+  bindAttempt = 0,
+  forcedHttpPort?: number,
+) {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "admin-inbox-")));
   await chmod(dir, 0o700);
   await mkdir(join(dir, "home"));
-  const http = await port();
-  const smtp = await port();
+  const http = forcedHttpPort ?? (await port());
   const binary = execFileSync("mise", ["which", "mailpit"], {
     encoding: "utf8",
   }).trim();
@@ -57,17 +60,22 @@ async function start(stackId: string) {
       "--listen",
       `127.0.0.1:${http}`,
       "--smtp",
-      `127.0.0.1:${smtp}`,
+      "127.0.0.1:0",
       "--disable-version-check",
       "--smtp-disable-rdns",
-      "--quiet",
     ],
     {
       cwd: dir,
       env: { HOME: join(dir, "home"), TMPDIR: dir },
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  let startupLog = "";
+  for (const output of [child.stdout, child.stderr]) {
+    output?.on("data", (chunk: Buffer) => {
+      startupLog = (startupLog + chunk.toString()).slice(-8192);
+    });
+  }
   const instance = {
     child,
     closed: once(child, "close"),
@@ -82,6 +90,12 @@ async function start(stackId: string) {
   owned.push(instance);
   for (let attempt = 0; attempt < 60; attempt++) {
     if (child.exitCode !== null || child.signalCode !== null) {
+      // Mailpit logs :0 rather than its assigned HTTP port, so retry only a
+      // confirmed bind collision; SMTP needs no discovered port and binds :0.
+      await instance.closed;
+      if (bindAttempt < 2 && /bind: address already in use/.test(startupLog)) {
+        return start(stackId, bindAttempt + 1);
+      }
       throw new Error("Owned Mailpit exited");
     }
     try {
@@ -263,3 +277,25 @@ test("rejects unsafe targets, IDs, malformed cursors and limits before dispatch"
     run(listInbox(a, { cursor: "garbage" }, ok)),
   ).rejects.toMatchObject({ code: "INVALID_CURSOR" });
 });
+
+// oxlint-disable-next-line effecttsgo/async-function -- Real occupied listener forces the native Mailpit bind-collision retry path.
+test("Mailpit fixture retries an occupied HTTP port without stopping its owner", async () => {
+  const blocker = createServer();
+  blocker.listen(0, "127.0.0.1");
+  await once(blocker, "listening");
+  try {
+    const address = blocker.address();
+    if (!address || typeof address === "string") {
+      throw new Error("No occupied port");
+    }
+    const before = owned.length;
+    const target = await start("collision", 0, address.port);
+    expect(target.baseUrl).not.toBe(`http://127.0.0.1:${address.port}`);
+    expect(owned.length).toBeGreaterThan(before + 1);
+    expect(owned[before].child.exitCode).not.toBeNull();
+    expect(blocker.listening).toBe(true);
+  } finally {
+    blocker.close();
+    await once(blocker, "close");
+  }
+}, 10000);

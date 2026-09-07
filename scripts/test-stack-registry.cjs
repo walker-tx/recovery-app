@@ -498,22 +498,10 @@ test("Git common-directory resolution refuses legacy name claims", async (t) => 
 });
 
 test("six-field reservations remain readable by baseline siblings without migration", async (t) => {
-  const { execFileSync } = require("node:child_process");
-  const Module = require("node:module");
-  const filename = path.join(__dirname, "stack-registry.cjs");
-  const baseline = new Module(filename, module);
-  baseline.filename = filename;
-  baseline.paths = module.paths;
-  // Node exposes historical CommonJS source loading only through Module._compile.
-  // eslint-disable-next-line no-underscore-dangle
-  baseline._compile(
-    execFileSync("git", ["show", "ed2f4e6:scripts/stack-registry.cjs"], {
-      encoding: "utf8",
-    }),
-    filename,
-  );
+  // Frozen pre-admin implementation; works without historical Git objects.
+  const baseline = require("./fixtures/stack-registry-ed2f4e6.cjs");
   const { registry, registryPath, worktree, sibling } = await fixture(t);
-  const old = baseline.exports.createRegistry({
+  const old = baseline.createRegistry({
     registryPath,
     portAvailable: async () => true,
   });

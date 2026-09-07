@@ -5,7 +5,11 @@ import { mkdtemp, realpath, rm, readdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- Pure fixture path construction.
 import { join } from "node:path";
-import { AdminIdentity, AdminRequest } from "../src/admin-contract.ts";
+import {
+  AdminIdentity,
+  AdminRequest,
+  AdminInputs,
+} from "../src/admin-contract.ts";
 import { acquireProvider } from "../src/provider.ts";
 
 const uuid = "11111111-1111-4111-8111-111111111111";
@@ -66,25 +70,32 @@ it.live(
         );
         const alias = join(dir, "alias");
         yield* Effect.promise(() => symlink(dir, alias));
-        for (const field of ["stackId", "worktree", "providerGeneration"]) {
+        for (const field of [
+          "stackId",
+          "worktree",
+          "providerGeneration",
+          "socketPath",
+        ]) {
           const values =
-            field === "worktree"
-              ? [
-                  undefined,
-                  "",
-                  "relative",
-                  dir + "/../" + dir.split("/").at(-1),
-                  alias,
-                  join(dir, "missing"),
-                  "/" + "é".repeat(2048),
-                ]
-              : [
-                  undefined,
-                  "",
-                  "bad",
-                  "11111111-1111-1111-8111-111111111111",
-                  "x".repeat(4097),
-                ];
+            field === "socketPath"
+              ? [join(dir, "a\0.sock")]
+              : field === "worktree"
+                ? [
+                    undefined,
+                    "",
+                    "relative",
+                    dir + "/../" + dir.split("/").at(-1),
+                    alias,
+                    join(dir, "missing"),
+                    "/" + "é".repeat(2048),
+                  ]
+                : [
+                    undefined,
+                    "",
+                    "bad",
+                    "11111111-1111-1111-8111-111111111111",
+                    "x".repeat(4097),
+                  ];
           for (const value of values) {
             // Omitted generation remains supported by provider auto-generation.
             if (field === "providerGeneration" && value === undefined) {
@@ -119,4 +130,27 @@ it.live(
       }),
     ),
   { timeout: 10000 },
+);
+
+it.effect("admin create uses provider password code-point limits", () =>
+  Effect.gen(function* () {
+    for (const [password, valid] of [
+      ["a".repeat(11), false],
+      ["a".repeat(12), true],
+      ["a".repeat(128), true],
+      ["a".repeat(129), false],
+      ["😀".repeat(11), false],
+      ["😀".repeat(12), true],
+      ["😀".repeat(128), true],
+      ["😀".repeat(129), false],
+    ] as const) {
+      const result = yield* Schema.decodeUnknownEffect(
+        AdminInputs["users.create"],
+      )({
+        email: "test@example.com",
+        password,
+      }).pipe(Effect.exit);
+      assert.equal(Exit.isSuccess(result), valid);
+    }
+  }),
 );

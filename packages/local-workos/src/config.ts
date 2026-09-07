@@ -86,6 +86,7 @@ export const decodeProviderConfig = (options: ProviderOptions) =>
             Schema.makeFilter(
               (path) =>
                 isAbsolute(path) &&
+                !path.includes("\0") &&
                 Buffer.byteLength(path) <= 100 &&
                 Buffer.byteLength(dirname(path)) + 16 <= 100,
             ),

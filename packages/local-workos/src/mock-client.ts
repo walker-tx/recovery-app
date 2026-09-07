@@ -122,9 +122,18 @@ export const adminRequest = Effect.fn("mock.adminRequest")(function* (
       ),
     ),
   );
+  const text = yield* Effect.try({
+    try: () =>
+      new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)),
+    catch: () =>
+      failure(
+        "INVALID_RESPONSE",
+        isMutation(operation) ? "unknown" : "not-applied",
+      ),
+  });
   const decoded = yield* Schema.decodeUnknownEffect(
     Schema.fromJsonString(AdminResponse),
-  )(Buffer.concat(chunks).toString("utf8")).pipe(
+  )(text).pipe(
     Effect.mapError(() =>
       failure(
         "INVALID_RESPONSE",
@@ -185,7 +194,11 @@ export const selectTarget = (worktree?: string) =>
           Schema.Struct({ code: Schema.Literal("SERVICE_UNAVAILABLE") }),
         )(error)
           ? "UNAVAILABLE"
-          : "TARGET_MISMATCH",
+          : Schema.is(
+                Schema.Struct({ code: Schema.Literal("TARGET_MISMATCH") }),
+              )(error)
+            ? "TARGET_MISMATCH"
+            : "INTERNAL_ERROR",
       ),
   });
 export const verifyTarget = (selection: Selection, inbox = false) =>
@@ -201,6 +214,10 @@ export const verifyTarget = (selection: Selection, inbox = false) =>
           Schema.Struct({ code: Schema.Literal("SERVICE_UNAVAILABLE") }),
         )(error)
           ? "UNAVAILABLE"
-          : "TARGET_MISMATCH",
+          : Schema.is(
+                Schema.Struct({ code: Schema.Literal("TARGET_MISMATCH") }),
+              )(error)
+            ? "TARGET_MISMATCH"
+            : "INTERNAL_ERROR",
       ),
   });

@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { AdminStackId, AdminWorktree, ProviderGeneration } from "./config.ts";
-import { EmailSchema, UserId, SessionId } from "./contracts.ts";
+import { EmailSchema, PasswordSchema, UserId, SessionId } from "./contracts.ts";
 
 export const AdminIdentity = Schema.Struct({
   stackId: AdminStackId,
@@ -26,7 +26,7 @@ export const AdminInputs = {
   "users.get": Schema.Struct({ userId: UserId }),
   "users.create": Schema.Struct({
     email: EmailSchema,
-    password: Schema.String.check(Schema.isLengthBetween(8, 1024)),
+    password: PasswordSchema,
     firstName: Schema.optional(name),
     lastName: Schema.optional(name),
     verified: Schema.optional(Schema.Boolean),

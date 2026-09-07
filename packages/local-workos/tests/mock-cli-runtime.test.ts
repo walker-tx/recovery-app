@@ -39,6 +39,9 @@ const runFixture = Effect.fn(function* (options: {
   openInput?: boolean;
   stall?: "status" | "mutation" | "output" | "mutation-output";
   discoveryDefect?: boolean;
+  bridgeError?: "TARGET_MISMATCH" | "SERVICE_UNAVAILABLE" | "unexpected";
+  bridgeVerify?: boolean;
+  inboxInvalidResponse?: boolean;
   breakOutput?: boolean;
   extraArgs?: string[];
   interrupt?: boolean;
@@ -60,7 +63,9 @@ const runFixture = Effect.fn(function* (options: {
     worktree: "/synthetic",
     providerState: options.providerState ?? "running",
     adminSocket: join(dir, "a.sock"),
-    inbox: null,
+    inbox: options.inboxInvalidResponse
+      ? { baseUrl: "http://127.0.0.1:1", epoch: "fixture" }
+      : null,
     record: {},
   };
   const requests: Array<{ operation: string; input: Record<string, unknown> }> =
@@ -118,23 +123,30 @@ const runFixture = Effect.fn(function* (options: {
     server.listen(target.adminSocket, () => resume(Effect.void));
   });
   const replacement = `export * from ${encode(clientUrl + "?actual")}; import {Effect} from ${encode(effectUrl)}; import {failure} from ${encode(new URL("../src/mock-output.ts", import.meta.url).href)}; export const selectTarget=()=>${options.discoveryDefect ? 'Effect.die(new Error("secret-canary"))' : `Effect.succeed(${encode(target)})`}; let verifications=0; export const verifyTarget=()=>{verifications++;return ${options.ownershipChange ? 'verifications===2 ? Effect.fail(failure("TARGET_MISMATCH")) : Effect.void' : "Effect.void"};};`;
-  const hooks = `import {registerHooks} from 'node:module'; registerHooks({load(url,context,next){if(url===${encode(clientUrl)})return {format:'module',source:${encode(replacement)},shortCircuit:true};return next(url,context);}});`;
+  const bridgeUrl = new URL("../../../scripts/mock-target.cjs", import.meta.url)
+    .href;
+  const bridgeSource = `export const selectMockTarget=()=>{${options.bridgeVerify ? `return ${encode(target)}` : `throw Object.assign(new Error("secret-canary"), {code:${encode(options.bridgeError ?? "unexpected")}})`}}; export const verifyMockTarget=()=>{throw Object.assign(new Error("secret-canary"), {code:${encode(options.bridgeError ?? "unexpected")}})};`;
+  const inboxUrl = new URL("../src/admin-inbox.ts", import.meta.url).href;
+  const inboxSource = `export {InboxError} from ${encode(inboxUrl + "?actual")}; import {InboxError} from ${encode(inboxUrl + "?actual")}; import {Effect} from ${encode(effectUrl)}; export const listInbox=()=>Effect.fail(new InboxError({code:"INVALID_RESPONSE", message:"secret-canary", outcome:"not-applied"})); export const readInbox=listInbox;`;
+  const hooks = `import {registerHooks} from 'node:module'; registerHooks({load(url,context,next){if(${options.inboxInvalidResponse === true} && url===${encode(inboxUrl)})return {format:"module",source:${encode(inboxSource)},shortCircuit:true};if(${options.bridgeError !== undefined} && url===${encode(bridgeUrl)})return {format:"module",source:${encode(bridgeSource)},shortCircuit:true};if(${options.bridgeError === undefined} && url===${encode(clientUrl)})return {format:'module',source:${encode(replacement)},shortCircuit:true};return next(url,context);}});`;
   const hook = "data:text/javascript," + encodeURIComponent(hooks);
-  const args = options.statusOnly
-    ? ["status"]
-    : options.stall === "output"
-      ? ["users", "list"]
-      : [
-          "users",
-          "create",
-          "--email",
-          "person@example.test",
-          "--password-stdin",
-          "--expect-stack",
-          "11111111-1111-4111-8111-111111111111",
-          "--expect-generation",
-          "22222222-2222-4222-8222-222222222222",
-        ];
+  const args = options.inboxInvalidResponse
+    ? ["inbox", "list"]
+    : options.statusOnly
+      ? ["status"]
+      : options.stall === "output"
+        ? ["users", "list"]
+        : [
+            "users",
+            "create",
+            "--email",
+            "person@example.test",
+            "--password-stdin",
+            "--expect-stack",
+            "11111111-1111-4111-8111-111111111111",
+            "--expect-generation",
+            "22222222-2222-4222-8222-222222222222",
+          ];
   const result = yield* Effect.callback<{
     code: number | null;
     stdout: string;
@@ -388,5 +400,37 @@ it.effect("empty creation names are omitted from the wire input", () =>
     expect(result.code).toBe(0);
     expect(result.requests[1]?.input).not.toHaveProperty("firstName");
     expect(result.requests[1]?.input).not.toHaveProperty("lastName");
+  }),
+);
+
+it.effect.each([false, true])(
+  "classifies bridge exceptions (verify=%s)",
+  (bridgeVerify) =>
+    Effect.gen(function* () {
+      for (const [bridgeError, code] of [
+        ["unexpected", "INTERNAL_ERROR"],
+        ["TARGET_MISMATCH", "TARGET_MISMATCH"],
+        ["SERVICE_UNAVAILABLE", "UNAVAILABLE"],
+      ] as const) {
+        const result = yield* runFixture({
+          bridgeError,
+          bridgeVerify,
+          statusOnly: true,
+        });
+        expect(
+          yield* Schema.decodeUnknownEffect(json)(result.stderr),
+        ).toMatchObject({ error: { code } });
+        expect(result.stderr).not.toContain("secret-canary");
+      }
+    }),
+);
+it.effect("preserves inbox INVALID_RESPONSE classification", () =>
+  Effect.gen(function* () {
+    const result = yield* runFixture({ inboxInvalidResponse: true });
+    expect(
+      yield* Schema.decodeUnknownEffect(json)(result.stderr),
+    ).toMatchObject({
+      error: { code: "INVALID_RESPONSE", outcome: "not-applied" },
+    });
   }),
 );

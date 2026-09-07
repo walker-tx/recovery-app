@@ -168,7 +168,10 @@ function createMockTarget({
           throw failure("TARGET_MISMATCH");
         }
         if (http !== null) {
+          // Provider/status discovery does not require the optional listener tool.
+          // Inbox callers must verify immediately before using this address.
           if (
+            requireInbox &&
             (await listenerOwned({
               pid: http.pid,
               port: record.ports.mailpitHttp,

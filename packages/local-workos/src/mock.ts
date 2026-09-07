@@ -258,9 +258,11 @@ const execute = Effect.fn("mock.execute")(function* (invocation: Invocation) {
         failure(
           error.code === "OWNERSHIP_CHANGED"
             ? "TARGET_MISMATCH"
-            : error.code.startsWith("INVALID_")
-              ? "INVALID_INPUT"
-              : "UNAVAILABLE",
+            : error.code === "INVALID_RESPONSE"
+              ? "INVALID_RESPONSE"
+              : error.code.startsWith("INVALID_")
+                ? "INVALID_INPUT"
+                : "UNAVAILABLE",
           error.outcome,
         ),
       ),

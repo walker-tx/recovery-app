@@ -242,12 +242,19 @@ test("read dispatch callback follows validation and ownership but precedes netwo
       const mark = () => {
         dispatched++;
       };
-      await expect(
-        run(readInbox(target, "../invalid", Effect.void, mark)),
-      ).rejects.toMatchObject({
-        code: "INVALID_MESSAGE_ID",
-        outcome: "not-applied",
-      });
+      for (const id of [
+        "../invalid",
+        "safe-id\n",
+        "safe-id\r",
+        "safe-id\r\n",
+      ]) {
+        await expect(
+          run(readInbox(target, id, Effect.void, mark)),
+        ).rejects.toMatchObject({
+          code: "INVALID_MESSAGE_ID",
+          outcome: "not-applied",
+        });
+      }
       const refusal = Effect.fail(
         new InboxError({
           code: "OWNERSHIP_CHANGED",

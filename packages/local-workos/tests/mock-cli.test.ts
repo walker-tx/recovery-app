@@ -5,12 +5,21 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 
 const entry = fileURLToPath(new URL("../src/mock.ts", import.meta.url));
-const run = (args: string[]) =>
+const run = (args: string[], preload?: string) =>
   Effect.callback<{ code: number; stdout: string; stderr: string }>(
     (resume) => {
       const child = execFile(
         process.execPath,
-        [entry, ...args],
+        [
+          ...(preload === undefined
+            ? []
+            : [
+                "--import",
+                "data:text/javascript," + encodeURIComponent(preload),
+              ]),
+          entry,
+          ...args,
+        ],
         { timeout: 5000 },
         (error, stdout, stderr) =>
           resume(
@@ -34,7 +43,10 @@ const run = (args: string[]) =>
 describe("mock CLI output boundary", () => {
   it.effect("rejects an exhausted parser budget before help output", () =>
     Effect.gen(function* () {
-      const result = yield* run(["--json", "--timeout-ms", "1", "--help"]);
+      const result = yield* run(
+        ["--json", "--timeout-ms", "5000", "--help"],
+        "let calls = 0; Date.now = () => calls++ === 0 ? 0 : 10000;",
+      );
       expect(result.code).toBe(4);
       expect(result.stdout).toBe("");
       expect(

@@ -14,7 +14,7 @@ const fixture = Effect.fn(function* (
     stackId: string;
     providerGeneration: string;
     worktree: string;
-  }) => string,
+  }) => string | Buffer,
   operation = "users.list",
 ) {
   const directory = yield* Effect.acquireRelease(
@@ -88,6 +88,47 @@ it.effect.each(["identity", "schema", "oversize", "invalid-json"])(
       if (Exit.isFailure(result)) {
         expect(Cause.squash(result.cause)).toMatchObject({
           outcome: "unknown",
+        });
+      }
+      expect(requests).toBe(1);
+    }),
+);
+
+it.effect.each(["users.list", "users.create"])(
+  "rejects malformed UTF8 for %s even in otherwise valid JSON",
+  (operation) =>
+    Effect.gen(function* () {
+      const { result, requests } = yield* fixture(
+        (identity) =>
+          Buffer.concat([
+            Buffer.from(
+              JSON.stringify({
+                ok: true,
+                identity,
+                data:
+                  operation === "users.list"
+                    ? { users: [], nextCursor: null }
+                    : {
+                        id: "user_fixture",
+                        email: "person@example.test",
+                        firstName: null,
+                        lastName: null,
+                        verified: false,
+                        createdAt: "2026-01-01",
+                        updatedAt: "2026-01-01",
+                      },
+              }).slice(0, -1) + ',"ignored":"',
+            ),
+            Buffer.from([0xff]),
+            Buffer.from('"}'),
+          ]),
+        operation,
+      );
+      expect(Exit.isFailure(result)).toBe(true);
+      if (Exit.isFailure(result)) {
+        expect(Cause.squash(result.cause)).toMatchObject({
+          code: "INVALID_RESPONSE",
+          outcome: operation === "users.list" ? "not-applied" : "unknown",
         });
       }
       expect(requests).toBe(1);

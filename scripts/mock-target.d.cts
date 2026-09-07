@@ -7,6 +7,7 @@ export interface MockTargetSelection {
   /** Derived from immutable registry stackId and the stable OS-user socket rule. */
   readonly adminSocket: string;
   readonly providerState: "running" | "stopped" | "starting";
+  /** Discovered address only; verifyMockTarget({ inbox: true }) proves listener ownership. */
   readonly inbox: { readonly baseUrl: string; readonly epoch: string } | null;
   /** Internal registry ownership snapshot. Never serialize as CLI output. */
   readonly record: unknown;

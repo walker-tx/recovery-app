@@ -286,7 +286,7 @@ test("synthetic blocked process inspection receives cancellation and closes its 
   assert.equal(closed, true);
 });
 
-test("real child OS tuple and TCP listener continuity; no Pitchfork invocation (synthetic admin socket)", async (t) => {
+test("real child OS tuple with synthetic listener continuity; no Pitchfork invocation", async (t) => {
   const f = await fixture(t);
   const { spawn } = require("node:child_process");
   const { once } = require("node:events");
@@ -342,6 +342,16 @@ test("real child OS tuple and TCP listener continuity; no Pitchfork invocation (
     exec: async (command, args, options) => {
       commands.push(command);
       assert.notEqual(path.basename(command), "pitchfork");
+      if (path.basename(command) === "lsof") {
+        // Hermetic listener evidence; the real child still exercises OS identity.
+        const listenerPid = args.includes(`-i4TCP:${port}`)
+          ? child.pid
+          : process.pid;
+        const listenPort = args
+          .find((arg) => arg.startsWith("-i4TCP:"))
+          .slice(7);
+        return { stdout: `p${listenerPid}\nf4\nn127.0.0.1:${listenPort}\n` };
+      }
       return run(command, args, options);
     },
   });
@@ -356,9 +366,13 @@ test("real child OS tuple and TCP listener continuity; no Pitchfork invocation (
   t.after(() => new Promise((resolve) => impostor.close(resolve)));
   data.stacks[f.worktree].ports.mailpitHttp = impostor.address().port;
   await fs.writeFile(file, JSON.stringify(data));
-  await assert.rejects(client.selectMockTarget({ cwd: f.worktree }), {
-    code: "TARGET_MISMATCH",
-  });
+  const impostorSelection = await client.selectMockTarget({ cwd: f.worktree });
+  await assert.rejects(
+    client.verifyMockTarget(impostorSelection, { inbox: true }),
+    {
+      code: "TARGET_MISMATCH",
+    },
+  );
   data.stacks[f.worktree].ports.mailpitHttp = port;
   for (const change of [
     { pid: child.pid + 1 },
@@ -407,6 +421,7 @@ test("listener evidence unavailable or ambiguous fails closed with sanitized out
     `p123\nf4\nn*:${f.a.ports.mailpitHttp}\n`,
     `p123\nf4\nn127.0.0.1:${f.a.ports.mailpitHttp}\np124\nf5\nn127.0.0.1:${f.a.ports.mailpitHttp}\n`,
   ]) {
+    let listenerCalls = 0;
     const client = createMockTarget({
       ...base,
       exec: async (file, args, options) => {
@@ -414,6 +429,7 @@ test("listener evidence unavailable or ambiguous fails closed with sanitized out
         if (path.basename(file) !== "lsof") {
           return run(file, args, options);
         }
+        listenerCalls++;
         assert.ok(options.timeout <= 1000 && options.maxBuffer <= 8192);
         assert.ok(options.signal instanceof AbortSignal);
         if (output === null) {
@@ -424,8 +440,12 @@ test("listener evidence unavailable or ambiguous fails closed with sanitized out
         return { stdout: output };
       },
     });
+    // Selection/status and provider verification never need optional lsof.
+    const selection = await client.selectMockTarget({ cwd: f.worktree });
+    await client.verifyMockTarget(selection);
+    assert.equal(listenerCalls, 0);
     await assert.rejects(
-      client.selectMockTarget({ cwd: f.worktree }),
+      client.verifyMockTarget(selection, { inbox: true }),
       (error) => {
         assert.equal(error.message.includes("private-error-canary"), false);
         return (
@@ -434,6 +454,7 @@ test("listener evidence unavailable or ambiguous fails closed with sanitized out
         );
       },
     );
+    assert.equal(listenerCalls, 1);
   }
 });
 
