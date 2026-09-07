@@ -1,7 +1,6 @@
 // Nonsecret reservation foundation, not a service supervisor. Release is only for
 // explicitly verified teardown, never ordinary stop. No PID-only process adapter.
 const fs = require("node:fs/promises");
-const fsSync = require("node:fs");
 const path = require("node:path");
 const net = require("node:net");
 const { randomUUID } = require("node:crypto");
@@ -28,28 +27,6 @@ const absolutePath = (value) =>
   !value.includes("\0") &&
   path.isAbsolute(value) &&
   path.normalize(value) === value;
-// Immutable reservation UUID plus the OS owner's namespace is the association.
-// Read-only: callers must separately verify lifecycle ownership before preparation.
-function adminSocketPath(record) {
-  const uid = process.getuid();
-  if (
-    !object(record) ||
-    !uuid(record.stackId) ||
-    !Number.isSafeInteger(uid) ||
-    uid < 0
-  ) {
-    throw Error("Invalid administration socket identity");
-  }
-  const socket = path.join(
-    fsSync.realpathSync("/tmp"),
-    `recovery-admin-${uid}`,
-    `${record.stackId}.sock`,
-  );
-  if (!absolutePath(socket) || Buffer.byteLength(socket) > 100) {
-    throw Error("Administration socket path too long");
-  }
-  return socket;
-}
 function validIdentity(identity, record) {
   return (
     object(identity) &&
@@ -155,28 +132,15 @@ function createRegistry({
     await fs.rm(path.join(lock, "owner.json"));
     await fs.rmdir(lock);
   }
-  async function transact(
-    worktree,
-    change,
-    renewOwner = false,
-    { signal, readOnly = false } = {},
-  ) {
-    signal?.throwIfAborted();
+  async function transact(worktree, change, renewOwner = false) {
     const canonical = await fs.realpath(worktree);
     const stat = await fs.stat(canonical);
     if (!stat.isDirectory()) {
       throw Error("Worktree must be a directory");
     }
     const owner = `${stat.dev}:${stat.ino}`;
-    if (!readOnly) {
-      await fs.mkdir(registryPath, { recursive: true, mode: 0o700 });
-    }
-    const rootStat = await fs.lstat(registryPath).catch((error) => {
-      if (readOnly && error.code === "ENOENT") {
-        throw Error("Stack ownership missing");
-      }
-      throw error;
-    });
+    await fs.mkdir(registryPath, { recursive: true, mode: 0o700 });
+    const rootStat = await fs.lstat(registryPath);
     if (
       !rootStat.isDirectory() ||
       rootStat.uid !== process.getuid() ||
@@ -186,7 +150,6 @@ function createRegistry({
     }
     const deadline = Date.now() + lockTimeoutMs;
     while (true) {
-      signal?.throwIfAborted();
       try {
         await fs.mkdir(lock, { mode: 0o700 });
         break;
@@ -201,7 +164,7 @@ function createRegistry({
           "Registry locked; manual ownership investigation required (no automatic lock reclamation)",
         );
       }
-      await delay(10, undefined, { signal });
+      await delay(10);
     }
     const token = randomUUID();
     try {
@@ -236,7 +199,6 @@ function createRegistry({
         throw Error("Worktree ownership mismatch; manual repair required");
       }
       const before = JSON.stringify(data);
-      signal?.throwIfAborted();
       const result = await change(data, record, canonical, owner);
       if (JSON.stringify(data) !== before) {
         const temporary = `${file}.${token}.tmp`;
@@ -281,21 +243,14 @@ function createRegistry({
     }
   }
   return {
-    readOwned: (worktree, stackId, options = {}) =>
-      transact(
-        worktree,
-        async (_data, record) => {
-          if (stackId !== undefined) {
-            owned(record, stackId);
-          }
-          if (!record) {
-            throw Error("Stack ownership missing");
-          }
-          return record;
-        },
-        false,
-        { ...options, readOnly: true },
-      ),
+    readOwned: (worktree, stackId) =>
+      transact(worktree, async (_data, record) => {
+        owned(record, stackId);
+        if (!record) {
+          throw Error("Stack ownership missing");
+        }
+        return record;
+      }),
     reserve: (worktree) =>
       transact(
         worktree,
@@ -422,8 +377,7 @@ function createRegistry({
       }),
   };
 }
-async function resolveRegistryPath(worktree, { signal } = {}) {
-  signal?.throwIfAborted();
+async function resolveRegistryPath(worktree) {
   const canonical = await fs.realpath(worktree);
   const run = require("node:util").promisify(
     require("node:child_process").execFile,
@@ -431,7 +385,7 @@ async function resolveRegistryPath(worktree, { signal } = {}) {
   const { stdout: topLevel } = await run(
     "git",
     ["rev-parse", "--show-toplevel"],
-    { cwd: canonical, timeout: 3000, maxBuffer: 8192, signal },
+    { cwd: canonical, timeout: 3000 },
   );
   if (canonical !== (await fs.realpath(topLevel.trim()))) {
     throw Error("Supplied directory must be the Git worktree root");
@@ -467,16 +421,11 @@ async function resolveRegistryPath(worktree, { signal } = {}) {
   const { stdout } = await run(
     "git",
     ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-    { cwd: canonical, timeout: 3000, maxBuffer: 8192, signal },
+    { cwd: canonical, timeout: 3000 },
   );
   return path.join(await fs.realpath(stdout.trim()), "recovery-stacks");
 }
-module.exports = {
-  createRegistry,
-  portAvailable,
-  resolveRegistryPath,
-  adminSocketPath,
-};
+module.exports = { createRegistry, portAvailable, resolveRegistryPath };
 
 // Release is deliberately unavailable for existing reservations until complete
 // domain teardown can be revalidated, including route ownership.

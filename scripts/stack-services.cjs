@@ -2,6 +2,7 @@
 // This module neither starts processes nor reads ambient credentials.
 const fs = require("node:fs");
 const path = require("node:path");
+const { adminSocketPath } = require("./stack-registry.cjs");
 const names = [
   "convexCloud",
   "convexSite",
@@ -100,13 +101,19 @@ function buildStackServices(options = {}) {
     const provider = privateCommand([
       "node",
       "--experimental-strip-types",
-      path.join(worktree, "packages/local-workos/src/cli.ts"),
+      path.join(worktree, "packages/local-workos/src/server/main.ts"),
       "--database",
       path.join(state.provider, "state.sqlite"),
       "--port",
       String(p.provider),
       "--provider-generation",
       r.providerGeneration,
+      "--admin-socket",
+      adminSocketPath(r),
+      "--stack-id",
+      r.stackId,
+      "--worktree",
+      worktree,
     ]);
     const mailpit = privateCommand([
       "mailpit",
@@ -172,6 +179,28 @@ function prepareOwnedStateDirectories(options = {}) {
         (privateMode && (st.mode & 0o077) !== 0)
       ) {
         throw Error();
+      }
+    }
+    {
+      const socket = adminSocketPath(r);
+      const parent = path.dirname(socket);
+      // The immutable reservation derives a short child of canonical /tmp, not worktree paths.
+      if (fs.realpathSync(path.dirname(parent)) !== path.dirname(parent)) {
+        throw Error();
+      }
+      directory(parent, true);
+      if ((fs.lstatSync(parent).mode & 0o777) !== 0o700) {
+        throw Error();
+      }
+      // Preparation only runs after lifecycle proved all services stopped.
+      // Never remove a crash-stale or unknown entry to make bind succeed.
+      try {
+        fs.lstatSync(socket);
+        throw Error("Administration socket already exists");
+      } catch (error) {
+        if (error.code !== "ENOENT") {
+          throw error;
+        }
       }
     }
     // Inspect every ancestor below the canonical worktree; never follow a state symlink.

@@ -21,7 +21,7 @@
     "check": "tsc --noEmit && pnpm run lint",
     "lint": "oxlint --deny-warnings --report-unused-disable-directives src tests",
     "prepare": "effect-tsgo patch --no-typescript --oxlint",
-    "start": "node --experimental-strip-types src/cli.ts",
+    "start": "node --experimental-strip-types src/server/main.ts",
     "test": "vitest run"
   },
   "type": "module",

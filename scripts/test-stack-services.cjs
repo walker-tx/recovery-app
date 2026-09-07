@@ -7,7 +7,14 @@ const {
   buildStackServices,
   prepareOwnedStateDirectories,
 } = require("./stack-services.cjs");
+const { adminSocketPath } = require("./stack-registry.cjs");
 function fixture(t) {
+  const temp = fs.realpathSync(fs.mkdtempSync("/tmp/ss-"));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const realpath = fs.realpathSync;
+  t.mock.method(fs, "realpathSync", (p, ...args) =>
+    p === "/tmp" ? temp : realpath(p, ...args),
+  );
   const worktree = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "stack-services-")),
   );
@@ -18,6 +25,8 @@ function fixture(t) {
     backendBinary: "/synthetic/convex",
     registry: {
       worktree,
+      owner: "1:1",
+      processes: {},
       stackId: "11111111-1111-4111-8111-111111111111",
       providerGeneration: "22222222-2222-4222-8222-222222222222",
       ports: {
@@ -209,4 +218,51 @@ test("refuses hardlinked database files inside marked state", (t) => {
   fs.linkSync(outside, path.join(state.root, "mailpit.sqlite"));
   assert.throws(() => prepareOwnedStateDirectories(o));
   assert.equal(fs.readFileSync(outside, "utf8"), "preserve");
+});
+
+test("six-field restart always derives administration flags without changing identity or ports", (t) => {
+  const o = fixture(t);
+  const before = structuredClone(o.registry);
+  const args = buildStackServices(o).find((s) => s.name === "provider").command;
+  for (const [flag, value] of [
+    ["--admin-socket", adminSocketPath(o.registry)],
+    ["--stack-id", o.registry.stackId],
+    ["--worktree", o.worktree],
+  ]) {
+    assert.equal(args[args.indexOf(flag) + 1], value);
+  }
+  assert.deepEqual(o.registry, before);
+  assert.equal(Object.keys(o.registry).length, 6);
+  assert.equal(fs.existsSync(path.dirname(adminSocketPath(o.registry))), false);
+});
+
+test("socket parent preflight is private, refuses symlinks and preserves unknown sockets", (t) => {
+  const o = fixture(t);
+  const socket = adminSocketPath(o.registry);
+  const parent = path.dirname(socket);
+  prepareOwnedStateDirectories(o);
+  assert.equal(fs.statSync(parent).mode & 0o777, 0o700);
+  fs.chmodSync(parent, 0o755);
+  assert.throws(() => prepareOwnedStateDirectories(o));
+  fs.chmodSync(parent, 0o700);
+  const lstat = fs.lstatSync;
+  const ownerMock = t.mock.method(fs, "lstatSync", (p, ...args) => {
+    const stat = lstat(p, ...args);
+    if (p === parent) {
+      stat.uid = process.getuid() + 1;
+    }
+    return stat;
+  });
+  assert.throws(() => prepareOwnedStateDirectories(o));
+  ownerMock.mock.restore();
+  fs.rmdirSync(parent);
+  const outside = path.join(path.dirname(parent), "outside");
+  fs.mkdirSync(outside, { mode: 0o700 });
+  fs.symlinkSync(outside, parent);
+  assert.throws(() => prepareOwnedStateDirectories(o));
+  fs.unlinkSync(parent);
+  fs.mkdirSync(parent, { mode: 0o700 });
+  fs.writeFileSync(socket, "unknown");
+  assert.throws(() => prepareOwnedStateDirectories(o));
+  assert.equal(fs.readFileSync(socket, "utf8"), "unknown");
 });
