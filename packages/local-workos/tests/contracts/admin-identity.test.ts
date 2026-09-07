@@ -1,10 +1,6 @@
-import { assert, it } from "@effect/vitest";
-import { Effect, Exit, Schema } from "effect";
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- Real filesystem fixture proves refusal before state acquisition.
-import { mkdtemp, realpath, rm, readdir, symlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- Pure fixture path construction.
-import { join } from "node:path";
+import { assert, it, layer } from "@effect/vitest";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Exit, FileSystem, Layer, Path, Schema } from "effect";
 import {
   AdminIdentity,
   AdminRequest,
@@ -56,81 +52,82 @@ it.effect(
     }),
 );
 
-it.live(
-  "invalid admin identities fail before database or socket acquisition",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const dir = yield* Effect.acquireRelease(
-          Effect.promise(() =>
-            mkdtemp(join(tmpdir(), "admin-id-")).then((path) => realpath(path)),
-          ),
-          (path) =>
-            Effect.promise(() => rm(path, { recursive: true, force: true })),
-        );
-        const alias = join(dir, "alias");
-        yield* Effect.promise(() => symlink(dir, alias));
-        for (const field of [
-          "stackId",
-          "worktree",
-          "providerGeneration",
-          "socketPath",
-        ]) {
-          const values =
-            field === "socketPath"
-              ? [join(dir, "a\0.sock")]
-              : field === "worktree"
-                ? [
-                    undefined,
-                    "",
-                    "relative",
-                    dir + "/../" + dir.split("/").at(-1),
-                    alias,
-                    join(dir, "missing"),
-                    "/" + "é".repeat(2048),
-                  ]
-                : [
-                    undefined,
-                    "",
-                    "bad",
-                    "11111111-1111-1111-8111-111111111111",
-                    "x".repeat(4097),
-                  ];
-          for (const value of values) {
-            // Omitted generation remains supported by provider auto-generation.
-            if (field === "providerGeneration" && value === undefined) {
-              continue;
+layer(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer), {
+  excludeTestServices: true,
+})((test) => {
+  test.effect(
+    "invalid admin identities fail before database or socket acquisition",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const directory = yield* fs.makeTempDirectoryScoped({
+            prefix: "admin-id-",
+          });
+          const dir = yield* fs.realPath(directory);
+          const alias = path.join(dir, "alias");
+          yield* fs.symlink(dir, alias);
+          for (const field of [
+            "stackId",
+            "worktree",
+            "providerGeneration",
+            "socketPath",
+          ]) {
+            const values =
+              field === "socketPath"
+                ? [path.join(dir, "a\0.sock")]
+                : field === "worktree"
+                  ? [
+                      undefined,
+                      "",
+                      "relative",
+                      dir + "/../" + dir.split("/").at(-1),
+                      alias,
+                      path.join(dir, "missing"),
+                      "/" + "é".repeat(2048),
+                    ]
+                  : [
+                      undefined,
+                      "",
+                      "bad",
+                      "11111111-1111-1111-8111-111111111111",
+                      "x".repeat(4097),
+                    ];
+            for (const value of values) {
+              // Omitted generation remains supported by provider auto-generation.
+              if (field === "providerGeneration" && value === undefined) {
+                continue;
+              }
+              const admin = {
+                socketPath: path.join(dir, "a.sock"),
+                stackId: uuid,
+                worktree: dir,
+              };
+              const options = {
+                database: path.join(dir, "state.sqlite"),
+                apiKey: `sk_test_local_${"a".repeat(64)}`,
+                providerGeneration: uuid,
+                admin,
+              };
+              const target = field === "providerGeneration" ? options : admin;
+              if (value === undefined) {
+                Reflect.deleteProperty(target, field);
+              } else {
+                Reflect.set(target, field, value);
+              }
+              const result = yield* Effect.scoped(
+                acquireProvider(options),
+              ).pipe(Effect.exit);
+              assert.ok(Exit.isFailure(result));
+              assert.deepEqual(yield* fs.readDirectory(dir), ["alias"]);
             }
-            const admin = {
-              socketPath: join(dir, "a.sock"),
-              stackId: uuid,
-              worktree: dir,
-            };
-            const options = {
-              database: join(dir, "state.sqlite"),
-              apiKey: `sk_test_local_${"a".repeat(64)}`,
-              providerGeneration: uuid,
-              admin,
-            };
-            const target = field === "providerGeneration" ? options : admin;
-            if (value === undefined) {
-              Reflect.deleteProperty(target, field);
-            } else {
-              Reflect.set(target, field, value);
-            }
-            const result = yield* Effect.scoped(acquireProvider(options)).pipe(
-              Effect.exit,
-            );
-            assert.ok(Exit.isFailure(result));
-            assert.deepEqual(yield* Effect.promise(() => readdir(dir)), [
-              "alias",
-            ]);
           }
-        }
-      }),
-    ),
-  { timeout: 10000 },
-);
+        }),
+      ),
+    { timeout: 10000 },
+  );
+});
 
 it.effect("admin create uses provider password code-point limits", () =>
   Effect.gen(function* () {

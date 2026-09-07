@@ -1,12 +1,8 @@
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- Deliberately independent native HTTP fixture for the Effect client boundary.
 import { createServer } from "node:http";
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- Disposable Unix socket fixture ownership.
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- Native filesystem fixture path.
-import { join } from "node:path";
-import { Effect, Exit, Cause } from "effect";
-import { expect, it } from "@effect/vitest";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Exit, Cause, FileSystem, Layer, Path } from "effect";
+import { expect, layer } from "@effect/vitest";
 import { adminRequest } from "../../src/cli/admin-client.ts";
 
 const fixture = Effect.fn(function* (
@@ -17,12 +13,13 @@ const fixture = Effect.fn(function* (
   }) => string | Buffer,
   operation = "users.list",
 ) {
-  const directory = yield* Effect.acquireRelease(
-    Effect.promise(() => mkdtemp(join(tmpdir(), "mock-cli-"))),
-    (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
-  );
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const directory = yield* fs.makeTempDirectoryScoped({
+    prefix: "mock-cli-",
+  });
   const target = {
-    adminSocket: join(directory, "a.sock"),
+    adminSocket: path.join(directory, "a.sock"),
     stackId: "11111111-1111-4111-8111-111111111111",
     providerGeneration: "22222222-2222-4222-8222-222222222222",
     worktree: "/synthetic",
@@ -48,89 +45,91 @@ const fixture = Effect.fn(function* (
   );
   return { result, requests };
 });
-it.effect("projects bounded users list without secret extras", () =>
-  Effect.gen(function* () {
-    const { result, requests } = yield* fixture((identity) =>
-      JSON.stringify({
-        ok: true,
-        identity,
-        data: { users: [], nextCursor: null, secret: "canary" },
+layer(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))((it) => {
+  it.effect("projects bounded users list without secret extras", () =>
+    Effect.gen(function* () {
+      const { result, requests } = yield* fixture((identity) =>
+        JSON.stringify({
+          ok: true,
+          identity,
+          data: { users: [], nextCursor: null, secret: "canary" },
+        }),
+      );
+      expect(result).toEqual(Exit.succeed({ users: [], nextCursor: null }));
+      expect(requests).toBe(1);
+    }),
+  );
+  it.effect.each(["identity", "schema", "oversize", "invalid-json"])(
+    "refuses %s after mutation dispatch without retry",
+    (kind) =>
+      Effect.gen(function* () {
+        const { result, requests } = yield* fixture(
+          (identity) =>
+            kind === "oversize"
+              ? "x".repeat(1048577)
+              : kind === "invalid-json"
+                ? "not json"
+                : JSON.stringify({
+                    ok: true,
+                    identity:
+                      kind === "identity"
+                        ? {
+                            ...identity,
+                            stackId: "33333333-3333-4333-8333-333333333333",
+                          }
+                        : identity,
+                    data: { unexpected: true },
+                  }),
+          "users.create",
+        );
+        expect(Exit.isFailure(result)).toBe(true);
+        if (Exit.isFailure(result)) {
+          expect(Cause.squash(result.cause)).toMatchObject({
+            outcome: "unknown",
+          });
+        }
+        expect(requests).toBe(1);
       }),
-    );
-    expect(result).toEqual(Exit.succeed({ users: [], nextCursor: null }));
-    expect(requests).toBe(1);
-  }),
-);
-it.effect.each(["identity", "schema", "oversize", "invalid-json"])(
-  "refuses %s after mutation dispatch without retry",
-  (kind) =>
-    Effect.gen(function* () {
-      const { result, requests } = yield* fixture(
-        (identity) =>
-          kind === "oversize"
-            ? "x".repeat(1048577)
-            : kind === "invalid-json"
-              ? "not json"
-              : JSON.stringify({
-                  ok: true,
-                  identity:
-                    kind === "identity"
-                      ? {
-                          ...identity,
-                          stackId: "33333333-3333-4333-8333-333333333333",
-                        }
-                      : identity,
-                  data: { unexpected: true },
-                }),
-        "users.create",
-      );
-      expect(Exit.isFailure(result)).toBe(true);
-      if (Exit.isFailure(result)) {
-        expect(Cause.squash(result.cause)).toMatchObject({
-          outcome: "unknown",
-        });
-      }
-      expect(requests).toBe(1);
-    }),
-);
+  );
 
-it.effect.each(["users.list", "users.create"])(
-  "rejects malformed UTF8 for %s even in otherwise valid JSON",
-  (operation) =>
-    Effect.gen(function* () {
-      const { result, requests } = yield* fixture(
-        (identity) =>
-          Buffer.concat([
-            Buffer.from(
-              JSON.stringify({
-                ok: true,
-                identity,
-                data:
-                  operation === "users.list"
-                    ? { users: [], nextCursor: null }
-                    : {
-                        id: "user_fixture",
-                        email: "person@example.test",
-                        firstName: null,
-                        lastName: null,
-                        verified: false,
-                        createdAt: "2026-01-01",
-                        updatedAt: "2026-01-01",
-                      },
-              }).slice(0, -1) + ',"ignored":"',
-            ),
-            Buffer.from([0xff]),
-            Buffer.from('"}'),
-          ]),
-        operation,
-      );
-      expect(Exit.isFailure(result)).toBe(true);
-      if (Exit.isFailure(result)) {
-        expect(Cause.squash(result.cause)).toMatchObject({
-          code: "INVALID_RESPONSE",
-          outcome: operation === "users.list" ? "not-applied" : "unknown",
-        });
-      }
-      expect(requests).toBe(1);
-    }),
-);
+  it.effect.each(["users.list", "users.create"])(
+    "rejects malformed UTF8 for %s even in otherwise valid JSON",
+    (operation) =>
+      Effect.gen(function* () {
+        const { result, requests } = yield* fixture(
+          (identity) =>
+            Buffer.concat([
+              Buffer.from(
+                JSON.stringify({
+                  ok: true,
+                  identity,
+                  data:
+                    operation === "users.list"
+                      ? { users: [], nextCursor: null }
+                      : {
+                          id: "user_fixture",
+                          email: "person@example.test",
+                          firstName: null,
+                          lastName: null,
+                          verified: false,
+                          createdAt: "2026-01-01",
+                          updatedAt: "2026-01-01",
+                        },
+                }).slice(0, -1) + ',"ignored":"',
+              ),
+              Buffer.from([0xff]),
+              Buffer.from('"}'),
+            ]),
+          operation,
+        );
+        expect(Exit.isFailure(result)).toBe(true);
+        if (Exit.isFailure(result)) {
+          expect(Cause.squash(result.cause)).toMatchObject({
+            code: "INVALID_RESPONSE",
+            outcome: operation === "users.list" ? "not-applied" : "unknown",
+          });
+        }
+        expect(requests).toBe(1);
+      }),
+  );
+});

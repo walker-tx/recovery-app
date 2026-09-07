@@ -1,12 +1,12 @@
-// Pure schema predicate; no filesystem access or Effect service is needed.
-// oxlint-disable-next-line effecttsgo/node-builtin-import
-import { isAbsolute } from "node:path";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import {
+  Context,
   Cause,
   Config,
   ConfigProvider,
   Effect,
+  Path,
   Exit,
   Layer,
   Schema,
@@ -25,11 +25,19 @@ import {
 } from "../contracts/identity.ts";
 import { acquireConfiguredProvider } from "./provider.ts";
 
+// NodePath.layer is a resource-free synchronous layer using the host path implementation.
+const hostPath = Context.get(
+  Effect.runSync(Effect.scoped(Layer.build(NodePath.layer))),
+  Path.Path,
+);
+
 const command = Command.make(
   "local-workos",
   {
     database: Flag.string("database").pipe(
-      Flag.withSchema(Schema.String.check(Schema.makeFilter(isAbsolute))),
+      Flag.withSchema(
+        Schema.String.check(Schema.makeFilter(hostPath.isAbsolute)),
+      ),
     ),
     port: Flag.string("port").pipe(
       Flag.withSchema(

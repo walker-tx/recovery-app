@@ -1,6 +1,11 @@
-import { Schema } from "effect";
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- Pure canonical-path validation shared by contracts and server configuration.
-import { isAbsolute, normalize } from "node:path";
+import * as NodePath from "@effect/platform-node/NodePath";
+import { Layer, Context, Effect, Path, Schema } from "effect";
+
+// NodePath.layer is a resource-free synchronous layer using the host path implementation.
+const hostPath = Context.get(
+  Effect.runSync(Effect.scoped(Layer.build(NodePath.layer))),
+  Path.Path,
+);
 
 export const LocalWorkOSApiKey = Schema.String.check(
   Schema.isPattern(/^sk_test_local_[0-9a-f]{64}$/),
@@ -19,8 +24,8 @@ export const AdminStackId = IdentityUuid;
 export const AdminWorktree = Schema.String.check(
   Schema.makeFilter(
     (path) =>
-      isAbsolute(path) &&
-      normalize(path) === path &&
+      hostPath.isAbsolute(path) &&
+      hostPath.normalize(path) === path &&
       !path.includes("\0") &&
       Buffer.byteLength(path, "utf8") <= 4096,
   ),

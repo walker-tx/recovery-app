@@ -1,3 +1,4 @@
+import * as NodePath from "@effect/platform-node/NodePath";
 import {
   LocalWorkOSApiKey,
   ProviderGeneration,
@@ -5,14 +6,26 @@ import {
   AdminWorktree,
   type ClientId,
 } from "../contracts/identity.ts";
-import { Config, Context, Data, Effect, Redacted, Schema } from "effect";
-// Pure schema predicate; no filesystem access or Effect service is needed.
-// oxlint-disable-next-line effecttsgo/node-builtin-import
-import { isAbsolute, dirname } from "node:path";
+import {
+  Layer,
+  Config,
+  Context,
+  Data,
+  Effect,
+  Path,
+  Redacted,
+  Schema,
+} from "effect";
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- Canonical admin ownership is checked before database acquisition.
 import { realpathSync } from "node:fs";
 import type { importJWK } from "jose";
 import type { Jwks } from "../contracts/workos.ts";
+
+// NodePath.layer is a resource-free synchronous layer using the host path implementation.
+const hostPath = Context.get(
+  Effect.runSync(Effect.scoped(Layer.build(NodePath.layer))),
+  Path.Path,
+);
 
 export class ConfigurationError extends Data.TaggedError("ConfigurationError")<{
   message: string;
@@ -65,10 +78,10 @@ export const decodeProviderConfig = (options: ProviderOptions) =>
           socketPath: Schema.String.check(
             Schema.makeFilter(
               (path) =>
-                isAbsolute(path) &&
+                hostPath.isAbsolute(path) &&
                 !path.includes("\0") &&
                 Buffer.byteLength(path) <= 100 &&
-                Buffer.byteLength(dirname(path)) + 16 <= 100,
+                Buffer.byteLength(hostPath.dirname(path)) + 16 <= 100,
             ),
           ),
           stackId: AdminStackId,
@@ -99,7 +112,7 @@ export const decodeProviderConfig = (options: ProviderOptions) =>
       });
     }
     const database = yield* Schema.decodeUnknownEffect(
-      Schema.String.check(Schema.makeFilter(isAbsolute)),
+      Schema.String.check(Schema.makeFilter(hostPath.isAbsolute)),
     )(options.database).pipe(
       Effect.mapError(
         () =>

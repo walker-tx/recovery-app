@@ -1,8 +1,12 @@
+import * as NodePath from "@effect/platform-node/NodePath";
 import {
+  Layer,
+  Context,
   Clock,
   Data,
   DateTime,
   Effect,
+  Path,
   FileSystem,
   Schema,
   Predicate,
@@ -22,8 +26,6 @@ import {
   rmdirSync,
   // oxlint-disable-next-line effecttsgo/node-builtin-import -- Unix socket ownership requires native inode operations.
 } from "node:fs";
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- Pure path validation for the private socket boundary.
-import { dirname, isAbsolute, join } from "node:path";
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- Native server factory required by NodeHttpServer.
 import { createServer } from "node:http";
 import {
@@ -40,6 +42,12 @@ import {
 } from "../contracts/workos.ts";
 import type { ProviderClearError } from "./provider.ts";
 import type { WorkOSService } from "./workos-service.ts";
+
+// NodePath.layer is a resource-free synchronous layer using the host path implementation.
+const hostPath = Context.get(
+  Effect.runSync(Effect.scoped(Layer.build(NodePath.layer))),
+  Path.Path,
+);
 
 class AdminFailure extends Data.TaggedError("AdminFailure")<{
   code: AdminErrorCode;
@@ -90,14 +98,14 @@ export const acquireAdminServer = Effect.fn("acquireAdminServer")(function* (
   });
   yield* Effect.try(() => {
     if (
-      !isAbsolute(options.socketPath) ||
+      !hostPath.isAbsolute(options.socketPath) ||
       Buffer.byteLength(options.socketPath) > 100 ||
       !options.stackId ||
-      !isAbsolute(options.worktree)
+      !hostPath.isAbsolute(options.worktree)
     ) {
       throw new Error("Invalid private admin socket configuration");
     }
-    let path = dirname(options.socketPath);
+    let path = hostPath.dirname(options.socketPath);
     const parent = lstatSync(path);
     if (
       !parent.isDirectory() ||
@@ -108,11 +116,11 @@ export const acquireAdminServer = Effect.fn("acquireAdminServer")(function* (
         "Admin socket parent must be an owner-only 0700 directory",
       );
     }
-    while (path !== dirname(path)) {
+    while (path !== hostPath.dirname(path)) {
       if (lstatSync(path).isSymbolicLink()) {
         throw new Error("Admin socket ancestors must not be symlinks");
       }
-      path = dirname(path);
+      path = hostPath.dirname(path);
     }
     try {
       lstatSync(options.socketPath);
@@ -375,10 +383,14 @@ export const acquireAdminServer = Effect.fn("acquireAdminServer")(function* (
   // libuv unlinks its original bind path without checking its inode. Bind in
   // a private temporary directory, then publish without clobbering; we own final cleanup.
   const staging = yield* Effect.acquireRelease(
-    Effect.try(() => mkdtempSync(join(dirname(options.socketPath), ".admin-"))),
+    Effect.try(() =>
+      mkdtempSync(
+        hostPath.join(hostPath.dirname(options.socketPath), ".admin-"),
+      ),
+    ),
     (path) => Effect.sync(() => rmdirSync(path)),
   );
-  const bindPath = join(staging, "s");
+  const bindPath = hostPath.join(staging, "s");
   yield* Effect.try(() => {
     if (Buffer.byteLength(bindPath) > 100) {
       throw new Error("Admin socket parent path is too long");

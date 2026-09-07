@@ -1,10 +1,9 @@
+import * as NodePath from "@effect/platform-node/NodePath";
 import { Predicate } from "effect";
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- Owner/mode checks and O_NOFOLLOW require the low-level Node filesystem boundary.
 import { lstatSync, openSync, closeSync, constants } from "node:fs";
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- dirname is pure; no filesystem service is needed.
-import { dirname } from "node:path";
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- NodeHttpServer.make requires the native server factory.
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -17,6 +16,7 @@ import {
 } from "jose";
 import {
   Effect,
+  Path,
   Scope,
   Exit,
   Layer,
@@ -39,6 +39,12 @@ import {
 import { ProviderGeneration, ClientId } from "../contracts/identity.ts";
 import { acquireAdminServer } from "./admin-http.ts";
 import { WorkOSService, workosLayer } from "./workos-service.ts";
+// NodePath.layer is a resource-free synchronous layer using the host path implementation.
+const hostPath = Context.get(
+  Effect.runSync(Effect.scoped(Layer.build(NodePath.layer))),
+  Path.Path,
+);
+
 export class ProviderStartupError extends Data.TaggedError(
   "ProviderStartupError",
 )<{ message: string }> {}
@@ -96,7 +102,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
   const options = yield* ConfigService;
   const ownedDatabase = yield* Effect.try({
     try: () => {
-      const parent = lstatSync(dirname(options.database));
+      const parent = lstatSync(hostPath.dirname(options.database));
       if (
         !parent.isDirectory() ||
         parent.uid !== process.getuid?.() ||
