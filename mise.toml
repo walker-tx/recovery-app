@@ -32,7 +32,7 @@ description = "Show Recovery development daemon status"
 run = "./scripts/status.sh"
 
 [tasks.mock]
-description = "Administer the selected local WorkOS stack (machine-safe: mise exec -- ./scripts/mock.sh)"
+description = "Administer the selected local WorkOS stack"
 quiet = true
 raw = true
 run = "./scripts/mock.sh"

@@ -1,6 +1,6 @@
-# Local WorkOS provider core
+# Local WorkOS provider and CLI
 
-Private synthetic-only provider for #46. Import `startProvider` from `src/provider.ts`
+Private synthetic-only provider for #46. Import `startProvider` from `src/server/provider.ts`
 and pass an explicit absolute SQLite filename (existing owner-controlled parent directory)
 and a synthetic API key matching `sk_test_local_` followed by 64 lowercase hexadecimal characters. It binds only `127.0.0.1` on an ephemeral port;
 its result includes `port`, `issuer`, `clientId`, and async `close()`. Call `close()`
@@ -11,9 +11,25 @@ mise exec -- pnpm --filter @recovery/local-workos test
 mise exec -- pnpm --filter @recovery/local-workos check
 ```
 
+## Package layout
+
+```text
+src/
+  cli/        # Administration command, clients, and output
+  server/     # Provider startup, API listeners, services, and storage lifecycle
+  contracts/  # Shared WorkOS/admin schemas and identity validation
+```
+
+`src/cli/main.ts` is the administration entry point; `src/server/main.ts` starts
+the provider. Both sides depend on `contracts/`; the CLI does not import server
+implementation. WorkOS-compatible HTTP and private administration listeners live
+in `server/workos-http.ts` and `server/admin-http.ts`. Mailpit access is a CLI
+client, not a provider endpoint. Tests follow these ownership boundaries.
+Repository-wide stack discovery and supervision remain in `scripts/`.
+
 ## Local administration CLI
 
-The package-owned `src/mock.ts` entry point uses the existing Effect 4 RC CLI.
+The package-owned `src/cli/main.ts` entry point uses the existing Effect 4 RC CLI.
 It selects the caller's Git worktree (including nested directories and symlinks),
 or an explicit `--worktree <path>`, and reads the existing stack registry. It does
 not start, reserve, repair, stop, or reset a stack.
@@ -23,20 +39,19 @@ From the delivery checkout root:
 ```sh
 mise run mock -- status
 mise run mock -- --worktree /absolute/path/to/another/worktree users list
-mise exec -- ./scripts/mock.sh --json status
-mise exec -- ./scripts/mock.sh --json users list --limit 20
+mise run mock -- --json status
+mise run mock -- --json users list --limit 20
 ```
 
-**Mise runner limitation:** installed Mise 2026.8.8 appends a task-failure line to
-stderr when `mise run` receives a nonzero child exit, even with task quiet/raw
-settings. Use `mise exec -- ./scripts/mock.sh ...` for strict single-object JSON
-failures and unchanged exit codes. The direct wrapper itself adds no banners.
-From a nested directory, use the absolute wrapper path with `mise exec`; discovery
-still uses that nested cwd. This is an explicit difference from the originally
-proposed all-purpose `mise run mock` invocation, not a claim that Mise's extra
-failure output is JSON. Runner/bootstrap failures before the Node entry point can
-also produce runner diagnostics; consumers must require both complete JSON and
-the documented exit status.
+**Normal interface:** use `mise run mock -- ...`, including from nested directories.
+The internal launcher preserves the caller's working directory for discovery;
+you do not need to invoke it directly.
+
+Mise adds a task-failure diagnostic to stderr after a nonzero command exit.
+This is accepted behavior, not a CLI failure or an extra workaround requirement.
+The CLI still emits its structured error and preserves its exit code. Treat task
+stderr as a diagnostic stream, not a standalone JSON document; successful JSON
+results remain on stdout. Runner/bootstrap failures can also produce diagnostics.
 
 ### Commands and confirmations
 
@@ -49,20 +64,20 @@ Obtain the selected `stackId` and `providerGeneration` from status. Every provid
 mutation requires both assertions; they do not select another target:
 
 ```sh
-printf %s 'synthetic development password' | mise exec -- ./scripts/mock.sh \
+printf %s 'synthetic development password' | mise run mock -- \
   users create --email developer@example.invalid --password-stdin \
   --expect-stack STACK_UUID --expect-generation GENERATION_UUID
 
-mise exec -- ./scripts/mock.sh users update USER_ID --first-name '' \
+mise run mock -- users update USER_ID --first-name '' \
   --expect-stack STACK_UUID --expect-generation GENERATION_UUID
 
-mise exec -- ./scripts/mock.sh users verify USER_ID --verified true \
+mise run mock -- users verify USER_ID --verified true \
   --expect-stack STACK_UUID --expect-generation GENERATION_UUID
 
-mise exec -- ./scripts/mock.sh sessions revoke-all --user USER_ID \
+mise run mock -- sessions revoke-all --user USER_ID \
   --expect-stack STACK_UUID --expect-generation GENERATION_UUID
 
-mise exec -- ./scripts/mock.sh users delete USER_ID \
+mise run mock -- users delete USER_ID \
   --confirm-email developer@example.invalid \
   --expect-stack STACK_UUID --expect-generation GENERATION_UUID
 ```
@@ -101,7 +116,8 @@ Linux runtime behavior is not proven by the macOS tests.
 
 Human output escapes untrusted terminal controls. `--json` emits one version-1
 success object on stdout, or one sanitized failure object on stderr when normal
-error rendering succeeds. Help/version are non-service commands with `target:
+error rendering succeeds. Mise may append its own failure diagnostic to stderr;
+the entire task stderr stream is not a single JSON object. Help/version are non-service commands with `target:
 null`. Exit codes: 0 success; 2 invalid invocation; 3 target/confirmation refusal;
 4 unavailable/deadline before mutation dispatch; 5 uncertain mutation outcome;
 1 other failure; SIGINT 130. Never infer success from incomplete JSON or partial
@@ -115,8 +131,8 @@ at 1 MiB. Lists default to 50, accept limits 1 through 100, and return an opaque
 ### Captured inbox
 
 ```sh
-mise exec -- ./scripts/mock.sh --json inbox list --to developer@example.invalid
-mise exec -- ./scripts/mock.sh --json inbox read MESSAGE_ID
+mise run mock -- --json inbox list --to developer@example.invalid
+mise run mock -- --json inbox read MESSAGE_ID
 ```
 
 Listing is nonmutating and projects out Mailpit body snippets and attachments.
@@ -185,9 +201,9 @@ diagnostics or credential values. Router matching is case-sensitive and does not
 normalize trailing/duplicate slashes or encoded static path segments. Successful
 responses use concrete schemas and Effect's native response encoding; malformed
 stored response data produces a generic 500, and undeclared user fields are
-omitted. `src/contracts.ts` defines supported request/response shapes;
-`src/http.ts` owns routing and error envelopes. An Effect `WorkOSService` Layer
-in `src/workos-service.ts` owns the operations; `src/provider.ts` owns SQLite,
+omitted. `src/contracts/workos.ts` defines supported request/response shapes;
+`src/server/workos-http.ts` owns routing and error envelopes. An Effect `WorkOSService` Layer
+in `src/server/workos-service.ts` owns the operations; `src/server/provider.ts` owns SQLite,
 signing-key acquisition, and server lifecycle. `acquireProvider` is the native
 scoped Effect API; `startProvider` is its Promise compatibility adapter. The CLI
 loads validated, branded bootstrap configuration once and supplies application-scoped
@@ -253,7 +269,7 @@ regressions run with the SDK suite.
 
 ### Launcher entrypoint
 
-Run `node --experimental-strip-types packages/local-workos/src/cli.ts` with
+Run `node --experimental-strip-types packages/local-workos/src/server/main.ts` with
 `--database <absolute-path> --port <allocated-port> --provider-generation <UUID>`.
 The launcher supplies the synthetic SDK credential through the child-only
 `LOCAL_WORKOS_API_KEY` environment variable; the CLI neither generates nor persists

@@ -258,7 +258,10 @@ async function startupFixture(t, failure) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "runtime-start-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const worktree = await fs.realpath(root);
-  const providerFile = path.join(worktree, "packages/local-workos/src/cli.ts");
+  const providerFile = path.join(
+    worktree,
+    "packages/local-workos/src/server/main.ts",
+  );
   await fs.mkdir(path.dirname(providerFile), { recursive: true });
   await fs.writeFile(providerFile, "// fake source; never executed");
   const backendBinary = path.join(worktree, "fake-backend");

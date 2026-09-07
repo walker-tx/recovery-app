@@ -187,7 +187,7 @@ The historical Mailpit spike used a disposable workspace containing client, harn
 Current checked-in Mailpit coverage can be run from a Mise-enabled Recovery checkout:
 
 ```sh
-mise exec -- pnpm --filter @recovery/local-workos exec vitest run tests/admin-inbox.test.ts tests/admin-inbox-transport.test.ts
+mise exec -- pnpm --filter @recovery/local-workos exec vitest run tests/cli/admin-inbox.test.ts tests/cli/admin-inbox-transport.test.ts
 mise exec -- node --test scripts/test-mock-integration.cjs
 ```
 

@@ -216,9 +216,13 @@ Administrative email initiation remains out of v1. Verification and password-res
 
 ## Developer CLI
 
+### Package ownership
+
+Keep one workspace package with shallow `src/cli`, `src/server`, and `src/contracts` directories. Administration parsing, output, Unix-socket client, and Mailpit client belong to `cli`; provider startup, configuration, API listeners, resource lifecycle, and WorkOS operations belong to `server`. Shared WorkOS/admin schemas and identity validation belong to `contracts`, which must not import either executable's implementation. The CLI must not import server implementation. Tests follow the same ownership groups. Repository-wide stack supervision and registry code stay in `scripts`; no new workspace package or framework is introduced.
+
 ### Boundary and command surface
 
-Use one package-owned Effect entry point for administration, exposed through `mise run mock -- <arguments>`. This is the proposed supported wrapper, not a claim that it exists today. The wrapper must preserve the caller's working directory for discovery, forward arguments and exit codes unchanged, and add no banners to command output. `--worktree` selects another local checkout explicitly. No global installation, shell profile modification, browser, TUI, or interactive wizard is required.
+Use one package-owned Effect entry point for administration, exposed through `mise run mock -- <arguments>` as the normal supported interface. The internal launcher preserves the caller's working directory for discovery and forwards arguments and exit codes unchanged. The user accepts Mise's task-failure diagnostic on stderr after nonzero exits; no alternate direct-wrapper invocation is required to avoid it. The launcher and application must not add unrelated banners. `--worktree` selects another local checkout explicitly. No global installation, shell profile modification, browser, TUI, or interactive wizard is required.
 
 Keep daemon startup and stack start/stop/reset in their existing lifecycle entry points. Do not overload an administration command to boot a stack or open its database directly.
 
@@ -265,7 +269,7 @@ User creation reads a password only with `--password-stdin`; do not accept a pas
 
 Human-readable output is the default; explicit `--json` selects the machine contract consistently regardless of TTY. Global flags must work before and after subcommands. No command chooses interactivity, colors, pagers, or spinners merely because a terminal is present. Disable Wizard and prompt fallbacks; allow only deliberately supported built-ins. Human output escapes terminal control characters in all externally sourced strings, including names, subjects, and message bodies.
 
-Machine success emits one JSON object plus newline on stdout and no routine stderr output. A normally rendered failure emits one JSON object plus newline on stderr, empty stdout, and a nonzero exit. If an output stream itself fails, partial stdout or an undeliverable error is possible: callers must reject incomplete JSON and use the nonzero exit rather than infer a complete result. Do not stream partial results before validation, mix help with failures, print framework logs to stdout, or serialize raw parser/provider exceptions. Explicit `--help`/`--version` are successful non-service commands; with `--json` they return structured help/version, otherwise text. Invalid arguments remain failures even when framework error rendering wants to show help.
+Machine success emits one JSON object plus newline on stdout and no routine stderr output. The application renders a normal failure as one JSON object plus newline on stderr, empty stdout, and a nonzero exit. Mise may append its own task-failure diagnostic: the complete task stderr stream is not promised to be a standalone JSON document. This runner diagnostic is accepted and does not alter the application error or exit policy. If an output stream itself fails, partial stdout or an undeliverable error is possible: callers must reject incomplete JSON and use the nonzero exit rather than infer a complete result. Do not stream partial results before validation, mix help with failures, print framework logs to stdout, or serialize raw parser/provider exceptions. Explicit `--help`/`--version` are successful non-service commands; with `--json` they return structured help/version, otherwise text. Invalid arguments remain failures even when framework error rendering wants to show help.
 
 Version-1 envelope:
 

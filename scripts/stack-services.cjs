@@ -101,7 +101,7 @@ function buildStackServices(options = {}) {
     const provider = privateCommand([
       "node",
       "--experimental-strip-types",
-      path.join(worktree, "packages/local-workos/src/cli.ts"),
+      path.join(worktree, "packages/local-workos/src/server/main.ts"),
       "--database",
       path.join(state.provider, "state.sqlite"),
       "--port",

@@ -13,7 +13,7 @@ function fixture(t) {
   );
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, "scripts"));
-  fs.mkdirSync(path.join(root, "packages/local-workos/src"), {
+  fs.mkdirSync(path.join(root, "packages/local-workos/src/cli"), {
     recursive: true,
   });
   fs.mkdirSync(path.join(root, "nested/child"), { recursive: true });
@@ -24,7 +24,7 @@ function fixture(t) {
   );
   fs.copyFileSync(path.join(__dirname, "mock.sh"), wrapper);
   fs.writeFileSync(
-    path.join(root, "packages/local-workos/src/mock.ts"),
+    path.join(root, "packages/local-workos/src/cli/main.ts"),
     `
 import { readFileSync } from "node:fs";
 const args = process.argv.slice(2);
@@ -83,3 +83,40 @@ test("direct wrapper preserves cwd, closed stdin, failure stream and exit code",
     input: "exact synthetic password\n",
   });
 });
+
+for (const failure of [false, true]) {
+  test(`mise run mock preserves nested cwd, stdin, arguments and ${failure ? "failure" : "success"} status`, (t) => {
+    const f = fixture(t);
+    fs.writeFileSync(
+      path.join(f.root, "mise.toml"),
+      `[tools]\nnode = "24.16.0"\n\n[tasks.mock]\nquiet = true\nraw = true\nrun = ${JSON.stringify(JSON.stringify(f.wrapper))}\n`,
+    );
+    const args = [
+      "--first-name",
+      "Name with spaces",
+      ...(failure ? ["--fail"] : []),
+    ];
+    const result = spawnSync("mise", ["run", "mock", "--", ...args], {
+      cwd: f.nested,
+      input: "exact synthetic password\n",
+      encoding: "utf8",
+      timeout: 5000,
+      env: {
+        PATH: `${path.dirname(process.execPath)}:${process.env.PATH}`,
+        MISE_GLOBAL_CONFIG_FILE: "/dev/null",
+        MISE_TRUSTED_CONFIG_PATHS: f.root,
+      },
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, failure ? 5 : 0, result.stderr);
+    assert.equal(failure ? result.stdout : result.stderr, "");
+    const stream = failure
+      ? result.stderr.replace(/\n\[mock\] ERROR task failed\n$/, "\n")
+      : result.stdout;
+    assert.deepEqual(JSON.parse(stream), {
+      cwd: f.nested,
+      args,
+      input: "exact synthetic password\n",
+    });
+  });
+}

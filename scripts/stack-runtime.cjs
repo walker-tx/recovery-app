@@ -408,7 +408,7 @@ async function createRuntime({
           checkpoint = "provider source";
           const providerFile = path.join(
             worktree,
-            "packages/local-workos/src/cli.ts",
+            "packages/local-workos/src/server/main.ts",
           );
           if (!(await fs.stat(providerFile)).isFile()) {
             throw Error();

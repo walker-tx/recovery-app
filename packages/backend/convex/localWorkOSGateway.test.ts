@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { WorkOS } from "@workos-inc/node";
-import { startProvider } from "../../local-workos/src/provider.ts";
+import { startProvider } from "../../local-workos/src/server/provider.ts";
 import {
   categorizeWorkOSError,
   WorkOSGatewayError,

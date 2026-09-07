@@ -18,7 +18,7 @@ const { createProcessInspector } = require("./stack-process-inspector.cjs");
 
 const root = path.resolve(__dirname, "..");
 const wrapper = path.join(root, "scripts/mock.sh");
-const providerCli = path.join(root, "packages/local-workos/src/cli.ts");
+const providerCli = path.join(root, "packages/local-workos/src/server/main.ts");
 const key = "sk_test_local_" + "a".repeat(64);
 const password = "synthetic test password";
 
@@ -82,7 +82,7 @@ async function fixture(t) {
   );
   await fs.writeFile(
     path.join(first, "mise.toml"),
-    '[tools]\nnode = "24.16.0"\n',
+    `[tools]\nnode = "24.16.0"\n\n[tasks.mock]\nquiet = true\nraw = true\nrun = ${JSON.stringify(JSON.stringify(wrapper))}\n`,
   );
   git(first, ["add", "synthetic.txt", "mise.toml"]);
   git(first, [
@@ -247,7 +247,7 @@ async function fixture(t) {
 }
 
 function cli(cwd, args, input = "") {
-  const result = spawnSync("mise", ["exec", "--", wrapper, "--json", ...args], {
+  const result = spawnSync("mise", ["run", "mock", "--", "--json", ...args], {
     cwd,
     input,
     encoding: "utf8",
@@ -264,7 +264,12 @@ function cli(cwd, args, input = "") {
     undefined,
     "CLI exceeded bounded subprocess execution",
   );
-  const stream = result.status === 0 ? result.stdout : result.stderr;
+  // Mise appends this banner on task failure, even with quiet/raw enabled.
+  // Remove only that exact trailing line; any other stderr still fails JSON parsing.
+  const stream =
+    result.status === 0
+      ? result.stdout
+      : result.stderr.replace(/\n\[mock\] ERROR task failed\n$/, "\n");
   assert.equal(
     result.status === 0 ? result.stderr : result.stdout,
     "",
@@ -303,7 +308,7 @@ test(
   async (t) => {
     assert.equal(
       await fs
-        .access(path.join(root, "packages/local-workos/src/mock.ts"))
+        .access(path.join(root, "packages/local-workos/src/cli/main.ts"))
         .then(
           () => true,
           () => false,

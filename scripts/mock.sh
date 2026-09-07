@@ -6,4 +6,4 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 if [ -n "${MISE_ORIGINAL_CWD-}" ]; then
   cd -- "$MISE_ORIGINAL_CWD"
 fi
-exec node "$ROOT/packages/local-workos/src/mock.ts" "$@"
+exec node "$ROOT/packages/local-workos/src/cli/main.ts" "$@"
