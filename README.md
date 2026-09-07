@@ -138,6 +138,16 @@ Convex instance, publishes paired mobile configuration, then starts Metro. That
 `start` command performs local writes; tests use injected I/O instead. It never
 targets a cloud deployment or falls back to staging credentials.
 
+**Accepted local Convex exception:** the generated `LOCAL_CONVEX_INSTANCE_SECRET`
+remains in vendor-required `--instance-secret` arguments for keygen and server
+startup, only for explicitly local development/test backends. The user accepts
+its visibility in same-host process arguments and process-inspection output.
+This is an accepted exposure, not a fixed input mechanism or permission to add
+secret logging. Other credentials, tokens, passwords, and production/remote
+targets are excluded. Existing diagnostic redaction, private deploy-credential
+environment transport, owner-only `mise.local.toml`, and runtime guards remain
+unchanged. See the [security contract](docs/superpowers/specs/local-workos-development-provider-design.md#architecture-and-configuration).
+
 Status probes only verified original owned-running processes whose paired daemon
 mapping still matches. Stopped, conflicted, or unknown endpoints stay
 `unknown/not-probed`. Each eligible endpoint gets one bounded probe; failures are

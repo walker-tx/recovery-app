@@ -56,6 +56,8 @@ Both the Convex JWT configuration and `requireWorkOSIdentity` must derive matchi
 
 Secrets remain in permitted local state/configuration; no `.env` files or secret `EXPO_PUBLIC_*` values. Signing keys never leave the server. Persisted password credentials require a standard password-hashing implementation; opaque refresh/admin credentials should be stored as verifiers where their protocol permits. Authentication bodies and credentials must be excluded from logging.
 
+The user accepts one vendor-required CLI exposure for explicitly local development/test Convex backends: the generated `LOCAL_CONVEX_INSTANCE_SECRET` in keygen and server-start `--instance-secret` arguments. Same-host users or tools permitted to inspect process arguments can observe this secret and include it in process-inspection output. This is an accepted local risk, not a technical fix or permission to add secret logging. It does not cover WorkOS credentials, user passwords, admin/deploy keys, other tokens or secrets, or production/remote targets. Keep diagnostic redaction, private environment transport for deploy credentials, owner-only `mise.local.toml` storage, and all deployment, process-ownership, and filesystem guards unchanged. No backend fork, input-channel patch, or new secret store is adopted.
+
 ### Concrete local configuration contract
 
 Approved local configuration defaults:
