@@ -259,7 +259,15 @@ const main = Effect.gen(function* () {
         providerGeneration: selection.providerGeneration,
         ...selection.inbox,
       };
+      // Mailpit normalizes verifier failures to its refusal sentinel and owns
+      // dispatch outcomes. Retain the registry classification at this boundary.
+      let verificationCode: string | undefined;
       const verify = verifyTarget(selection, true).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => {
+            verificationCode = error.code;
+          }),
+        ),
         Effect.mapError(
           () =>
             new InboxError({
@@ -288,13 +296,14 @@ const main = Effect.gen(function* () {
       data = yield* operation.pipe(
         Effect.mapError((error) =>
           failure(
-            error.code === "OWNERSHIP_CHANGED"
-              ? "TARGET_MISMATCH"
-              : error.code === "INVALID_RESPONSE"
-                ? "INVALID_RESPONSE"
-                : error.code.startsWith("INVALID_")
-                  ? "INVALID_INPUT"
-                  : "UNAVAILABLE",
+            verificationCode ??
+              (error.code === "OWNERSHIP_CHANGED"
+                ? "TARGET_MISMATCH"
+                : error.code === "INVALID_RESPONSE"
+                  ? "INVALID_RESPONSE"
+                  : error.code.startsWith("INVALID_")
+                    ? "INVALID_INPUT"
+                    : "UNAVAILABLE"),
             error.outcome,
           ),
         ),

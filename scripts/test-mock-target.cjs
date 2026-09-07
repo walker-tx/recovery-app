@@ -8,7 +8,7 @@ const { promisify } = require("node:util");
 const { createRegistry, resolveRegistryPath } = require("./stack-registry.cjs");
 const { createMockTarget } = require("./mock-target.cjs");
 const run = promisify(execFile);
-async function fixture(t) {
+async function fixture(t, adapters = {}) {
   const temp = await fs.realpath(
     await fs.mkdtemp(path.join(os.tmpdir(), "mock-target-")),
   );
@@ -53,6 +53,7 @@ async function fixture(t) {
       : null;
   };
   const client = createMockTarget({
+    ...adapters,
     createInspector: async () => ({
       inspect: inspectOS,
       close: async () => {},
@@ -421,9 +422,11 @@ test("listener evidence unavailable or ambiguous fails closed with sanitized out
     `p123\nf4\nn*:${f.a.ports.mailpitHttp}\n`,
     `p123\nf4\nn127.0.0.1:${f.a.ports.mailpitHttp}\np124\nf5\nn127.0.0.1:${f.a.ports.mailpitHttp}\n`,
   ]) {
+    const events = [];
     let listenerCalls = 0;
     const client = createMockTarget({
       ...base,
+      observeFailure: (event) => events.push(event),
       exec: async (file, args, options) => {
         assert.notEqual(path.basename(file), "pitchfork");
         if (path.basename(file) !== "lsof") {
@@ -455,6 +458,81 @@ test("listener evidence unavailable or ambiguous fails closed with sanitized out
       },
     );
     assert.equal(listenerCalls, 1);
+    assert.equal(events.length, 1);
+    assert.equal(
+      events[0].site,
+      output === null ? "listener.inspect" : "listener.field",
+    );
+    assert.equal(
+      JSON.stringify(events).includes("private-error-canary"),
+      false,
+    );
+    assert.equal(JSON.stringify(events).includes(f.worktree), false);
+  }
+});
+
+test("listener native failure categories preserve refusal and redact error details", async (t) => {
+  const f = await fixture(t);
+  const tuple = { pid: 123, startedAt: "synthetic:1", worktree: f.worktree };
+  f.actual.set(123, { ...tuple, stackId: f.a.stackId });
+  await f.registry.recordProcess(
+    f.worktree,
+    f.a.stackId,
+    ["provider", "mailpitHttp", "mailpitSmtp"],
+    { ...tuple, stackId: f.a.stackId },
+  );
+  for (const [properties, nativeFailureKind] of [
+    [{ code: "ENOENT" }, "ENOENT"],
+    [{ code: "EACCES" }, "EACCES"],
+    [
+      { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" },
+      "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+    ],
+    [{ code: "ABORT_ERR" }, "ABORT_ERR"],
+    [{ code: 1 }, "nonzero-exit"],
+    [{ code: 2 }, "nonzero-exit"],
+    [{ code: null, killed: true, signal: "SIGTERM" }, "other"],
+    [{ code: "private-error-canary" }, "other"],
+  ]) {
+    const events = [];
+    const client = createMockTarget({
+      observeFailure: (event) => events.push(event),
+      inspectSocket: async () => true,
+      createInspector: async () => ({
+        inspect: async () => tuple,
+        close: async () => {},
+      }),
+      exec: async (file, args, options) => {
+        if (path.basename(file) !== "lsof") {
+          return run(file, args, options);
+        }
+        throw Object.assign(Error("private-error-canary"), properties, {
+          stdout: "private-error-canary",
+          stderr: "private-error-canary",
+          path: f.worktree,
+        });
+      },
+    });
+    const selection = await client.selectMockTarget({ cwd: f.worktree });
+    await assert.rejects(client.verifyMockTarget(selection, { inbox: true }), {
+      code: "SERVICE_UNAVAILABLE",
+    });
+    assert.deepEqual(events, [
+      {
+        site: "listener.inspect",
+        aborted: false,
+        targetMismatch: false,
+        nativeFailureKind,
+        exitOne: properties.code === 1,
+        killed: properties.killed === true,
+        signaled: typeof properties.signal === "string",
+      },
+    ]);
+    assert.equal(
+      JSON.stringify(events).includes("private-error-canary"),
+      false,
+    );
+    assert.equal(JSON.stringify(events).includes(f.worktree), false);
   }
 });
 
@@ -533,3 +611,187 @@ test("native ESM CLI bridge can import the declared CommonJS target functions", 
   assert.equal(typeof helper.selectMockTarget, "function");
   assert.equal(typeof helper.verifyMockTarget, "function");
 });
+
+test("ownership diagnostics are opt-in, safe, and cannot replace refusal", async (t) => {
+  const events = [];
+  const f = await fixture(t, { observeFailure: (event) => events.push(event) });
+  const provider = {
+    pid: 123,
+    startedAt: "private-start-secret",
+    worktree: f.worktree,
+    stackId: f.a.stackId,
+  };
+  f.actual.set(123, provider);
+  await f.registry.recordProcess(f.worktree, f.a.stackId, "provider", provider);
+  await f.client.selectMockTarget({ cwd: f.worktree });
+  assert.deepEqual(events, []);
+  f.actual.set(123, { ...provider, startedAt: "other-private-secret" });
+  await assert.rejects(f.client.selectMockTarget({ cwd: f.worktree }), {
+    code: "TARGET_MISMATCH",
+  });
+  assert.deepEqual(events, [
+    {
+      site: "process.tuple",
+      service: "provider",
+      pidEqual: true,
+      startedAtEqual: false,
+      worktreeEqual: true,
+      deepEqual: false,
+    },
+  ]);
+  assert.equal(JSON.stringify(events).includes(f.worktree), false);
+  assert.equal(JSON.stringify(events).includes("secret"), false);
+  const throwing = await fixture(t, {
+    observeFailure: () => {
+      throw new Error("observer secret");
+    },
+  });
+  const other = {
+    ...provider,
+    worktree: throwing.worktree,
+    stackId: throwing.a.stackId,
+  };
+  throwing.actual.set(123, other);
+  await throwing.registry.recordProcess(
+    throwing.worktree,
+    throwing.a.stackId,
+    "provider",
+    other,
+  );
+  throwing.actual.set(123, { ...other, startedAt: "changed" });
+  await assert.rejects(
+    throwing.client.selectMockTarget({ cwd: throwing.worktree }),
+    { code: "TARGET_MISMATCH" },
+  );
+});
+
+test(
+  "diagnostics identify inbox continuity and service state refusals",
+  { timeout: 10000 },
+  async (t) => {
+    const events = [];
+    const f = await fixture(t, {
+      observeFailure: (event) => events.push(event),
+    });
+    const provider = {
+      pid: 123,
+      startedAt: "private-start",
+      worktree: f.worktree,
+      stackId: f.a.stackId,
+    };
+    f.actual.set(123, provider);
+    await f.registry.recordProcess(
+      f.worktree,
+      f.a.stackId,
+      ["provider", "mailpitHttp", "mailpitSmtp"],
+      provider,
+    );
+    const selected = await f.client.selectMockTarget({ cwd: f.worktree });
+    await assert.rejects(
+      f.client.verifyMockTarget(
+        { ...selected, inbox: { ...selected.inbox, epoch: "private-changed" } },
+        { inbox: true },
+      ),
+      { code: "TARGET_MISMATCH" },
+    );
+    assert.deepEqual(events, [{ site: "inbox.continuity", equal: false }]);
+    events.length = 0;
+    f.actual.delete(123);
+    await assert.rejects(f.client.verifyMockTarget(selected), {
+      code: "SERVICE_UNAVAILABLE",
+    });
+    assert.deepEqual(events, [
+      {
+        site: "service.state",
+        providerRunning: false,
+        inboxRequired: false,
+        inboxPresent: false,
+      },
+    ]);
+    events.length = 0;
+    const stopped = await f.client.selectMockTarget({ cwd: f.worktree });
+    await assert.rejects(f.client.verifyMockTarget(stopped, { inbox: true }), {
+      code: "SERVICE_UNAVAILABLE",
+    });
+    assert.deepEqual(events, [
+      {
+        site: "service.state",
+        providerRunning: false,
+        inboxRequired: true,
+        inboxPresent: false,
+      },
+    ]);
+  },
+);
+
+test(
+  "tuple diagnostics expose deep inequality without structural data",
+  { timeout: 10000 },
+  async (t) => {
+    const f = await fixture(t);
+    const tuple = {
+      pid: 123,
+      startedAt: "private-start",
+      worktree: f.worktree,
+    };
+    f.actual.set(123, { ...tuple, stackId: f.a.stackId });
+    await f.registry.recordProcess(f.worktree, f.a.stackId, "provider", {
+      ...tuple,
+      stackId: f.a.stackId,
+    });
+    for (const actual of [
+      { ...tuple, privateExtra: "private-value" },
+      Object.assign(Object.create(null), tuple),
+      Object.assign([], tuple),
+    ]) {
+      const events = [];
+      const client = createMockTarget({
+        observeFailure: (event) => events.push(event),
+        createInspector: async () => ({
+          inspect: async () => actual,
+          close: async () => {},
+        }),
+      });
+      await assert.rejects(client.selectMockTarget({ cwd: f.worktree }), {
+        code: "TARGET_MISMATCH",
+      });
+      assert.deepEqual(events, [
+        {
+          site: "process.tuple",
+          service: "provider",
+          pidEqual: true,
+          startedAtEqual: true,
+          worktreeEqual: true,
+          deepEqual: false,
+        },
+      ]);
+      assert.equal(JSON.stringify(events).includes("private"), false);
+      assert.equal(JSON.stringify(events).includes(f.worktree), false);
+      assert.equal(Object.isFrozen(events[0]), true);
+    }
+  },
+);
+
+for (const kind of ["rejected", "pending"]) {
+  test(
+    `diagnostic observer ${kind} promise does not change refusal`,
+    { timeout: 5000 },
+    async (t) => {
+      let calls = 0;
+      const f = await fixture(t, {
+        observeFailure: () => {
+          calls++;
+          return kind === "rejected"
+            ? Promise.reject(new Error("private observer rejection"))
+            : new Promise(() => {});
+        },
+      });
+      const stopped = await f.client.selectMockTarget({ cwd: f.worktree });
+      await assert.rejects(f.client.verifyMockTarget(stopped), {
+        code: "SERVICE_UNAVAILABLE",
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(calls, 1);
+    },
+  );
+}

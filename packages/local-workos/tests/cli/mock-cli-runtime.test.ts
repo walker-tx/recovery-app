@@ -45,6 +45,11 @@ const runFixture = Effect.fn(function* (options: {
   bridgeError?: "TARGET_MISMATCH" | "SERVICE_UNAVAILABLE" | "unexpected";
   bridgeVerify?: boolean;
   inboxInvalidResponse?: boolean;
+  inboxVerification?: {
+    operation: "list" | "read";
+    phase: "before" | "after";
+    code: "SERVICE_UNAVAILABLE" | "TARGET_MISMATCH" | "unexpected";
+  };
   breakOutput?: boolean;
   extraArgs?: string[];
   interrupt?: boolean;
@@ -60,15 +65,39 @@ const runFixture = Effect.fn(function* (options: {
     (directory) =>
       Effect.promise(() => rm(directory, { recursive: true, force: true })),
   );
+  const inboxRequests: string[] = [];
+  const inboxServer = yield* Effect.acquireRelease(
+    Effect.sync(() =>
+      createServer((req, res) => {
+        inboxRequests.push(req.url ?? "");
+        res.setHeader("content-type", "application/json");
+        res.end(encode({ Text: "secret-canary" }));
+      }),
+    ),
+    (owned) =>
+      Effect.callback<void>((resume) => {
+        owned.closeAllConnections();
+        owned.close(() => resume(Effect.void));
+      }),
+  );
+  yield* Effect.callback<void>((resume) => {
+    inboxServer.listen(0, "127.0.0.1", () => resume(Effect.void));
+  });
+  const inboxAddress = inboxServer.address();
+  if (inboxAddress === null || typeof inboxAddress === "string") {
+    return yield* Effect.die("Missing inbox fixture address");
+  }
   const target = {
     stackId: "11111111-1111-4111-8111-111111111111",
     providerGeneration: "22222222-2222-4222-8222-222222222222",
     worktree: "/synthetic",
     providerState: options.providerState ?? "running",
     adminSocket: join(dir, "a.sock"),
-    inbox: options.inboxInvalidResponse
-      ? { baseUrl: "http://127.0.0.1:1", epoch: "fixture" }
-      : null,
+    inbox: options.inboxVerification
+      ? { baseUrl: `http://127.0.0.1:${inboxAddress.port}`, epoch: "fixture" }
+      : options.inboxInvalidResponse
+        ? { baseUrl: "http://127.0.0.1:1", epoch: "fixture" }
+        : null,
     record: {},
   };
   const requests: Array<{ operation: string; input: Record<string, unknown> }> =
@@ -130,29 +159,39 @@ const runFixture = Effect.fn(function* (options: {
     "../../../../scripts/mock-target.cjs",
     import.meta.url,
   ).href;
-  const bridgeSource = `export const selectMockTarget=()=>{${options.bridgeVerify ? `return Promise.resolve(${encode(target)})` : `throw Object.assign(new Error("secret-canary"), {code:${encode(options.bridgeError ?? "unexpected")}})`}}; export const verifyMockTarget=()=>{throw Object.assign(new Error("secret-canary"), {code:${encode(options.bridgeError ?? "unexpected")}})};`;
+  const bridgeSource = options.inboxVerification
+    ? `export const selectMockTarget=()=>Promise.resolve(${encode(target)}); let verifications=0; export const verifyMockTarget=async (_target,options)=>{if(options.inbox && ++verifications===${options.inboxVerification.phase === "before" ? 1 : 2}){throw Object.assign(new Error("secret-canary"),{code:${encode(options.inboxVerification.code)}})}};`
+    : `export const selectMockTarget=()=>{${options.bridgeVerify ? `return Promise.resolve(${encode(target)})` : `throw Object.assign(new Error("secret-canary"), {code:${encode(options.bridgeError ?? "unexpected")}})`}}; export const verifyMockTarget=()=>{throw Object.assign(new Error("secret-canary"), {code:${encode(options.bridgeError ?? "unexpected")}})};`;
   const inboxUrl = new URL("../../src/cli/mailpit-client.ts", import.meta.url)
     .href;
   const inboxSource = `export {InboxError} from ${encode(inboxUrl + "?actual")}; import {InboxError} from ${encode(inboxUrl + "?actual")}; import {Effect} from ${encode(effectUrl)}; export const listInbox=()=>Effect.fail(new InboxError({code:"INVALID_RESPONSE", message:"secret-canary", outcome:"not-applied"})); export const readInbox=listInbox;`;
-  const hooks = `import {registerHooks} from 'node:module'; registerHooks({load(url,context,next){if(${options.inboxInvalidResponse === true} && url===${encode(inboxUrl)})return {format:"module",source:${encode(inboxSource)},shortCircuit:true};if(${options.bridgeError !== undefined} && url===${encode(bridgeUrl)})return {format:"module",source:${encode(bridgeSource)},shortCircuit:true};if(${options.bridgeError === undefined} && url===${encode(clientUrl)})return {format:'module',source:${encode(replacement)},shortCircuit:true};return next(url,context);}});`;
+  const hooks = `import {registerHooks} from 'node:module'; registerHooks({load(url,context,next){if(${options.inboxInvalidResponse === true} && url===${encode(inboxUrl)})return {format:"module",source:${encode(inboxSource)},shortCircuit:true};if(${options.bridgeError !== undefined || options.inboxVerification !== undefined} && url===${encode(bridgeUrl)})return {format:"module",source:${encode(bridgeSource)},shortCircuit:true};if(${options.bridgeError === undefined && options.inboxVerification === undefined} && url===${encode(clientUrl)})return {format:'module',source:${encode(replacement)},shortCircuit:true};return next(url,context);}});`;
   const hook = "data:text/javascript," + encodeURIComponent(hooks);
-  const args = options.inboxInvalidResponse
-    ? ["inbox", "list"]
-    : options.statusOnly
-      ? ["status"]
-      : options.stall === "output"
-        ? ["users", "list"]
-        : [
-            "users",
-            "create",
-            "--email",
-            "person@example.test",
-            "--password-stdin",
-            "--expect-stack",
-            "11111111-1111-4111-8111-111111111111",
-            "--expect-generation",
-            "22222222-2222-4222-8222-222222222222",
-          ];
+  const args = options.inboxVerification
+    ? [
+        "inbox",
+        options.inboxVerification.operation,
+        ...(options.inboxVerification.operation === "read"
+          ? ["message_fixture"]
+          : []),
+      ]
+    : options.inboxInvalidResponse
+      ? ["inbox", "list"]
+      : options.statusOnly
+        ? ["status"]
+        : options.stall === "output"
+          ? ["users", "list"]
+          : [
+              "users",
+              "create",
+              "--email",
+              "person@example.test",
+              "--password-stdin",
+              "--expect-stack",
+              "11111111-1111-4111-8111-111111111111",
+              "--expect-generation",
+              "22222222-2222-4222-8222-222222222222",
+            ];
   const result = yield* Effect.callback<{
     code: number | null;
     stdout: string;
@@ -224,7 +263,7 @@ sys.exit(os.waitstatus_to_exitcode(status))`;
       child.kill();
     });
   });
-  return { ...result, requests };
+  return { ...result, requests, inboxRequests };
 });
 it.effect.each([
   Buffer.from("pässword\n"),
@@ -480,3 +519,49 @@ it.effect(
     }),
   { timeout: 10000 },
 );
+
+for (const operation of ["list", "read"] as const) {
+  for (const phase of ["before", "after"] as const) {
+    it.effect.each([
+      ["SERVICE_UNAVAILABLE", "UNAVAILABLE", 4],
+      ["TARGET_MISMATCH", "TARGET_MISMATCH", 3],
+      ["unexpected", "INTERNAL_ERROR", 1],
+    ] as const)(
+      `inbox ${operation} ${phase} verification preserves %s refusal`,
+      ([code, expected, exitCode]) =>
+        Effect.gen(function* () {
+          const result = yield* runFixture({
+            inboxVerification: { operation, phase, code },
+          });
+          const outcome =
+            operation === "list"
+              ? "not-applicable"
+              : phase === "before"
+                ? "not-applied"
+                : "unknown";
+          expect(result.code, result.stderr).toBe(
+            outcome === "unknown" ? 5 : exitCode,
+          );
+          expect(result.signal).toBeNull();
+          expect(result.stdout).toBe("");
+          expect(result.stderr).not.toContain("secret-canary");
+          const envelope = yield* Schema.decodeUnknownEffect(json)(
+            result.stderr,
+          );
+          expect(envelope).toMatchObject({
+            ok: false,
+            error: { code: expected, outcome },
+          });
+          expect(result.inboxRequests).toEqual(
+            phase === "before"
+              ? []
+              : [
+                  operation === "list"
+                    ? "/api/v1/messages?start=0&limit=50"
+                    : "/api/v1/message/message_fixture",
+                ],
+          );
+        }),
+    );
+  }
+}

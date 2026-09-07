@@ -46,7 +46,7 @@ async function stop(child) {
   }
 }
 
-async function fixture(t) {
+async function fixture(t, observe = true, nativeFailure = false) {
   const directory = await fs.realpath(
     await fs.mkdtemp(path.join(os.tmpdir(), "recovery-cli-e2e-")),
   );
@@ -72,6 +72,52 @@ async function fixture(t) {
     }
     await fs.rm(directory, { recursive: true, force: true });
   });
+  // Test-owned preload replaces only the existing adapter exports. Evidence uses
+  // fd 3, never either CLI stream, environment toggles, or a production file sink.
+  // One refusal event per read; bounded by the 12s spawnSync deadline and its
+  // default maxBuffer. This fixture is not a persistent telemetry sink.
+  const preload = path.join(directory, "observe-target.cjs");
+  await fs.writeFile(
+    preload,
+    `
+const target = require(${JSON.stringify(path.join(root, "scripts/mock-target.cjs"))});
+const { writeSync } = require("node:fs");
+Object.assign(target, target.createMockTarget({
+  ${
+    nativeFailure
+      ? `exec: async (file, args, options) => {
+    if (require("node:path").basename(file) === "lsof") {
+      throw Object.assign(Error("private-error-canary"), {
+        code: 2, killed: true, signal: "SIGTERM",
+        stdout: "private-error-canary", stderr: "private-error-canary",
+      });
+    }
+    return require("node:util").promisify(require("node:child_process").execFile)(file, args, options);
+  },`
+      : ""
+  }
+  observeFailure: (event) => writeSync(3, JSON.stringify(event) + "\\n"),
+}));
+`,
+  );
+  const diagnosticWrapper = path.join(directory, "mock.sh");
+  const originalWrapper = await fs.readFile(wrapper, "utf8");
+  const rootLine = originalWrapper
+    .split("\n")
+    .find((line) => line.startsWith("ROOT="));
+  assert.ok(rootLine);
+  assert.equal(originalWrapper.split("exec node ").length, 2);
+  const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
+  await fs.writeFile(
+    diagnosticWrapper,
+    originalWrapper
+      .replace(rootLine, `ROOT=${quote(root)}`)
+      .replace(
+        "exec node ",
+        observe ? `exec node --require ${quote(preload)} ` : "exec node ",
+      ),
+    { mode: 0o700 },
+  );
   const first = path.join(directory, "first");
   const second = path.join(directory, "second");
   await fs.mkdir(first, { mode: 0o700 });
@@ -82,7 +128,7 @@ async function fixture(t) {
   );
   await fs.writeFile(
     path.join(first, "mise.toml"),
-    `[tools]\nnode = "24.16.0"\n\n[tasks.mock]\nquiet = true\nraw = true\nrun = ${JSON.stringify(JSON.stringify(wrapper))}\n`,
+    `[tools]\nnode = "24.16.0"\n\n[tasks.mock]\nquiet = true\nraw = true\nrun = ${JSON.stringify(JSON.stringify(diagnosticWrapper))}\n`,
   );
   git(first, ["add", "synthetic.txt", "mise.toml"]);
   git(first, [
@@ -250,6 +296,7 @@ function cli(cwd, args, input = "") {
   const result = spawnSync("mise", ["run", "mock", "--", "--json", ...args], {
     cwd,
     input,
+    stdio: ["pipe", "pipe", "pipe", "pipe"],
     encoding: "utf8",
     timeout: 12000,
     env: {
@@ -287,9 +334,23 @@ function cli(cwd, args, input = "") {
       `Entry did not emit JSON (exit ${result.status}): ${diagnostic}`,
     );
   }
+  const evidence = result.output[3] ?? "";
+  const diagnostics =
+    evidence.trim() === ""
+      ? []
+      : evidence
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+  if (["TARGET_MISMATCH", "UNAVAILABLE"].includes(envelope.error?.code)) {
+    console.error(
+      "mock-target ownership evidence",
+      JSON.stringify(diagnostics),
+    );
+  }
   assert.equal(envelope.schemaVersion, 1);
   assert.equal(envelope.ok, result.status === 0);
-  return { ...result, envelope };
+  return { ...result, envelope, diagnostics };
 }
 
 function mutation(stack, args) {
@@ -539,6 +600,76 @@ test(
       cli(b.nested, ["inbox", "list"]).status,
       0,
       "inbox sibling must survive selected cleanup",
+    );
+  },
+);
+
+test(
+  "diagnostic fixture captures refusal outside strict CLI streams",
+  { timeout: 20000 },
+  async (t) => {
+    const f = await fixture(t);
+    const result = cli(f.first, ["status"]);
+    assert.equal(result.status, 3);
+    assert.deepEqual(result.diagnostics, [
+      { site: "registry.read", aborted: false, targetMismatch: true },
+    ]);
+  },
+);
+
+test(
+  "default adapter refusal leaves strict CLI streams unchanged",
+  { timeout: 20000 },
+  async (t) => {
+    const f = await fixture(t, false);
+    const result = cli(f.first, ["status"]);
+    assert.equal(result.status, 3);
+    assert.equal(result.envelope.error.code, "TARGET_MISMATCH");
+    assert.equal(result.stdout, "");
+    assert.deepEqual(result.diagnostics, []);
+  },
+);
+
+test(
+  "diagnostic fixture reports UNAVAILABLE evidence without changing CLI streams or exit",
+  { timeout: 30000 },
+  async (t) => {
+    const f = await fixture(t, true, true);
+    const stack = await f.startProvider(f.first);
+    await f.startMailpit(stack);
+    const logged = [];
+    t.mock.method(console, "error", (...args) => logged.push(args));
+    assert.equal(cli(stack.nested, ["status"]).status, 0);
+    assert.deepEqual(logged, [], "successful commands must not log evidence");
+    const result = cli(stack.nested, ["inbox", "list"]);
+    assert.equal(result.status, 4);
+    assert.equal(result.envelope.error.code, "UNAVAILABLE");
+    assert.equal(result.envelope.error.outcome, "not-applicable");
+    assert.equal(result.stdout, "");
+    assert.deepEqual(
+      JSON.parse(
+        result.stderr.replace(/\n\[mock\] ERROR task failed\n$/, "\n"),
+      ),
+      result.envelope,
+    );
+    assert.deepEqual(result.diagnostics, [
+      {
+        site: "listener.inspect",
+        aborted: false,
+        targetMismatch: false,
+        nativeFailureKind: "nonzero-exit",
+        exitOne: false,
+        killed: true,
+        signaled: true,
+      },
+    ]);
+    assert.deepEqual(logged, [
+      ["mock-target ownership evidence", JSON.stringify(result.diagnostics)],
+    ]);
+    assert.equal(result.stderr.includes("listener.inspect"), false);
+    assert.equal(
+      JSON.stringify(logged).includes("private-error-canary"),
+      false,
     );
   },
 );
