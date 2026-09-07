@@ -18,13 +18,14 @@ it.live(
           (path) =>
             Effect.promise(() => rm(path, { recursive: true, force: true })),
         );
+        const context = yield* Effect.context();
         const pending = yield* Deferred.make<void>();
         const entered = () => Deferred.doneUnsafe(pending, Effect.void);
-        let release!: () => void;
-        // oxlint-disable-next-line effecttsgo/new-promise -- Native listen shim must defer the real bind to a microtask even after its owning fiber is interrupted.
-        const gate = new Promise<void>((resolve) => {
-          release = resolve;
-        });
+        const gate = yield* Deferred.make<void>();
+        const release = () => {
+          Deferred.doneUnsafe(gate, Effect.void);
+        };
+        let binding: Fiber.Fiber<void> | undefined;
         const listening = yield* Deferred.make<void>();
         const bound = () => Deferred.doneUnsafe(listening, Effect.void);
         let cleaning = false;
@@ -43,9 +44,17 @@ it.live(
                   this.close();
                 }
               });
-              void gate.then(() => {
-                originalListen.apply(this, args);
-              });
+              // This native operation outlives interruption of the acquisition fiber.
+              binding = Effect.runForkWith(context)(
+                Deferred.await(gate).pipe(
+                  Effect.andThen(Effect.yieldNow),
+                  Effect.andThen(
+                    Effect.sync(() => {
+                      originalListen.apply(this, args);
+                    }),
+                  ),
+                ),
+              );
               entered();
               return this;
             }),
@@ -56,6 +65,12 @@ it.live(
               cleaning = true;
               release();
               spy.mockRestore();
+              if (binding) {
+                yield* Fiber.join(binding).pipe(
+                  Effect.timeout("2 seconds"),
+                  Effect.orDie,
+                );
+              }
               if (server instanceof Server && server.listening) {
                 server.closeAllConnections();
                 yield* Effect.callback<void>((resume) => {

@@ -11,6 +11,7 @@ import { Data, Deferred, Effect, Fiber, Layer, Result, Schema } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 class StartupFailure extends Data.TaggedError("StartupFailure")<{
   message: string;
+  cause?: unknown;
 }> {}
 
 // Observe only the disposable child's synthetic environment, including error exits.
@@ -25,7 +26,7 @@ const scopedLaunch = (args: string[], credential?: string) =>
     (p) =>
       Effect.gen(function* () {
         p.child.kill("SIGKILL");
-        yield* Effect.promise(() => p.exited);
+        yield* p.exited;
       }),
   );
 const key = "sk_test_local_" + "a".repeat(64);
@@ -54,41 +55,77 @@ function launch(args: string[], credential = key) {
   });
   // oxlint-disable-next-line effecttsgo/global-timers -- Native child-process watchdog must run independently of the test Effect runtime.
   const deadline = setTimeout(() => child.kill("SIGKILL"), 10000);
-  // oxlint-disable-next-line effecttsgo/new-promise -- Install close observation eagerly before any test fiber can yield.
-  const exited = new Promise<number | null>((resolve) =>
-    child.on("close", (code) => {
-      clearTimeout(deadline);
-      resolve(code);
-    }),
-  );
-  // oxlint-disable-next-line effecttsgo/new-promise -- Readiness and close listeners must be attached together eagerly after spawn.
-  const ready = new Promise<Record<string, unknown>>((resolve, reject) => {
-    child.stdout.on("data", () => {
-      if (stdout.includes("\n")) {
-        try {
-          const parsed = Schema.decodeUnknownSync(
-            Schema.fromJsonString(Schema.Unknown),
-          )(stdout.split("\n")[0]);
-          assert.ok(
-            parsed !== null &&
-              typeof parsed === "object" &&
-              !Array.isArray(parsed),
-          );
-          resolve(
+  // Register native observers synchronously; Deferred retains events before any waiter runs.
+  const exitResult = Deferred.makeUnsafe<number | null>();
+  const readiness = Deferred.makeUnsafe<
+    Record<string, unknown>,
+    StartupFailure
+  >();
+  const onReady = () => {
+    if (stdout.includes("\n")) {
+      child.stdout.off("data", onReady);
+      try {
+        const parsed = Schema.decodeUnknownSync(
+          Schema.fromJsonString(Schema.Unknown),
+        )(stdout.split("\n")[0]);
+        assert.ok(
+          parsed !== null &&
+            typeof parsed === "object" &&
+            !Array.isArray(parsed),
+        );
+        Deferred.doneUnsafe(
+          readiness,
+          Effect.succeed(
             Schema.decodeUnknownSync(
               Schema.Record(Schema.String, Schema.Unknown),
             )(parsed),
-          );
-        } catch (e) {
-          reject(e);
-        }
+          ),
+        );
+      } catch (error) {
+        Deferred.doneUnsafe(
+          readiness,
+          Effect.fail(
+            new StartupFailure({ message: String(error), cause: error }),
+          ),
+        );
       }
-    });
-    child.on("close", () => reject(new Error("Exited before readiness")));
+    }
+  };
+  child.stdout.on("data", onReady);
+  child.once("close", (code) => {
+    clearTimeout(deadline);
+    child.stdout.off("data", onReady);
+    Deferred.doneUnsafe(exitResult, Effect.succeed(code));
+    Deferred.doneUnsafe(
+      readiness,
+      Effect.fail(new StartupFailure({ message: "Exited before readiness" })),
+    );
   });
-  void ready.catch(() => {});
+  const exited = Deferred.await(exitResult);
+  const ready = Deferred.await(readiness);
   return { child, exited, ready, output: () => stdout + stderr };
 }
+it.live("CLI observers retain output and close before consumers start", () =>
+  Effect.gen(function* () {
+    const closed = yield* Deferred.make<void>();
+    const p = yield* scopedLaunch(["--help"]);
+    // Register before yielding, independently of the launcher's observers.
+    p.child.once("close", () => Deferred.doneUnsafe(closed, Effect.void));
+    yield* Deferred.await(closed).pipe(Effect.timeout("5 seconds"));
+    assert.equal(yield* p.exited.pipe(Effect.timeout("1 second")), 0);
+    const readiness = yield* p.ready.pipe(
+      Effect.result,
+      Effect.timeout("1 second"),
+    );
+    assert.ok(Result.isFailure(readiness));
+    if (Result.isFailure(readiness)) {
+      // Help is not readiness JSON: retain the parse failure, not the later close failure.
+      assert.ok(readiness.failure.cause instanceof Error);
+    }
+    assert.equal(p.child.listenerCount("close"), 0);
+  }),
+);
+
 // A successful bind both reserves an ephemeral port and probes a failed port.
 const listen = (port: number) =>
   Effect.callback<ReturnType<typeof createServer>, Error>((resume) => {
@@ -151,11 +188,11 @@ const scopedReadyLaunch = (argsForPort: (port: number) => string[]) =>
     retryReadiness((port) =>
       Effect.gen(function* () {
         const p = launch(argsForPort(port));
-        const ready = yield* Effect.tryPromise(() => p.ready).pipe(
+        const ready = yield* p.ready.pipe(
           Effect.onError(() =>
             Effect.gen(function* () {
               p.child.kill("SIGKILL");
-              yield* Effect.promise(() => p.exited);
+              yield* p.exited;
             }),
           ),
         );
@@ -165,7 +202,7 @@ const scopedReadyLaunch = (argsForPort: (port: number) => string[]) =>
     (p) =>
       Effect.gen(function* () {
         p.child.kill("SIGKILL");
-        yield* Effect.promise(() => p.exited);
+        yield* p.exited;
       }),
   );
 
@@ -211,7 +248,7 @@ it.live(
         );
         assert.equal(jwksResponse.status, 200);
         p.child.kill(signal);
-        const exitCode = yield* Effect.promise(() => p.exited);
+        const exitCode = yield* p.exited;
         assert.equal(exitCode, 0);
         assert.ok(!p.output().includes(key));
       }
@@ -221,14 +258,14 @@ it.live(
         ...[10, 13, 8232, 8233].map((code) => key + String.fromCharCode(code)),
       ]) {
         const wrongCredential = yield* scopedLaunch(args, credential);
-        const rejected = yield* Effect.promise(() =>
-          Promise.race([
-            wrongCredential.exited,
-            wrongCredential.ready.then(() => {
+        const rejected = yield* Effect.raceFirst(
+          wrongCredential.exited,
+          wrongCredential.ready.pipe(
+            Effect.andThen(() => {
               wrongCredential.child.kill("SIGTERM");
               return wrongCredential.exited;
             }),
-          ]),
+          ),
         );
         assert.equal(rejected, 1);
       }
@@ -236,7 +273,7 @@ it.live(
         ...args.slice(0, -1),
         randomUUID(),
       ]);
-      const mismatchExitCode = yield* Effect.promise(() => mismatch.exited);
+      const mismatchExitCode = yield* mismatch.exited;
       assert.equal(mismatchExitCode, 1);
       assert.ok(!mismatch.output().includes(key));
     }).pipe(
@@ -291,7 +328,7 @@ it.live(
         ],
       ] as const) {
         const p = yield* scopedLaunch([...args], credential);
-        const exitCode = yield* Effect.promise(() => p.exited);
+        const exitCode = yield* p.exited;
         assert.equal(exitCode, 1);
         assert.ok(!p.output().includes(key));
         if (credential !== "") {

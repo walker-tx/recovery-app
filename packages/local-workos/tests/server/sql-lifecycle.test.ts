@@ -148,18 +148,17 @@ it.live(
 
 it.live("interrupted signing cannot continue into a session write", () =>
   Effect.gen(function* () {
+    const context = yield* Effect.context();
     const started = yield* Deferred.make<void>();
     // SignJWT.sign is a Promise API; only its completion is controlled here.
-    let finishSigning!: (token: string) => void;
-    // oxlint-disable-next-line effecttsgo/new-promise -- The jose sign mock must return a manually completed native Promise even after its Effect consumer is interrupted.
-    const signing = new Promise<string>((resolve) => {
-      finishSigning = resolve;
-    });
+    const signing = yield* Deferred.make<string>();
+    const finishSigning = (token: string) =>
+      Deferred.doneUnsafe(signing, Effect.succeed(token));
     yield* Effect.acquireRelease(
       Effect.sync(() =>
         vi.spyOn(SignJWT.prototype, "sign").mockImplementation(() => {
           Deferred.doneUnsafe(started, Effect.void);
-          return signing;
+          return Effect.runPromiseWith(context)(Deferred.await(signing));
         }),
       ),
       (spy) =>
