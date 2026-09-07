@@ -1,5 +1,5 @@
 import { it } from "@effect/vitest";
-import { Effect, Exit, Redacted } from "effect";
+import { Effect, Exit, Redacted, Schema } from "effect";
 import assert from "node:assert/strict";
 import {
   deriveReplayKey,
@@ -16,7 +16,9 @@ it.effect(
       const key = deriveReplayKey(exponent, "owned-generation");
       const recoveredKey = deriveReplayKey(exponent, "owned-generation");
       assert.equal(Redacted.isRedacted(key), true);
-      const aad = JSON.stringify(["old-hash", "session-owned", 123]);
+      const aad = yield* Schema.encodeEffect(
+        Schema.fromJsonString(Schema.Json),
+      )(["old-hash", "session-owned", 123]);
       const sealed = yield* sealReplay(key, "synthetic-token-pair", aad);
       assert.notEqual(
         sealed,
@@ -34,7 +36,13 @@ it.effect(
         assert.ok(
           Exit.isFailure(
             yield* Effect.exit(
-              openReplay(key, sealed, JSON.stringify(changed)),
+              openReplay(
+                key,
+                sealed,
+                yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(
+                  changed,
+                ),
+              ),
             ),
           ),
         );
