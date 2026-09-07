@@ -329,6 +329,17 @@ async function startupFixture(t, failure) {
     portAvailable: async (port) => !busy.has(port),
     run: async (_command, args, options) => {
       const name = args[1].split("-").at(-1);
+      if (args[0] === "stop") {
+        processes.delete(args[1]);
+        const endpoints =
+          name === "mailpitHttp"
+            ? ["mailpitHttp", "mailpitSmtp"]
+            : name === "convexCloud"
+              ? ["convexCloud", "convexSite"]
+              : [name];
+        endpoints.forEach((endpoint) => busy.delete(record.ports[endpoint]));
+        return;
+      }
       events.push("start:" + name);
       environments[name] = options.env;
       const endpoints =
@@ -624,3 +635,133 @@ test("startup rejects an unnormalized absolute executable before effects", async
     code: "ENOENT",
   });
 });
+
+test("previously started stack refuses missing persisted identity before seed", async (t) => {
+  const f = await startupFixture(t);
+  await f.runtime.start();
+  await f.runtime.stop((await f.runtime.reserve()).stackId);
+  const before = [...f.events];
+  await assert.rejects(f.runtime.start(), /persisted identity/);
+  assert.deepEqual(f.events, before);
+});
+
+for (const invalid of [
+  "generation",
+  "keys",
+  "config",
+  "hardlink",
+  "file-mode",
+  "directory-mode",
+  "symlink",
+  "owner",
+  null,
+]) {
+  test(`stopped restart validates retained persisted identity (${invalid ?? "compatible"})`, async (t) => {
+    const f = await startupFixture(t);
+    await f.runtime.start();
+    const record = await f.runtime.reserve();
+    await f.runtime.stop(record.stackId);
+    const { DatabaseSync } = require("node:sqlite");
+    const { generateKeyPairSync } = require("node:crypto");
+    const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const database = new DatabaseSync(
+      path.join(f.worktree, ".recovery-stack/provider/state.sqlite"),
+    );
+    database.exec(
+      "CREATE TABLE instance (id INTEGER PRIMARY KEY, body TEXT NOT NULL)",
+    );
+    database.prepare("INSERT INTO instance VALUES (1, ?)").run(
+      JSON.stringify({
+        generation:
+          invalid === "generation" ? "wrong" : record.providerGeneration,
+        privateKey:
+          invalid === "keys" ? {} : keys.privateKey.export({ format: "jwk" }),
+        publicKey: keys.publicKey.export({ format: "jwk" }),
+      }),
+    );
+    database.close();
+    await fs.chmod(
+      path.join(f.worktree, ".recovery-stack/provider/state.sqlite"),
+      0o600,
+    );
+    const seed = {
+      RECOVERY_STACK_ID: invalid === "config" ? "wrong" : record.stackId,
+      RECOVERY_PROVIDER_GENERATION: record.providerGeneration,
+      LOCAL_WORKOS_API_KEY: "sk_test_local_" + "a".repeat(64),
+      LOCAL_CONVEX_INSTANCE_NAME:
+        "recovery_" + record.stackId.replaceAll("-", ""),
+      LOCAL_CONVEX_INSTANCE_SECRET: "a".repeat(64),
+      LOCAL_CONVEX_ADMIN_KEY: "synthetic-admin",
+      WORKOS_EMAIL_HMAC_KEY: Buffer.alloc(32).toString("base64"),
+      WORKOS_INTENT_ENCRYPTION_KEY: Buffer.alloc(32).toString("base64"),
+    };
+    await fs.writeFile(
+      path.join(f.worktree, "mise.local.toml"),
+      "[env]\n" +
+        Object.entries(seed)
+          .map(([key, value]) => `${key} = ${JSON.stringify(value)}`)
+          .join("\n") +
+        "\n",
+      { mode: 0o600 },
+    );
+    const databaseFile = path.join(
+      f.worktree,
+      ".recovery-stack/provider/state.sqlite",
+    );
+    if (invalid === "hardlink") {
+      await fs.link(databaseFile, path.join(f.worktree, "linked.sqlite"));
+    }
+    if (invalid === "file-mode") {
+      await fs.chmod(databaseFile, 0o640);
+    }
+    if (invalid === "directory-mode") {
+      await fs.chmod(path.dirname(databaseFile), 0o750);
+    }
+    if (invalid === "symlink") {
+      const target = path.join(f.worktree, "target.sqlite");
+      await fs.rename(databaseFile, target);
+      await fs.symlink(target, databaseFile);
+    }
+    if (invalid === "owner") {
+      const lstat = fs.lstat;
+      t.mock.method(fs, "lstat", async (file, ...args) => {
+        const stat = await lstat(file, ...args);
+        if (file === databaseFile) {
+          stat.uid = process.getuid() + 1;
+        }
+        return stat;
+      });
+    }
+    let reads = 0;
+    const prepare = DatabaseSync.prototype.prepare;
+    t.mock.method(DatabaseSync.prototype, "prepare", function (...args) {
+      reads++;
+      return prepare.apply(this, args);
+    });
+    const before = [...f.events];
+    if (invalid) {
+      await assert.rejects(f.runtime.start(), /persisted identity/);
+      assert.deepEqual(f.events, before);
+      if (
+        [
+          "hardlink",
+          "file-mode",
+          "directory-mode",
+          "symlink",
+          "owner",
+        ].includes(invalid)
+      ) {
+        assert.equal(
+          reads,
+          0,
+          "unsafe persisted state must be refused before SQLite reads",
+        );
+      }
+    } else {
+      await f.runtime.start();
+      const resumed = await f.runtime.reserve();
+      assert.equal(resumed.stackId, record.stackId);
+      assert.equal(resumed.providerGeneration, record.providerGeneration);
+    }
+  });
+}

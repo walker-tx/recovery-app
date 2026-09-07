@@ -165,6 +165,16 @@ function createLifecycle({
         const record = await bounded("reservation", () =>
           registry.reserve(canonical),
         );
+        const initial = await status(canonical);
+        if (
+          initial.state !== "reserved" ||
+          !initial.services ||
+          names.some((name) => initial.services[name] !== "stopped")
+        ) {
+          throw Error(
+            "Stack start requires all services stopped; active or uncertain stack refused",
+          );
+        }
         const prepared = prepare
           ? await bounded(
               "preparation",

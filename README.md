@@ -115,6 +115,23 @@ changes are not altered or reauthorized by this local-only dispatch.
 Startup requires the local provider
 package, installed Expo/Convex dependencies, Node, pnpm, Mailpit, and Pitchfork.
 
+Each local/test stack is named by the canonical worktree directory basename,
+within the repository's shared Git common-directory registry. Branch names are
+not stack keys. A name stays bound to one canonical path; a competing path with
+the same name is refused, even when the first stack is stopped. Different
+repositories have separate name scopes; occupied sockets still block launch.
+Starting an already-running stack is refused before preparation or extra launches.
+Stopped stacks may restart with their existing identity and state. Recreating a
+directory at the same path does not require the same historical inode, but does
+not restore deleted data: an established stack with missing or incompatible
+provider identity refuses startup. Names never authorize killing or deleting
+resources. Process identity, file ownership, lifecycle locks, and unknown-route
+and reservation-release gates remain in force.
+
+Previously host-wide same-name reservations require explicit reconciliation
+before default repository-scoped selection. No automatic migration, identity
+recreation, state copying, or reservation release is performed.
+
 The runtime reserves separate ports/state, prepares private bootstrap values,
 validates provider identity, synchronizes and pushes functions to the paired local
 Convex instance, publishes paired mobile configuration, then starts Metro. That

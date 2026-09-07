@@ -146,13 +146,18 @@ test("separate bootstrap processes serialize through the persistent registry", a
   );
   assert.equal((await registry.reserve(worktree)).stackId, a.stackId);
 });
-test("replaced worktree directory cannot inherit old ownership", async (t) => {
+test("replaced stopped directory renews resource pin and retains identity", async (t) => {
   const { registry, worktree } = await fixture(t);
   const a = await registry.reserve(worktree);
   await fs.rename(worktree, worktree + "-old");
   await fs.mkdir(worktree);
-  await assert.rejects(registry.reserve(worktree), /ownership/);
+  await assert.rejects(registry.readOwned(worktree, a.stackId), /ownership/);
   await assert.rejects(registry.release(worktree, a.stackId), /ownership/);
+  const b = await registry.reserve(worktree);
+  assert.equal(b.stackId, a.stackId);
+  assert.equal(b.providerGeneration, a.providerGeneration);
+  assert.deepEqual(b.ports, a.ports);
+  assert.notEqual(b.owner, a.owner);
 });
 
 test("unsafe persisted JSON fails closed before every operation without overwrite", async (t) => {
@@ -343,3 +348,151 @@ for (const alias of [false, true]) {
     assert.equal(await fs.readFile(file, "utf8"), "untouched");
   });
 }
+
+test("concurrent same-name paths have one winner; separate registries allow names", async (t) => {
+  const { registry, registryPath, worktree, sibling } = await fixture(t);
+  const other = path.join(sibling, path.basename(worktree));
+  await fs.mkdir(other);
+  const results = await Promise.allSettled([
+    registry.reserve(worktree),
+    registry.reserve(other),
+  ]);
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  assert.match(
+    results.find((r) => r.status === "rejected").reason.message,
+    /name/,
+  );
+  const loser = results[0].status === "rejected" ? worktree : other;
+  await assert.rejects(registry.reserve(loser), /name/);
+  await createRegistry({
+    registryPath: registryPath + "-other",
+    portAvailable: async () => true,
+  }).reserve(loser);
+});
+
+test("duplicate persisted names fail closed", async (t) => {
+  const { registry, registryPath, worktree, sibling } = await fixture(t);
+  const a = await registry.reserve(worktree);
+  const b = await registry.reserve(sibling);
+  const file = path.join(registryPath, "registry.json");
+  const data = JSON.parse(await fs.readFile(file, "utf8"));
+  delete data.stacks[b.worktree];
+  const duplicate = path.join(b.worktree, path.basename(a.worktree));
+  data.stacks[duplicate] = { ...b, worktree: duplicate };
+  const contents = JSON.stringify(data);
+  await fs.writeFile(file, contents);
+  await assert.rejects(registry.reserve(worktree), /Invalid reservation/);
+  assert.equal(await fs.readFile(file, "utf8"), contents);
+});
+
+test("replacement cannot adopt live, mismatched, unknown or occupied resources", async (t) => {
+  let actual = null;
+  let free = true;
+  const { registry, worktree, registryPath } = await fixture(t, {
+    inspectProcess: async () => actual,
+    portAvailable: async () => free,
+  });
+  const a = await registry.reserve(worktree);
+  const identity = {
+    pid: 987,
+    startedAt: "boot:1",
+    stackId: a.stackId,
+    worktree: a.worktree,
+  };
+  actual = identity;
+  await registry.recordProcess(worktree, a.stackId, "metro", identity);
+  assert.equal((await registry.reserve(worktree)).stackId, a.stackId);
+  await fs.rename(worktree, worktree + "-old");
+  await fs.mkdir(worktree);
+  const file = path.join(registryPath, "registry.json");
+  const before = await fs.readFile(file, "utf8");
+  for (const value of [
+    identity,
+    { ...identity, startedAt: "other" },
+    undefined,
+  ]) {
+    actual = value;
+    await assert.rejects(registry.reserve(worktree));
+    assert.equal(await fs.readFile(file, "utf8"), before);
+  }
+  actual = null;
+  for (const value of [false, undefined, "unknown", {}]) {
+    free = value;
+    await assert.rejects(registry.reserve(worktree));
+    assert.equal(await fs.readFile(file, "utf8"), before);
+  }
+  free = true;
+  assert.equal((await registry.reserve(worktree)).stackId, a.stackId);
+});
+
+test("port probes require strict true", async (t) => {
+  let free = true;
+  const { registry, worktree } = await fixture(t, {
+    portAvailable: async (port) => (port === 24000 ? "unknown" : free),
+  });
+  const a = await registry.reserve(worktree);
+  assert.equal(a.ports.convexCloud, 24001);
+  for (const value of [undefined, null, "unknown", {}, 1]) {
+    free = value;
+    await assert.rejects(registry.reserve(worktree), /occupied/);
+  }
+});
+
+test("Git common-directory resolution refuses legacy name claims", async (t) => {
+  const { worktree, sibling } = await fixture(t);
+  const run = require("node:util").promisify(
+    require("node:child_process").execFile,
+  );
+  const git = (args) => run("git", args, { cwd: worktree, timeout: 3000 });
+  await git(["init", "--quiet"]);
+  await git([
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.invalid",
+    "commit",
+    "--allow-empty",
+    "-qm",
+    "fixture",
+  ]);
+  const linked = path.join(sibling, "linked");
+  await git(["worktree", "add", "--quiet", "-b", "linked", linked]);
+  const home = path.join(sibling, "home");
+  const resolve = (target) =>
+    run(
+      process.execPath,
+      [
+        "-e",
+        `require(process.argv[1]).resolveRegistryPath(process.argv[2]).then(console.log).catch(e=>{console.error(e.message);process.exitCode=1})`,
+        require.resolve("./stack-registry.cjs"),
+        target,
+      ],
+      { env: { ...process.env, HOME: home }, timeout: 3000 },
+    );
+  const expected = path.join(
+    await fs.realpath(worktree),
+    ".git",
+    "recovery-stacks",
+  );
+  assert.equal((await resolve(worktree)).stdout.trim(), expected);
+  assert.equal((await resolve(linked)).stdout.trim(), expected);
+  const subdirectory = path.join(worktree, "nested");
+  await fs.mkdir(subdirectory);
+  await assert.rejects(resolve(subdirectory), /worktree root/i);
+  const alias = path.join(sibling, "alias");
+  await fs.symlink(worktree, alias);
+  assert.equal((await resolve(alias)).stdout.trim(), expected);
+  const legacy = path.join(home, ".local", "state", "recovery", "stacks");
+  const registry = createRegistry({
+    registryPath: legacy,
+    portAvailable: async () => true,
+  });
+  const other = path.join(sibling, path.basename(worktree));
+  await fs.mkdir(other);
+  await registry.reserve(other);
+  const file = path.join(legacy, "registry.json");
+  const before = await fs.readFile(file, "utf8");
+  await assert.rejects(resolve(worktree), /legacy/i);
+  assert.equal(await fs.readFile(file, "utf8"), before);
+  assert.equal((await resolve(linked)).stdout.trim(), expected);
+});

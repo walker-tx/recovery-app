@@ -79,14 +79,14 @@ async function fixture(t, overrides = {}) {
   ];
   return { registry, lifecycle, worktree, sibling, services, calls, processes };
 }
-test("parallel stacks start independently; healthy resume runs no command; stop preserves sibling and reservation", async (t) => {
+test("parallel stacks start independently; active restart refuses; stop preserves sibling and reservation", async (t) => {
   const f = await fixture(t);
   const [a, b] = await Promise.all([
     f.lifecycle.start(f.worktree, f.services),
     f.lifecycle.start(f.sibling, f.services),
   ]);
   assert.notEqual(a.stackId, b.stackId);
-  await f.lifecycle.start(f.worktree, f.services);
+  await assert.rejects(f.lifecycle.start(f.worktree, f.services), /stopped/);
   assert.equal(f.calls.length, 2);
   await f.lifecycle.stop(f.worktree, a.stackId);
   assert.equal(
@@ -98,6 +98,10 @@ test("parallel stacks start independently; healthy resume runs no command; stop 
     "running",
   );
   assert.equal((await f.registry.reserve(f.worktree)).stackId, a.stackId);
+  assert.equal(
+    (await f.lifecycle.start(f.worktree, f.services)).stackId,
+    a.stackId,
+  );
   assert.ok(
     f.calls.every(
       (c) =>
@@ -272,7 +276,7 @@ test("paired endpoints share one process and are both probed with occupied ports
     "convexCloud",
     "convexSite",
   ]);
-  await f.lifecycle.start(f.worktree, definitions);
+  await assert.rejects(f.lifecycle.start(f.worktree, definitions), /stopped/);
   assert.equal(f.calls.length, 2);
   await f.lifecycle.stop(f.worktree, status.stackId);
   assert.equal(f.calls.length, 4);
@@ -367,3 +371,36 @@ for (const phase of ["identity", "record ownership"]) {
     assert.equal(f.calls.length, 1);
   });
 }
+
+test("concurrent canonical-path start refuses before preparation", async (t) => {
+  let release;
+  let entered;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const prepared = new Promise((resolve) => {
+    entered = resolve;
+  });
+  let count = 0;
+  const f = await fixture(t, {
+    prepare: async () => {
+      count++;
+      entered();
+      await gate;
+    },
+  });
+  const alias = f.worktree + "-alias";
+  await fs.symlink(f.worktree, alias);
+  const first = f.lifecycle.start(f.worktree, f.services);
+  await prepared;
+  try {
+    await assert.rejects(f.lifecycle.start(alias, f.services), /locked/);
+    assert.equal(count, 1);
+    assert.equal(f.calls.length, 0);
+  } finally {
+    release();
+  }
+  await first;
+  await assert.rejects(f.lifecycle.start(alias, f.services), /stopped/);
+  assert.equal(count, 1);
+});
