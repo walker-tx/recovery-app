@@ -84,6 +84,11 @@ it.effect(
               }),
             getUser: () => unavailable,
             getIdentities: () => unavailable,
+            getEmailVerification: () => unavailable,
+            createPasswordReset: () => unavailable,
+            resetPassword: () => unavailable,
+            revokeSession: () => unavailable,
+            deleteUser: () => unavailable,
           }),
         );
         const scope = yield* Scope.Scope;

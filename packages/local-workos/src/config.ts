@@ -32,11 +32,27 @@ export const bootstrapApiKey = Effect.gen(function* () {
     () => new ConfigurationError({ message: "Invalid bootstrap inputs" }),
   ),
 );
+const LifetimeSeconds = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isBetween({ minimum: 1, maximum: 30 * 86400 }),
+).pipe(Schema.brand("LifetimeSeconds"));
+const LifetimesSchema = Schema.Struct({
+  accessTokenSeconds: LifetimeSeconds,
+  sessionSeconds: LifetimeSeconds,
+  verificationSeconds: LifetimeSeconds,
+  passwordResetSeconds: LifetimeSeconds,
+});
 export type ProviderOptions = {
   database: string;
   apiKey: string;
   port?: number;
   providerGeneration?: string;
+  lifetimes?: Partial<{
+    accessTokenSeconds: number;
+    sessionSeconds: number;
+    verificationSeconds: number;
+    passwordResetSeconds: number;
+  }>;
 };
 export const decodeProviderConfig = (options: ProviderOptions) =>
   Effect.gen(function* () {
@@ -80,7 +96,26 @@ export const decodeProviderConfig = (options: ProviderOptions) =>
                 }),
             ),
           );
+    const lifetimes = yield* Schema.decodeUnknownEffect(LifetimesSchema)({
+      accessTokenSeconds: 300,
+      sessionSeconds: 7 * 86400,
+      verificationSeconds: 600,
+      passwordResetSeconds: 1800,
+      ...options.lifetimes,
+    }).pipe(
+      Effect.mapError(
+        () => new ConfigurationError({ message: "Invalid provider lifetimes" }),
+      ),
+    );
+    if (lifetimes.accessTokenSeconds > lifetimes.sessionSeconds) {
+      return yield* Effect.fail(
+        new ConfigurationError({
+          message: "Access lifetime exceeds session lifetime",
+        }),
+      );
+    }
     return {
+      lifetimes,
       database,
       port,
       providerGeneration,
@@ -95,6 +130,7 @@ export class SigningIdentity extends Context.Service<
   SigningIdentity,
   {
     readonly key: Awaited<ReturnType<typeof importJWK>>;
+    readonly replayKey: Redacted.Redacted<Uint8Array>;
     readonly jwks: Jwks;
     readonly clientId: typeof ClientId.Type;
     readonly providerGeneration: typeof ProviderGeneration.Type;

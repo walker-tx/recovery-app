@@ -28,6 +28,7 @@ import {
 } from "effect";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { makeHttpApp } from "./http.ts";
+import { deriveReplayKey } from "./replay-crypto.ts";
 import { type User, type Jwks, UserId } from "./contracts.ts";
 import {
   ConfigService,
@@ -49,6 +50,23 @@ export class FixtureError extends Data.TaggedError("FixtureError")<{
 export class ProviderClearError extends Data.TaggedError("ProviderClearError")<{
   reason: "confirmation" | "identity" | "storage";
 }> {}
+export class ProviderSessionError extends Schema.TaggedError<ProviderSessionError>()(
+  "ProviderSessionError",
+  {
+    reason: Schema.Literals([
+      "confirmation",
+      "identity",
+      "storage",
+      "not_found",
+    ]),
+  },
+) {}
+const RevokeUserConfirmation = Schema.Struct({
+  operation: Schema.Literal("revoke-user-sessions"),
+  database: Schema.String,
+  providerGeneration: ProviderGeneration,
+  userId: UserId,
+});
 const ClearConfirmation = Schema.Struct({
   operation: Schema.Literal("clear-provider-data"),
   database: Schema.String,
@@ -149,6 +167,38 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
     yield* sql`CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,refresh_hash TEXT NOT NULL,expires_at INTEGER NOT NULL)`;
     yield* sql`CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,pending_hash TEXT NOT NULL,expires_at INTEGER NOT NULL)`;
   });
+  // A dependent table preserves the original challenge row layout and #47's
+  // acquired-transaction clear semantics, including existing persistent databases.
+  yield* sql`CREATE TABLE IF NOT EXISTS email_verifications (challenge_id TEXT PRIMARY KEY REFERENCES challenges(id) ON DELETE CASCADE, body TEXT NOT NULL)`;
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      const columns = yield* sql<{
+        name: string;
+      }>`PRAGMA table_info(email_verifications)`;
+      if (!columns.some((column) => column.name === "failed_attempts")) {
+        yield* sql`ALTER TABLE email_verifications ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0`;
+      }
+      yield* sql`CREATE INDEX IF NOT EXISTS challenges_pending_hash ON challenges(pending_hash)`;
+    }),
+  );
+  yield* sql`CREATE TABLE IF NOT EXISTS password_resets (challenge_id TEXT PRIMARY KEY REFERENCES challenges(id) ON DELETE CASCADE)`;
+  yield* sql`CREATE TABLE IF NOT EXISTS refresh_replays (old_hash TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL,encrypted_result TEXT NOT NULL)`;
+  yield* sql`CREATE INDEX IF NOT EXISTS sessions_refresh_hash ON sessions(refresh_hash)`;
+  const pruneReplays = Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    yield* sql`DELETE FROM refresh_replays WHERE expires_at<=${now} OR session_id IN (SELECT id FROM sessions WHERE expires_at<=${now})`;
+  });
+  yield* pruneReplays;
+  yield* Effect.forkScoped(
+    Effect.forever(
+      Effect.sleep(1000).pipe(
+        Effect.andThen(pruneReplays),
+        Effect.catch(() =>
+          Effect.logWarning("Local refresh replay cleanup failed"),
+        ),
+      ),
+    ),
+  );
   let [saved] = yield* sql<{
     body: string;
   }>`SELECT body FROM instance WHERE id=1`;
@@ -278,6 +328,10 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
         Layer.provide(
           Layer.succeed(SigningIdentity, {
             key,
+            replayKey: deriveReplayKey(
+              identity.privateKey.d,
+              identity.generation,
+            ),
             jwks,
             clientId,
             providerGeneration,
@@ -296,9 +350,85 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
       new ProviderStartupError({ message: "Expected loopback TCP address" }),
     );
   }
+  const requireOwnedIdentity = Effect.gen(function* () {
+    yield* Effect.try({
+      try: () => {
+        const file = lstatSync(options.database);
+        if (
+          !file.isFile() ||
+          file.isSymbolicLink() ||
+          file.nlink !== 1 ||
+          file.uid !== process.getuid?.() ||
+          (file.mode & 0o077) !== 0 ||
+          file.dev !== ownedDatabase.dev ||
+          file.ino !== ownedDatabase.ino
+        ) {
+          throw Error();
+        }
+      },
+      catch: () => new ProviderClearError({ reason: "identity" }),
+    });
+    const [persisted] = yield* sql<{
+      body: string;
+    }>`SELECT body FROM instance WHERE id=1`;
+    // Compare the already-acquired signing identity without serializing it.
+    if (persisted?.body !== saved.body) {
+      return yield* Effect.fail(new ProviderClearError({ reason: "identity" }));
+    }
+    return undefined;
+  });
   return {
     // Local acquired-resource API only. No HTTP/console reset endpoint and no
     // new connection, credentials, signing identity or ambient configuration.
+    revokeUserSessions: Effect.fn("revokeUserSessions")(function* (
+      input: unknown,
+    ) {
+      const confirmation = yield* Schema.decodeUnknownEffect(
+        RevokeUserConfirmation,
+      )(input).pipe(
+        Effect.mapError(
+          () => new ProviderSessionError({ reason: "confirmation" }),
+        ),
+      );
+      if (
+        confirmation.database !== options.database ||
+        confirmation.providerGeneration !== providerGeneration
+      ) {
+        return yield* Effect.fail(
+          new ProviderSessionError({ reason: "confirmation" }),
+        );
+      }
+      return yield* sql
+        .withTransaction(
+          Effect.gen(function* () {
+            yield* requireOwnedIdentity;
+            const [user] =
+              yield* sql`SELECT id FROM users WHERE id=${confirmation.userId}`;
+            if (!user) {
+              return yield* Effect.fail(
+                new ProviderSessionError({ reason: "not_found" }),
+              );
+            }
+            yield* sql`DELETE FROM sessions WHERE user_id=${confirmation.userId}`;
+            return {
+              userId: confirmation.userId,
+              issuedAccessTokens: "valid-until-expiry" as const,
+            };
+          }),
+        )
+        .pipe(
+          Effect.mapError((error) =>
+            Schema.is(ProviderSessionError)(error)
+              ? error
+              : new ProviderSessionError({
+                  reason:
+                    error instanceof ProviderClearError
+                      ? error.reason
+                      : "storage",
+                }),
+          ),
+        );
+    }),
     clearData(input: unknown) {
       return Effect.gen(function* () {
         const confirmation = yield* Schema.decodeUnknownEffect(
@@ -319,32 +449,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
         return yield* sql
           .withTransaction(
             Effect.gen(function* () {
-              yield* Effect.try({
-                try: () => {
-                  const file = lstatSync(options.database);
-                  if (
-                    !file.isFile() ||
-                    file.isSymbolicLink() ||
-                    file.nlink !== 1 ||
-                    file.uid !== process.getuid?.() ||
-                    (file.mode & 0o077) !== 0 ||
-                    file.dev !== ownedDatabase.dev ||
-                    file.ino !== ownedDatabase.ino
-                  ) {
-                    throw Error();
-                  }
-                },
-                catch: () => new ProviderClearError({ reason: "identity" }),
-              });
-              const [persisted] = yield* sql<{
-                body: string;
-              }>`SELECT body FROM instance WHERE id=1`;
-              // Compare the already-acquired signing identity without serializing it.
-              if (persisted?.body !== saved.body) {
-                return yield* Effect.fail(
-                  new ProviderClearError({ reason: "identity" }),
-                );
-              }
+              yield* requireOwnedIdentity;
               yield* sql`DELETE FROM sessions`;
               yield* sql`DELETE FROM challenges`;
               yield* sql`DELETE FROM users`;
@@ -442,6 +547,8 @@ export async function startProvider(
     let closePromise: Promise<void> | undefined;
     return {
       ...provider,
+      revokeUserSessions: (input: unknown) =>
+        Effect.runPromise(provider.revokeUserSessions(input)),
       clearData: (input: unknown) =>
         Effect.runPromise(provider.clearData(input)),
       createIdentityFixture: (

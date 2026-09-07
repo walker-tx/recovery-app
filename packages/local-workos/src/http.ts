@@ -24,11 +24,17 @@ import {
   VerificationRequired,
   type RequestFailure,
   equal,
-  PasswordAuthenticationRequestSchema,
+  AuthenticationRequestSchema,
   CreateUserRequestSchema,
   UserSchema,
   AuthenticationSchema,
   UserListSchema,
+  RevokeSessionRequestSchema,
+  CreatePasswordResetRequestSchema,
+  ResetPasswordRequestSchema,
+  PasswordResetSchema,
+  ResetPasswordResponseSchema,
+  EmailVerificationSchema,
   IdentitiesSchema,
   JwksSchema,
 } from "./contracts.ts";
@@ -65,6 +71,8 @@ function domainResponse(error: RequestFailure) {
     unauthorized: 401,
     unsupported_operation: 404,
     invalid_client: 401,
+    invalid_reset_token: 400,
+    rate_limited: 429,
     unsupported_grant_type: 400,
     invalid_user: 422,
     email_exists: 409,
@@ -128,15 +136,47 @@ const api = HttpApi.make("localWorkOS").add(
       success: JwksSchema,
     }),
     HttpApiEndpoint.post("authenticate", "/user_management/authenticate", {
-      payload: PasswordAuthenticationRequestSchema,
+      payload: AuthenticationRequestSchema,
       success: AuthenticationSchema,
     }),
     HttpApiEndpoint.post("createUser", "/user_management/users", {
       payload: CreateUserRequestSchema,
       success: UserSchema,
     }),
+    HttpApiEndpoint.post(
+      "createPasswordReset",
+      "/user_management/password_reset",
+      {
+        payload: CreatePasswordResetRequestSchema,
+        success: PasswordResetSchema,
+      },
+    ),
+    HttpApiEndpoint.post(
+      "resetPassword",
+      "/user_management/password_reset/confirm",
+      {
+        payload: ResetPasswordRequestSchema,
+        success: ResetPasswordResponseSchema,
+      },
+    ),
+    HttpApiEndpoint.post("revokeSession", "/user_management/sessions/revoke", {
+      payload: RevokeSessionRequestSchema,
+      success: Schema.Void,
+    }),
     HttpApiEndpoint.get("listUsers", "/user_management/users", {
       success: UserListSchema,
+    }),
+    HttpApiEndpoint.get(
+      "getEmailVerification",
+      "/user_management/email_verification/:id",
+      {
+        params: { id: Schema.String },
+        success: EmailVerificationSchema,
+      },
+    ),
+    HttpApiEndpoint.delete("deleteUser", "/user_management/users/:id", {
+      params: { id: Schema.String },
+      success: Schema.Void,
     }),
     HttpApiEndpoint.get("getUser", "/user_management/users/:id", {
       params: { id: Schema.String },
@@ -208,9 +248,14 @@ export function makeHttpApp(scope: Scope.Scope) {
       instanceInfo,
       authenticate,
       createUser,
+      createPasswordReset,
+      resetPassword,
+      revokeSession,
+      deleteUser,
       listUsers,
       getUser,
       getIdentities,
+      getEmailVerification,
       jwks,
     } = yield* WorkOSService;
     const { clientId } = yield* instanceInfo;
@@ -240,11 +285,56 @@ export function makeHttpApp(scope: Scope.Scope) {
             path: endpoint.path,
           }),
         )
+        .handleRaw("createPasswordReset", ({ endpoint }) =>
+          workosResponse(apiKey, createPasswordReset, {
+            access: "bearer",
+            path: endpoint.path,
+          }),
+        )
+        .handleRaw("resetPassword", ({ endpoint }) =>
+          workosResponse(apiKey, resetPassword, {
+            access: "bearer",
+            path: endpoint.path,
+          }),
+        )
+        .handleRaw("revokeSession", ({ endpoint }) =>
+          workosResponse(
+            apiKey,
+            (body) =>
+              revokeSession(body).pipe(
+                Effect.as(Response.empty({ status: 204 })),
+              ),
+            { access: "bearer", path: endpoint.path },
+          ),
+        )
         .handleRaw("listUsers", ({ endpoint }) =>
           workosResponse(apiKey, (_, request) => listUsers(request.url), {
             access: "bearer",
             path: endpoint.path,
           }),
+        )
+        .handleRaw("getEmailVerification", ({ endpoint }) =>
+          workosResponse(
+            apiKey,
+            (_, request) => getEmailVerification(rawUserId(request.url)),
+            {
+              access: "bearer",
+              path: endpoint.path,
+            },
+          ),
+        )
+        .handleRaw("deleteUser", ({ endpoint }) =>
+          workosResponse(
+            apiKey,
+            (_, request) =>
+              deleteUser(rawUserId(request.url)).pipe(
+                Effect.as(Response.empty({ status: 204 })),
+              ),
+            {
+              access: "bearer",
+              path: endpoint.path,
+            },
+          ),
         )
         .handleRaw("getUser", ({ endpoint }) =>
           workosResponse(
@@ -285,7 +375,11 @@ export function makeHttpApp(scope: Scope.Scope) {
     const app = Effect.gen(function* () {
       const request = yield* HttpServerRequest;
       // HttpRouter otherwise implicitly serves GET endpoints for HEAD.
-      if (request.method !== "GET" && request.method !== "POST") {
+      if (
+        request.method !== "GET" &&
+        request.method !== "POST" &&
+        request.method !== "DELETE"
+      ) {
         return yield* unsupported;
       }
       return yield* routed.pipe(

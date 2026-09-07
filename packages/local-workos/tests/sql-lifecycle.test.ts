@@ -204,6 +204,7 @@ it.live("interrupted signing cannot continue into a session write", () =>
             Layer.provide(
               Layer.succeed(SigningIdentity, {
                 key: privateKey,
+                replayKey: Redacted.make(new Uint8Array(32)),
                 jwks: { keys: [] },
                 clientId,
                 providerGeneration,

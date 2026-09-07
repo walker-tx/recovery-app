@@ -14,6 +14,7 @@ import {
   CreateUserRequestSchema,
 } from "../src/http.ts";
 import { startProvider } from "../src/provider.ts";
+import { ResetPasswordRequestSchema } from "../src/contracts.ts";
 
 const fixture = Effect.gen(function* () {
   const dir = yield* Effect.acquireRelease(
@@ -202,5 +203,27 @@ it.live("declared schemas validate supported request fields", () =>
         ),
       ),
     );
+  }),
+);
+
+it.effect("create and reset share Unicode code-point password boundaries", () =>
+  Effect.gen(function* () {
+    for (const length of [11, 12, 128, 129]) {
+      const password = "😀".repeat(length);
+      const create = yield* Effect.exit(
+        Schema.decodeUnknownEffect(CreateUserRequestSchema)({
+          email: "unicode@example.test",
+          password,
+        }),
+      );
+      const reset = yield* Effect.exit(
+        Schema.decodeUnknownEffect(ResetPasswordRequestSchema)({
+          token: "synthetic-reset-token",
+          new_password: password,
+        }),
+      );
+      assert.equal(Exit.isSuccess(create), length >= 12 && length <= 128);
+      assert.equal(Exit.isSuccess(reset), Exit.isSuccess(create));
+    }
   }),
 );

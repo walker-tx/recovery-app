@@ -10,6 +10,8 @@ export type RejectionReason =
   | "invalid_client"
   | "unsupported_grant_type"
   | "invalid_grant"
+  | "invalid_reset_token"
+  | "rate_limited"
   | "invalid_user"
   | "email_exists"
   | "unsupported_pagination"
@@ -47,22 +49,54 @@ export const PasswordAuthenticationRequestSchema = Schema.Struct({
   email: Schema.String,
   password: Schema.String.check(Schema.isMaxLength(1024)),
 });
+export const VerificationAuthenticationRequestSchema = Schema.Struct({
+  client_id: Schema.String,
+  client_secret: Schema.String,
+  grant_type: Schema.Literal(
+    "urn:workos:oauth:grant-type:email-verification:code",
+  ),
+  pending_authentication_token: Schema.String.check(Schema.isMaxLength(128)),
+  code: Schema.String,
+});
+export const RefreshAuthenticationRequestSchema = Schema.Struct({
+  client_id: Schema.String,
+  client_secret: Schema.String,
+  grant_type: Schema.Literal("refresh_token"),
+  refresh_token: Schema.String.check(Schema.isMaxLength(128)),
+});
+export const RevokeSessionRequestSchema = Schema.Struct({
+  session_id: SessionId,
+});
+export const AuthenticationRequestSchema = Schema.Union([
+  PasswordAuthenticationRequestSchema,
+  VerificationAuthenticationRequestSchema,
+  RefreshAuthenticationRequestSchema,
+]);
+export const EmailSchema = Schema.String.check(
+  Schema.makeFilter((value) => {
+    const email = value.trim().toLowerCase();
+    return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }),
+);
+export const PasswordSchema = Schema.String.check(
+  Schema.makeFilter(
+    // Password limits intentionally count Unicode code points, not grapheme clusters.
+    (value) => {
+      const length = Array.from(value).length;
+      return length >= 12 && length <= 128;
+    },
+  ),
+);
+export const CreatePasswordResetRequestSchema = Schema.Struct({
+  email: EmailSchema,
+});
+export const ResetPasswordRequestSchema = Schema.Struct({
+  token: Schema.String.check(Schema.isMaxLength(128)),
+  new_password: PasswordSchema,
+});
 export const CreateUserRequestSchema = Schema.Struct({
-  email: Schema.String.check(
-    Schema.makeFilter((value) => {
-      const email = value.trim().toLowerCase();
-      return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    }),
-  ),
-  password: Schema.String.check(
-    Schema.makeFilter(
-      // Password limits intentionally count Unicode code points, not grapheme clusters.
-      (value) => {
-        const length = Array.from(value).length;
-        return length >= 12 && length <= 128;
-      },
-    ),
-  ),
+  email: EmailSchema,
+  password: PasswordSchema,
   email_verified: Schema.optional(Schema.Boolean),
   first_name: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
   last_name: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
@@ -85,6 +119,29 @@ export const UserSchema = Schema.Struct({
   metadata: Schema.JsonObject,
 });
 export type User = typeof UserSchema.Type;
+export const EmailVerificationSchema = Schema.Struct({
+  object: Schema.Literal("email_verification"),
+  id: Schema.String,
+  user_id: UserId,
+  email: Schema.String,
+  code: Schema.String.check(Schema.isPattern(/^\d{6}$/)),
+  expires_at: Schema.String,
+  created_at: Schema.String,
+  updated_at: Schema.String,
+});
+export type EmailVerification = typeof EmailVerificationSchema.Type;
+export const PasswordResetSchema = Schema.Struct({
+  object: Schema.Literal("password_reset"),
+  id: Schema.String,
+  user_id: UserId,
+  email: Schema.String,
+  password_reset_token: Schema.String,
+  password_reset_url: Schema.String,
+  expires_at: Schema.String,
+  created_at: Schema.String,
+});
+export type PasswordReset = typeof PasswordResetSchema.Type;
+export const ResetPasswordResponseSchema = Schema.Struct({ user: UserSchema });
 export const AuthenticationSchema = Schema.Struct({
   user: UserSchema,
   access_token: Schema.String,
