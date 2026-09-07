@@ -372,29 +372,31 @@ export function makeHttpApp(scope: Scope.Scope) {
         Effect.fail(new RequestRejected({ reason: "unsupported_operation" })),
       { access: "bearer" },
     );
-    const app = Effect.gen(function* () {
-      const request = yield* HttpServerRequest;
-      // HttpRouter otherwise implicitly serves GET endpoints for HEAD.
-      if (
-        request.method !== "GET" &&
-        request.method !== "POST" &&
-        request.method !== "DELETE"
-      ) {
-        return yield* unsupported;
-      }
-      return yield* routed.pipe(
-        Effect.catch((error) =>
-          Predicate.isTagged(error.reason, "RouteNotFound")
-            ? unsupported
-            : Effect.die(error),
-        ),
-      );
-    }).pipe(sanitizeDefects);
+    return { routed, unsupported };
+  }).pipe(
+    Effect.map(({ routed, unsupported }) => {
+      const app = Effect.gen(function* () {
+        const request = yield* HttpServerRequest;
+        // HttpRouter otherwise implicitly serves GET endpoints for HEAD.
+        if (
+          request.method !== "GET" &&
+          request.method !== "POST" &&
+          request.method !== "DELETE"
+        ) {
+          return yield* unsupported;
+        }
+        return yield* routed.pipe(
+          Effect.catch((error) =>
+            Predicate.isTagged(error.reason, "RouteNotFound")
+              ? unsupported
+              : Effect.die(error),
+          ),
+        );
+      }).pipe(sanitizeDefects);
 
-    // The scoped factory returns a request Effect; it must not execute a request here.
-    // oxlint-disable-next-line effecttsgo/return-effect-in-gen
-    return app.pipe(
-      Effect.provideService(MaxBodySize, FileSystem.Size(MAX_BODY_BYTES)),
-    );
-  });
+      return app.pipe(
+        Effect.provideService(MaxBodySize, FileSystem.Size(MAX_BODY_BYTES)),
+      );
+    }),
+  );
 }

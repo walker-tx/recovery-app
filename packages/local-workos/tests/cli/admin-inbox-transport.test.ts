@@ -1,8 +1,8 @@
-import { expect, test } from "vitest";
-import { Effect, type Scope } from "effect";
+import { expect } from "vitest";
+import { it } from "@effect/vitest";
+import { Effect, Layer, type Scope } from "effect";
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- Owned native process/server fixture exercises the real transport rather than replacing it with the client under test.
 import { createServer, type RequestListener } from "node:http";
-import { once } from "node:events";
 import {
   listInbox,
   readInbox,
@@ -19,261 +19,288 @@ const message = {
   Text: "",
 };
 const run = <A>(effect: Effect.Effect<A, InboxError, Scope.Scope>) =>
-  Effect.runPromise(Effect.scoped(effect).pipe(Effect.timeout(1500)));
-// oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-async function fixture(
+  Effect.scoped(effect).pipe(Effect.timeout(1500));
+const fixture = Effect.fn("fixture")(function* <A, E, R>(
   handler: RequestListener,
-  body: (target: InboxTarget) => Promise<void>,
+  body: (target: InboxTarget) => Effect.Effect<A, E, R>,
 ) {
-  const server = createServer(handler);
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  try {
-    const address = server.address();
-    if (!address || typeof address === "string") {
-      throw new Error("Missing port");
-    }
-    await body({
-      stackId: "fixture",
-      providerGeneration: "generation",
-      epoch: "epoch",
-      baseUrl: `http://127.0.0.1:${address.port}`,
+  const server = yield* Effect.acquireRelease(
+    Effect.sync(() => createServer(handler)),
+    (owned) =>
+      Effect.callback<void>((resume) => {
+        owned.closeAllConnections();
+        owned.close(() => resume(Effect.void));
+      }),
+  );
+  yield* Effect.callback<void, Error>((resume) => {
+    const onError = (error: Error) => resume(Effect.fail(error));
+    server.once("error", onError);
+    server.listen(0, "127.0.0.1", () => resume(Effect.void));
+    return Effect.sync(() => {
+      server.off("error", onError);
     });
-  } finally {
-    server.closeAllConnections();
-    server.close();
-    await once(server, "close");
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    return yield* Effect.die(new Error("Missing port"));
   }
-}
-// oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-test("redirects are refused without visiting the destination", async () => {
-  let hits = 0;
-  await fixture(
-    (_req, res) => {
-      hits++;
-      res.writeHead(302, { location: "/destination" });
-      res.end();
-    },
-    // oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-    async (target) => {
-      await expect(
-        run(readInbox(target, "safe-id", Effect.void)),
-      ).rejects.toMatchObject({ code: "REDIRECT_REFUSED", outcome: "unknown" });
-      expect(hits).toBe(1);
-    },
-  );
+  return yield* body({
+    stackId: "fixture",
+    providerGeneration: "generation",
+    epoch: "epoch",
+    baseUrl: `http://127.0.0.1:${address.port}`,
+  });
 });
-// oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-test("chunked oversized stream refuses before JSON decoding", async () => {
-  await fixture(
-    (_req, res) => {
-      res.writeHead(200);
-      res.write("x".repeat(700000));
-      res.end("x".repeat(700000));
-    },
-    // oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-    async (target) => {
-      await expect(
-        run(readInbox(target, "safe-id", Effect.void)),
-      ).rejects.toMatchObject({
-        code: "RESPONSE_TOO_LARGE",
-        outcome: "unknown",
-      });
-    },
-  );
-});
-// oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-test("post-dispatch verification discards results and sanitizes failures", async () => {
-  let checks = 0;
-  const verify = Effect.suspend(() =>
-    ++checks === 1
-      ? Effect.void
-      : Effect.fail(
-          new InboxError({
-            code: "OWNERSHIP_CHANGED",
-            message: "DO_NOT_LEAK",
-            outcome: "not-applied",
-          }),
-        ),
-  );
-  await fixture(
-    (_req, res) => {
-      res.end(JSON.stringify(message));
-    },
-    // oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-    async (target) => {
-      await expect(
-        run(readInbox(target, "safe-id", verify)),
-      ).rejects.toMatchObject({
-        code: "OWNERSHIP_CHANGED",
-        outcome: "unknown",
-        message: "Inbox ownership could not be verified; discard the result.",
-      });
-      expect(checks).toBe(2);
-    },
-  );
-});
-// oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-test("pre-dispatch verifier refuses without sending a request", async () => {
-  let hits = 0;
-  await fixture(
-    (_req, res) => {
-      hits++;
-      res.end("{}");
-    },
-    // oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-    async (target) => {
-      const verify = Effect.fail(
-        new InboxError({
-          code: "OWNERSHIP_CHANGED",
-          message: "private path",
-          outcome: "unknown",
+it.layer(Layer.empty, { excludeTestServices: true })((test) => {
+  test.effect("redirects are refused without visiting the destination", () =>
+    Effect.gen(function* () {
+      let hits = 0;
+      yield* fixture(
+        (_req, res) => {
+          hits++;
+          res.writeHead(302, { location: "/destination" });
+          res.end();
+        },
+        Effect.fn(function* (target) {
+          expect(
+            yield* Effect.flip(run(readInbox(target, "safe-id", Effect.void))),
+          ).toMatchObject({ code: "REDIRECT_REFUSED", outcome: "unknown" });
+          expect(hits).toBe(1);
         }),
       );
-      await expect(
-        run(readInbox(target, "safe-id", verify)),
-      ).rejects.toMatchObject({
-        code: "OWNERSHIP_CHANGED",
-        outcome: "not-applied",
-      });
-      expect(hits).toBe(0);
-    },
+    }),
   );
-});
-// oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-test("empty text is explicit and invalid DTOs never escape", async () => {
-  await fixture(
-    (_req, res) => {
-      res.end(JSON.stringify(message));
-    },
-    // oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-    async (target) => {
-      expect(
-        await run(readInbox(target, "safe-id", Effect.void)),
-      ).toMatchObject({ text: null, textStatus: "no-usable-text" });
-      await expect(
-        run(listInbox(target, {}, Effect.void)),
-      ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
-    },
-  );
-});
-// oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-test("whole-operation deadline interrupts streaming and closes the owned connection", async () => {
-  let closed = false;
-  await fixture(
-    (_req, res) => {
-      res.on("close", () => {
-        closed = true;
-      });
-      res.writeHead(200);
-      res.write("{");
-    },
-    // oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-    async (target) => {
-      await expect(
-        Effect.runPromise(
-          Effect.scoped(readInbox(target, "safe-id", Effect.void)).pipe(
-            Effect.timeout(80),
-          ),
-        ),
-      ).rejects.toBeDefined();
-      await expect.poll(() => closed, { timeout: 500 }).toBe(true);
-    },
-  );
-});
-
-// oxlint-disable-next-line effecttsgo/async-function -- Native fixture independently observes adapter error classification.
-test("network failure after dispatch has uncertain read outcome", async () => {
-  await fixture(
-    (_req, res) => {
-      res.destroy();
-    },
-    // oxlint-disable-next-line effecttsgo/async-function -- Native fixture independently observes adapter error classification.
-    async (target) => {
-      await expect(
-        run(readInbox(target, "safe-id", Effect.void)),
-      ).rejects.toMatchObject({ code: "NETWORK_ERROR", outcome: "unknown" });
-    },
-  );
-});
-
-// oxlint-disable-next-line effecttsgo/async-function -- Native fixture independently observes adapter output refusal.
-test("list discards a valid page when the epoch changes after dispatch", async () => {
-  let checks = 0;
-  const verify = Effect.suspend(() =>
-    ++checks === 1
-      ? Effect.void
-      : Effect.fail(
-          new InboxError({
-            code: "OWNERSHIP_CHANGED",
-            message: "private",
+  test.effect("chunked oversized stream refuses before JSON decoding", () =>
+    Effect.gen(function* () {
+      yield* fixture(
+        (_req, res) => {
+          res.writeHead(200);
+          res.write("x".repeat(700000));
+          res.end("x".repeat(700000));
+        },
+        Effect.fn(function* (target) {
+          expect(
+            yield* Effect.flip(run(readInbox(target, "safe-id", Effect.void))),
+          ).toMatchObject({
+            code: "RESPONSE_TOO_LARGE",
             outcome: "unknown",
-          }),
-        ),
-  );
-  await fixture(
-    (_req, res) => {
-      res.end('{"messages":[],"messages_count":0,"start":0}');
-    },
-    // oxlint-disable-next-line effecttsgo/async-function -- Native fixture independently observes adapter output refusal.
-    async (target) => {
-      await expect(run(listInbox(target, {}, verify))).rejects.toMatchObject({
-        code: "OWNERSHIP_CHANGED",
-        outcome: "not-applicable",
-      });
-      expect(checks).toBe(2);
-    },
-  );
-});
-
-// oxlint-disable-next-line effecttsgo/async-function -- Native fixture observes the exact request-dispatch boundary independently of Effect interruption.
-test("read dispatch callback follows validation and ownership but precedes network dispatch", async () => {
-  let dispatched = 0;
-  let dispatchedAtRequest = 0;
-  let hits = 0;
-  await fixture(
-    (_req, res) => {
-      hits++;
-      dispatchedAtRequest = dispatched;
-      res.end(JSON.stringify(message));
-    },
-    // oxlint-disable-next-line effecttsgo/async-function -- Native fixture observes read dispatch without substituting adapter behavior.
-    async (target) => {
-      const mark = () => {
-        dispatched++;
-      };
-      for (const id of [
-        "../invalid",
-        "safe-id\n",
-        "safe-id\r",
-        "safe-id\r\n",
-      ]) {
-        await expect(
-          run(readInbox(target, id, Effect.void, mark)),
-        ).rejects.toMatchObject({
-          code: "INVALID_MESSAGE_ID",
-          outcome: "not-applied",
-        });
-      }
-      const refusal = Effect.fail(
-        new InboxError({
-          code: "OWNERSHIP_CHANGED",
-          message: "synthetic",
-          outcome: "not-applied",
+          });
         }),
       );
-      await expect(
-        run(readInbox(target, "safe-id", refusal, mark)),
-      ).rejects.toMatchObject({
-        code: "OWNERSHIP_CHANGED",
-        outcome: "not-applied",
-      });
-      expect(dispatched).toBe(0);
-      expect(hits).toBe(0);
-      await run(readInbox(target, "safe-id", Effect.void, mark));
-      expect(dispatched).toBe(1);
-      expect(dispatchedAtRequest).toBe(1);
-      expect(hits).toBe(1);
-    },
+    }),
+  );
+  test.effect(
+    "post-dispatch verification discards results and sanitizes failures",
+    () =>
+      Effect.gen(function* () {
+        let checks = 0;
+        const verify = Effect.suspend(() =>
+          ++checks === 1
+            ? Effect.void
+            : Effect.fail(
+                new InboxError({
+                  code: "OWNERSHIP_CHANGED",
+                  message: "DO_NOT_LEAK",
+                  outcome: "not-applied",
+                }),
+              ),
+        );
+        yield* fixture(
+          (_req, res) => {
+            res.end(JSON.stringify(message));
+          },
+          Effect.fn(function* (target) {
+            expect(
+              yield* Effect.flip(run(readInbox(target, "safe-id", verify))),
+            ).toMatchObject({
+              code: "OWNERSHIP_CHANGED",
+              outcome: "unknown",
+              message:
+                "Inbox ownership could not be verified; discard the result.",
+            });
+            expect(checks).toBe(2);
+          }),
+        );
+      }),
+  );
+  test.effect("pre-dispatch verifier refuses without sending a request", () =>
+    Effect.gen(function* () {
+      let hits = 0;
+      yield* fixture(
+        (_req, res) => {
+          hits++;
+          res.end("{}");
+        },
+        Effect.fn(function* (target) {
+          const verify = Effect.fail(
+            new InboxError({
+              code: "OWNERSHIP_CHANGED",
+              message: "private path",
+              outcome: "unknown",
+            }),
+          );
+          expect(
+            yield* Effect.flip(run(readInbox(target, "safe-id", verify))),
+          ).toMatchObject({
+            code: "OWNERSHIP_CHANGED",
+            outcome: "not-applied",
+          });
+          expect(hits).toBe(0);
+        }),
+      );
+    }),
+  );
+  test.effect("empty text is explicit and invalid DTOs never escape", () =>
+    Effect.gen(function* () {
+      yield* fixture(
+        (_req, res) => {
+          res.end(JSON.stringify(message));
+        },
+        Effect.fn(function* (target) {
+          expect(
+            yield* run(readInbox(target, "safe-id", Effect.void)),
+          ).toMatchObject({ text: null, textStatus: "no-usable-text" });
+          expect(
+            yield* Effect.flip(run(listInbox(target, {}, Effect.void))),
+          ).toMatchObject({ code: "INVALID_RESPONSE" });
+        }),
+      );
+    }),
+  );
+  test.effect(
+    "whole-operation deadline interrupts streaming and closes the owned connection",
+    () =>
+      Effect.gen(function* () {
+        let closed = false;
+        yield* fixture(
+          (_req, res) => {
+            res.on("close", () => {
+              closed = true;
+            });
+            res.writeHead(200);
+            res.write("{");
+          },
+          Effect.fn(function* (target) {
+            expect(
+              yield* Effect.flip(
+                Effect.scoped(readInbox(target, "safe-id", Effect.void)).pipe(
+                  Effect.timeout(80),
+                ),
+              ),
+            ).toBeDefined();
+            yield* Effect.sleep(10).pipe(
+              Effect.repeat({ until: () => closed }),
+              Effect.timeout(500),
+            );
+            expect(closed).toBe(true);
+          }),
+        );
+      }),
+  );
+
+  test.effect("network failure after dispatch has uncertain read outcome", () =>
+    Effect.gen(function* () {
+      yield* fixture(
+        (_req, res) => {
+          res.destroy();
+        },
+        Effect.fn(function* (target) {
+          expect(
+            yield* Effect.flip(run(readInbox(target, "safe-id", Effect.void))),
+          ).toMatchObject({ code: "NETWORK_ERROR", outcome: "unknown" });
+        }),
+      );
+    }),
+  );
+
+  test.effect(
+    "list discards a valid page when the epoch changes after dispatch",
+    () =>
+      Effect.gen(function* () {
+        let checks = 0;
+        const verify = Effect.suspend(() =>
+          ++checks === 1
+            ? Effect.void
+            : Effect.fail(
+                new InboxError({
+                  code: "OWNERSHIP_CHANGED",
+                  message: "private",
+                  outcome: "unknown",
+                }),
+              ),
+        );
+        yield* fixture(
+          (_req, res) => {
+            res.end('{"messages":[],"messages_count":0,"start":0}');
+          },
+          Effect.fn(function* (target) {
+            expect(
+              yield* Effect.flip(run(listInbox(target, {}, verify))),
+            ).toMatchObject({
+              code: "OWNERSHIP_CHANGED",
+              outcome: "not-applicable",
+            });
+            expect(checks).toBe(2);
+          }),
+        );
+      }),
+  );
+
+  test.effect(
+    "read dispatch callback follows validation and ownership but precedes network dispatch",
+    () =>
+      Effect.gen(function* () {
+        let dispatched = 0;
+        let dispatchedAtRequest = 0;
+        let hits = 0;
+        yield* fixture(
+          (_req, res) => {
+            hits++;
+            dispatchedAtRequest = dispatched;
+            res.end(JSON.stringify(message));
+          },
+          Effect.fn(function* (target) {
+            const mark = () => {
+              dispatched++;
+            };
+            for (const id of [
+              "../invalid",
+              "safe-id\n",
+              "safe-id\r",
+              "safe-id\r\n",
+            ]) {
+              expect(
+                yield* Effect.flip(
+                  run(readInbox(target, id, Effect.void, mark)),
+                ),
+              ).toMatchObject({
+                code: "INVALID_MESSAGE_ID",
+                outcome: "not-applied",
+              });
+            }
+            const refusal = Effect.fail(
+              new InboxError({
+                code: "OWNERSHIP_CHANGED",
+                message: "synthetic",
+                outcome: "not-applied",
+              }),
+            );
+            expect(
+              yield* Effect.flip(
+                run(readInbox(target, "safe-id", refusal, mark)),
+              ),
+            ).toMatchObject({
+              code: "OWNERSHIP_CHANGED",
+              outcome: "not-applied",
+            });
+            expect(dispatched).toBe(0);
+            expect(hits).toBe(0);
+            yield* run(readInbox(target, "safe-id", Effect.void, mark));
+            expect(dispatched).toBe(1);
+            expect(dispatchedAtRequest).toBe(1);
+            expect(hits).toBe(1);
+          }),
+        );
+      }),
   );
 });

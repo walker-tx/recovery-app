@@ -2,7 +2,16 @@
 // oxlint-disable-next-line effecttsgo/node-builtin-import
 import { isAbsolute } from "node:path";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Cause, ConfigProvider, Effect, Exit, Schema, Option } from "effect";
+import {
+  Cause,
+  Config,
+  ConfigProvider,
+  Effect,
+  Exit,
+  Layer,
+  Schema,
+  Option,
+} from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 import {
   loadProviderConfig,
@@ -105,17 +114,27 @@ const command = Command.make(
     }),
 );
 
-Effect.suspend(() => {
-  const snapshot = {
-    // Snapshot once; Config consumes this snapshot after removing ambient access.
-    // oxlint-disable-next-line effecttsgo/process-env-in-effect
-    LOCAL_WORKOS_API_KEY: process.env.LOCAL_WORKOS_API_KEY,
-  };
+Effect.gen(function* () {
+  // Snapshot once; Config consumes this snapshot after removing ambient access.
+  const credential = yield* Config.option(
+    Config.string("LOCAL_WORKOS_API_KEY"),
+  ).pipe(
+    Effect.provideService(
+      ConfigProvider.ConfigProvider,
+      ConfigProvider.fromEnv(),
+    ),
+  );
+  const snapshot = { LOCAL_WORKOS_API_KEY: Option.getOrUndefined(credential) };
   // CLI-only consumption prevents later ambient reads/default child inheritance;
   // it does not erase the initial OS environment or zeroize credential memory.
   // oxlint-disable-next-line effecttsgo/process-env-in-effect -- CLI credential consumption boundary.
   delete process.env.LOCAL_WORKOS_API_KEY;
-  return Command.run(command, { version: "0.0.0", renderErrors: false }).pipe(
+  const context = yield* Layer.build(NodeServices.layer);
+  return yield* Command.run(command, {
+    version: "0.0.0",
+    renderErrors: false,
+  }).pipe(
+    Effect.provideContext(context),
     Effect.provideService(
       ConfigProvider.ConfigProvider,
       ConfigProvider.fromUnknown(snapshot),
@@ -123,8 +142,6 @@ Effect.suspend(() => {
   );
 }).pipe(
   Effect.scoped,
-  // oxlint-disable-next-line effecttsgo/strict-effect-provide -- CLI application entry point.
-  Effect.provide(NodeServices.layer),
   Effect.tapCause((cause) =>
     Cause.hasInterruptsOnly(cause)
       ? Effect.void

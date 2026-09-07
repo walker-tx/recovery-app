@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, Server } from "node:net";
 import { it, vi } from "@effect/vitest";
-import { Data, Deferred, Effect, Fiber, Result, Schema } from "effect";
+import { Data, Deferred, Effect, Fiber, Layer, Result, Schema } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 class StartupFailure extends Data.TaggedError("StartupFailure")<{
   message: string;
@@ -240,8 +240,12 @@ it.live(
       assert.equal(mismatchExitCode, 1);
       assert.ok(!mismatch.output().includes(key));
     }).pipe(
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- This live test entry point owns the HTTP client layer.
-      Effect.provide(FetchHttpClient.layer),
+      (test) =>
+        Effect.gen(function* () {
+          const context = yield* Layer.build(FetchHttpClient.layer);
+          return yield* test.pipe(Effect.provideContext(context));
+        }),
+      Effect.scoped,
     ),
   { timeout: 25000 },
 );

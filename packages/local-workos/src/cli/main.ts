@@ -326,17 +326,18 @@ const quietConsole: Console.Console = {
   warn: noop,
 };
 const program = Effect.gen(function* () {
+  const services = yield* Layer.build(
+    Layer.merge(NodeServices.layer, Logger.layer([])),
+  );
   yield* Command.runWith(makeCommand(execute), {
     version: "0.0.0",
     renderErrors: false,
-  })(process.argv.slice(2));
+  })(process.argv.slice(2)).pipe(Effect.provide(services));
 }).pipe(
   Effect.provideService(CliConfig.CliConfig, CliConfig.make({ builtIns: [] })),
   Effect.provideService(CliOutput.Formatter, formatter),
   Effect.provideService(Console.Console, quietConsole),
   Effect.scoped,
-  // oxlint-disable-next-line effecttsgo/strict-effect-provide -- CLI composition root supplies Node platform services.
-  Effect.provide(Layer.merge(NodeServices.layer, Logger.layer([]))),
 );
 const result = await Effect.runPromiseExit(program, {
   signal: controller.signal,

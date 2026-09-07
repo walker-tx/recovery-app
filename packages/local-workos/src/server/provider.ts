@@ -546,15 +546,17 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
 });
 
 /** Promise compatibility boundary for launchers and non-Effect callers. */
-// oxlint-disable-next-line effecttsgo/async-function -- Public Promise adapter owns acquisition-failure cleanup for non-Effect callers.
-export async function startProvider(
-  options: Parameters<typeof acquireProvider>[0],
-) {
-  const scope = Scope.makeUnsafe();
-  try {
-    const provider = await Effect.runPromise(
-      acquireProvider(options).pipe(Effect.provideService(Scope.Scope, scope)),
-    );
+export function startProvider(options: Parameters<typeof acquireProvider>[0]) {
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const provider = yield* acquireProvider(options).pipe(
+        Effect.provideService(Scope.Scope, scope),
+        Effect.onError(() => Scope.close(scope, Exit.void)),
+      );
+      return { provider, scope };
+    }),
+  ).then(({ provider, scope }) => {
     let closePromise: Promise<void> | undefined;
     return {
       ...provider,
@@ -565,17 +567,15 @@ export async function startProvider(
       createIdentityFixture: (
         input: Parameters<typeof provider.createIdentityFixture>[0],
       ) =>
-        Effect.runPromise(
-          provider
-            .createIdentityFixture(input)
-            // oxlint-disable-next-line effecttsgo/global-error-in-effect-failure -- Preserve native Error rejections for Promise API compatibility.
-            .pipe(Effect.mapError((error) => new Error(error.message))),
+        Effect.runPromise(provider.createIdentityFixture(input)).catch(
+          (error: unknown) => {
+            throw new Error(
+              error instanceof Error ? error.message : String(error),
+            );
+          },
         ),
       close: () =>
         (closePromise ??= Effect.runPromise(Scope.close(scope, Exit.void))),
     };
-  } catch (error) {
-    await Effect.runPromise(Scope.close(scope, Exit.void));
-    throw error;
-  }
+  });
 }

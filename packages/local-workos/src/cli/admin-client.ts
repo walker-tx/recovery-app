@@ -178,46 +178,44 @@ export const adminRequest = Effect.fn("mock.adminRequest")(function* (
 });
 
 // The existing CJS lifecycle registry is the authority; this is only its platform bridge.
-export const selectTarget = (worktree?: string) =>
-  Effect.tryPromise({
-    // oxlint-disable-next-line effecttsgo/async-function -- Dynamic CJS import and registry Promise are a single cancellable platform bridge.
-    try: async (signal) => {
-      const helper = await import("../../../../scripts/mock-target.cjs");
-      return helper.selectMockTarget({
+const registryError = (error: unknown) =>
+  failure(
+    Schema.is(Schema.Struct({ code: Schema.Literal("SERVICE_UNAVAILABLE") }))(
+      error,
+    )
+      ? "UNAVAILABLE"
+      : Schema.is(Schema.Struct({ code: Schema.Literal("TARGET_MISMATCH") }))(
+            error,
+          )
+        ? "TARGET_MISMATCH"
+        : "INTERNAL_ERROR",
+  );
+export const selectTarget = Effect.fn("mock.selectTarget")(function* (
+  worktree?: string,
+) {
+  const helper = yield* Effect.tryPromise({
+    try: () => import("../../../../scripts/mock-target.cjs"),
+    catch: registryError,
+  });
+  return yield* Effect.tryPromise({
+    try: (signal) =>
+      helper.selectMockTarget({
         ...(worktree === undefined ? {} : { worktree }),
         signal,
-      });
-    },
-    catch: (error) =>
-      failure(
-        Schema.is(
-          Schema.Struct({ code: Schema.Literal("SERVICE_UNAVAILABLE") }),
-        )(error)
-          ? "UNAVAILABLE"
-          : Schema.is(
-                Schema.Struct({ code: Schema.Literal("TARGET_MISMATCH") }),
-              )(error)
-            ? "TARGET_MISMATCH"
-            : "INTERNAL_ERROR",
-      ),
+      }),
+    catch: registryError,
   });
-export const verifyTarget = (selection: Selection, inbox = false) =>
-  Effect.tryPromise({
-    // oxlint-disable-next-line effecttsgo/async-function -- Dynamic CJS import and registry Promise are a single cancellable platform bridge.
-    try: async (signal) => {
-      const helper = await import("../../../../scripts/mock-target.cjs");
-      await helper.verifyMockTarget(selection, { inbox, signal });
-    },
-    catch: (error) =>
-      failure(
-        Schema.is(
-          Schema.Struct({ code: Schema.Literal("SERVICE_UNAVAILABLE") }),
-        )(error)
-          ? "UNAVAILABLE"
-          : Schema.is(
-                Schema.Struct({ code: Schema.Literal("TARGET_MISMATCH") }),
-              )(error)
-            ? "TARGET_MISMATCH"
-            : "INTERNAL_ERROR",
-      ),
+});
+export const verifyTarget = Effect.fn("mock.verifyTarget")(function* (
+  selection: Selection,
+  inbox = false,
+) {
+  const helper = yield* Effect.tryPromise({
+    try: () => import("../../../../scripts/mock-target.cjs"),
+    catch: registryError,
   });
+  yield* Effect.tryPromise({
+    try: (signal) => helper.verifyMockTarget(selection, { inbox, signal }),
+    catch: registryError,
+  });
+});

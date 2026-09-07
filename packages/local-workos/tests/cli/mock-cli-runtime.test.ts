@@ -128,7 +128,7 @@ const runFixture = Effect.fn(function* (options: {
     "../../../../scripts/mock-target.cjs",
     import.meta.url,
   ).href;
-  const bridgeSource = `export const selectMockTarget=()=>{${options.bridgeVerify ? `return ${encode(target)}` : `throw Object.assign(new Error("secret-canary"), {code:${encode(options.bridgeError ?? "unexpected")}})`}}; export const verifyMockTarget=()=>{throw Object.assign(new Error("secret-canary"), {code:${encode(options.bridgeError ?? "unexpected")}})};`;
+  const bridgeSource = `export const selectMockTarget=()=>{${options.bridgeVerify ? `return Promise.resolve(${encode(target)})` : `throw Object.assign(new Error("secret-canary"), {code:${encode(options.bridgeError ?? "unexpected")}})`}}; export const verifyMockTarget=()=>{throw Object.assign(new Error("secret-canary"), {code:${encode(options.bridgeError ?? "unexpected")}})};`;
   const inboxUrl = new URL("../../src/cli/mailpit-client.ts", import.meta.url)
     .href;
   const inboxSource = `export {InboxError} from ${encode(inboxUrl + "?actual")}; import {InboxError} from ${encode(inboxUrl + "?actual")}; import {Effect} from ${encode(effectUrl)}; export const listInbox=()=>Effect.fail(new InboxError({code:"INVALID_RESPONSE", message:"secret-canary", outcome:"not-applied"})); export const readInbox=listInbox;`;
