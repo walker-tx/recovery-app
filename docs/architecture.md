@@ -188,6 +188,19 @@ Introduce tests with substantive behavior rather than placeholder coverage. The 
 
 Add mobile interaction tests when forms, reducers, auth routing, error translation, or shared interactive primitives have stable behavior. Test through accessible roles and labels; avoid implementation-detail snapshots and deep Convex mocks. Keep a smaller real-backend smoke layer for behavior the Convex test harness cannot reproduce.
 
+## Local development stack identity
+
+The approved local/automated-test stack contract uses the repository's canonical
+Git common directory as scope and the canonical worktree directory basename as
+its logical name. One name binds to one path; competing paths and duplicate
+active starts fail closed. Logical identity does not assert continuity of a
+historical directory inode. Stopped restart preserves existing provider identity;
+missing or incompatible persisted identity is not silently recreated. Names are
+not process or filesystem authority: existing ownership, exclusion, port and
+cleanup checks remain mandatory. Legacy ambiguous reservations require explicit
+reconciliation, not a nonce system or automatic migration. The detailed contract
+lives in `docs/superpowers/specs/local-workos-development-provider-design.md`.
+
 ## Extraction and dependency triggers
 
 Add an abstraction when existing code demonstrates at least one of these:

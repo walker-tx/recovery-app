@@ -3,6 +3,10 @@ set -u
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 [ "$(pwd -P)" = "$ROOT" ] || { echo 'Run this command from the repository root.' >&2; exit 1; }
+if [ "${1-}" = '--isolated' ]; then
+  shift
+  exec node "$ROOT/scripts/stack-runtime.cjs" stop "$@"
+fi
 ./scripts/check-no-dotenv.sh || exit 1
 STATE_DIR=$ROOT/.recovery-tailnet
 LOCAL_CONFIG=$ROOT/mise.local.toml

@@ -31,6 +31,18 @@ run = "./scripts/stop.sh"
 description = "Show Recovery development daemon status"
 run = "./scripts/status.sh"
 
+[tasks."stack:start"]
+description = "Opt in to an isolated local stack: supply an absolute Convex server executable"
+run = "node scripts/stack-runtime.cjs start"
+
+[tasks."stack:status"]
+description = "Show an isolated local stack: supply its stack UUID"
+run = "node scripts/stack-runtime.cjs status"
+
+[tasks."stack:stop"]
+description = "Stop only an owned isolated local stack: supply its stack UUID"
+run = "node scripts/stack-runtime.cjs stop"
+
 [tasks.logs]
 description = "Show Recovery development daemon logs"
 run = "pitchfork logs mailpit backend mobile"

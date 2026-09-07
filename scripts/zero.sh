@@ -4,6 +4,10 @@ set -euo pipefail
 SCRIPT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 ROOT=$(pwd -P)
 [ "$ROOT" = "$SCRIPT_ROOT" ] || { echo 'Run this command from the repository root.' >&2; exit 1; }
+if [ "${1-}" = '--isolated' ]; then
+  shift
+  exec node "$ROOT/scripts/stack-runtime.cjs" start "$@"
+fi
 ./scripts/migrate-convex-dotenv.sh
 ./scripts/check-no-dotenv.sh
 LOCAL_CONFIG=mise.local.toml
