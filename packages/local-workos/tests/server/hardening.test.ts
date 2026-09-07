@@ -100,171 +100,188 @@ it.live("lock failures are bounded and corrupt startup can recover", () =>
     }
   }),
 );
-it.live("bounded requests, explicit paging and trusted social fixtures", () =>
-  Effect.gen(function* () {
-    const { options } = yield* fixture();
-    const p = yield* Effect.acquireRelease(
-      Effect.promise(() => startProvider(options)),
-      (resource) => Effect.promise(() => resource.close()),
-    );
-    const sdk = new WorkOS(options.apiKey, {
-      apiHostname: "127.0.0.1",
-      port: p.port,
-      https: false,
-    });
-    const request = (
-      path: string,
-      init: {
-        method?: "GET" | "POST" | "DELETE";
-        body?: string;
-        headers?: Record<string, string>;
-      } = {},
-    ) =>
-      HttpClient.execute(
-        HttpClientRequest.make(init.method ?? "GET")(
-          `http://127.0.0.1:${p.port}${path}`,
-          {
-            headers: init.headers,
-            body:
-              init.body === undefined ? undefined : HttpBody.text(init.body),
-          },
-        ),
-      ).pipe(Effect.timeout("3 seconds"));
-    for (const body of [
-      "",
-      "{",
-      "null",
-      "[]",
-      '"secret-marker"',
-      "x".repeat(17000),
-    ]) {
-      const r = yield* request("/user_management/users", {
-        method: "POST",
-        body,
-      });
-      assert.ok(r.status >= 400 && r.status < 500);
-      const responseBody = yield* r.text.pipe(Effect.timeout("3 seconds"));
-      assert.ok(!responseBody.includes("secret-marker"));
-    }
-    for (const secret of [undefined, "wrong"]) {
-      const body = yield* Schema.encodeEffect(
-        Schema.fromJsonString(Schema.Unknown),
-      )({
-        client_id: p.clientId,
-        client_secret: secret,
-        grant_type: "password",
-      });
-      const authenticationResponse = yield* request(
-        "/user_management/authenticate",
-        {
-          method: "POST",
-          body,
-        },
-      );
-      assert.equal(authenticationResponse.status, 401);
-      yield* authenticationResponse.text.pipe(Effect.timeout("3 seconds"));
-    }
-    for (const authorization of ["", "Bearer wrong"]) {
-      for (const method of ["GET", "POST", "DELETE"] as const) {
-        const unauthorizedResponse = yield* request("/user_management/users", {
-          method,
-          headers: { authorization },
-          ...(method === "POST" ? { body: "{}" } : {}),
+it.layer(FetchHttpClient.layer, { excludeTestServices: true })((test) => {
+  test.effect(
+    "bounded requests, explicit paging and trusted social fixtures",
+    () =>
+      Effect.gen(function* () {
+        const { options } = yield* fixture();
+        const p = yield* Effect.acquireRelease(
+          Effect.promise(() => startProvider(options)),
+          (resource) => Effect.promise(() => resource.close()),
+        );
+        const sdk = new WorkOS(options.apiKey, {
+          apiHostname: "127.0.0.1",
+          port: p.port,
+          https: false,
         });
-        assert.equal(unauthorizedResponse.status, 401);
-        yield* unauthorizedResponse.text.pipe(Effect.timeout("3 seconds"));
-      }
-    }
-    for (const query of [
-      "before=user_bad",
-      "order=invalid",
-      "after=bad",
-      "limit=0",
-      "limit=101",
-      "limit=no",
-    ]) {
-      const pagingResponse = yield* request("/user_management/users?" + query, {
-        headers: { authorization: `Bearer ${options.apiKey}` },
-      });
-      assert.equal(pagingResponse.status, 422);
-      yield* pagingResponse.text.pipe(Effect.timeout("3 seconds"));
-    }
-    const password = "Synthetic-password-42";
-    const u = yield* Effect.promise(() =>
-      sdk.userManagement.createUser({
-        email: "unverified@example.test",
-        password,
-      }),
-    );
-    yield* Effect.promise(() =>
-      assert.rejects(
-        sdk.userManagement.authenticateWithPassword({
-          clientId: p.clientId,
-          email: u.email,
-          password,
-        }),
-      ),
-    );
-    const db = yield* Effect.acquireRelease(
-      Effect.sync(() => new DatabaseSync(options.database)),
-      (resource) => Effect.sync(() => resource.close()),
-    );
-    assert.equal(db.prepare("SELECT count(*) AS n FROM sessions").get()?.n, 0);
-    for (const provider of ["GoogleOAuth", "AppleOAuth"] as const) {
-      const user = yield* Effect.promise(() =>
-        p.createIdentityFixture({
-          email: provider + "@example.test",
-          provider,
-        }),
-      );
-      const identities = yield* Effect.promise(() =>
-        sdk.userManagement.getUserIdentities(user.id),
-      );
-      assert.equal(identities.length, 1);
-      assert.equal(identities[0].type, provider);
-      assert.equal(identities[0].provider, provider);
-      yield* Effect.promise(() =>
-        assert.rejects(
-          sdk.userManagement.authenticateWithPassword({
-            clientId: p.clientId,
-            email: user.email,
-            password,
-          }),
-        ),
-      );
-    }
-    const ids: string[] = [];
-    let after: string | undefined;
-    do {
-      const page = yield* Effect.promise(() =>
-        sdk.userManagement.listUsers({
-          limit: 1,
-          ...(after === undefined ? {} : { after }),
-        }),
-      );
-      ids.push(...page.data.map((user) => user.id));
-      after = page.listMetadata.after ?? undefined;
-    } while (after);
-    assert.equal(new Set(ids).size, 3);
-    assert.equal(ids.length, 3);
-    const duplicates = yield* Effect.promise(() =>
-      Promise.allSettled(
-        [1, 2].map(() =>
+        const request = (
+          path: string,
+          init: {
+            method?: "GET" | "POST" | "DELETE";
+            body?: string;
+            headers?: Record<string, string>;
+          } = {},
+        ) =>
+          HttpClient.execute(
+            HttpClientRequest.make(init.method ?? "GET")(
+              `http://127.0.0.1:${p.port}${path}`,
+              {
+                headers: init.headers,
+                body:
+                  init.body === undefined
+                    ? undefined
+                    : HttpBody.text(init.body),
+              },
+            ),
+          ).pipe(Effect.timeout("3 seconds"));
+        for (const body of [
+          "",
+          "{",
+          "null",
+          "[]",
+          '"secret-marker"',
+          "x".repeat(17000),
+        ]) {
+          const r = yield* request("/user_management/users", {
+            method: "POST",
+            body,
+          });
+          assert.ok(r.status >= 400 && r.status < 500);
+          const responseBody = yield* r.text.pipe(Effect.timeout("3 seconds"));
+          assert.ok(!responseBody.includes("secret-marker"));
+        }
+        for (const secret of [undefined, "wrong"]) {
+          const body = yield* Schema.encodeEffect(
+            Schema.fromJsonString(Schema.Unknown),
+          )({
+            client_id: p.clientId,
+            client_secret: secret,
+            grant_type: "password",
+          });
+          const authenticationResponse = yield* request(
+            "/user_management/authenticate",
+            {
+              method: "POST",
+              body,
+            },
+          );
+          assert.equal(authenticationResponse.status, 401);
+          yield* authenticationResponse.text.pipe(Effect.timeout("3 seconds"));
+        }
+        for (const authorization of ["", "Bearer wrong"]) {
+          for (const method of ["GET", "POST", "DELETE"] as const) {
+            const unauthorizedResponse = yield* request(
+              "/user_management/users",
+              {
+                method,
+                headers: { authorization },
+                ...(method === "POST" ? { body: "{}" } : {}),
+              },
+            );
+            assert.equal(unauthorizedResponse.status, 401);
+            yield* unauthorizedResponse.text.pipe(Effect.timeout("3 seconds"));
+          }
+        }
+        for (const query of [
+          "before=user_bad",
+          "order=invalid",
+          "after=bad",
+          "limit=0",
+          "limit=101",
+          "limit=no",
+        ]) {
+          const pagingResponse = yield* request(
+            "/user_management/users?" + query,
+            {
+              headers: { authorization: `Bearer ${options.apiKey}` },
+            },
+          );
+          assert.equal(pagingResponse.status, 422);
+          yield* pagingResponse.text.pipe(Effect.timeout("3 seconds"));
+        }
+        const password = "Synthetic-password-42";
+        const u = yield* Effect.promise(() =>
           sdk.userManagement.createUser({
-            email: "race@example.test",
+            email: "unverified@example.test",
             password,
           }),
-        ),
-      ),
-    );
-    assert.equal(duplicates.filter((r) => r.status === "fulfilled").length, 1);
-    const databaseInfo = yield* Effect.promise(() => stat(options.database));
-    assert.equal(databaseInfo.mode & 0o777, 0o600);
-  }).pipe(
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- The live test owns its HTTP client layer.
-    Effect.provide(FetchHttpClient.layer),
-  ),
-);
+        );
+        yield* Effect.promise(() =>
+          assert.rejects(
+            sdk.userManagement.authenticateWithPassword({
+              clientId: p.clientId,
+              email: u.email,
+              password,
+            }),
+          ),
+        );
+        const db = yield* Effect.acquireRelease(
+          Effect.sync(() => new DatabaseSync(options.database)),
+          (resource) => Effect.sync(() => resource.close()),
+        );
+        assert.equal(
+          db.prepare("SELECT count(*) AS n FROM sessions").get()?.n,
+          0,
+        );
+        for (const provider of ["GoogleOAuth", "AppleOAuth"] as const) {
+          const user = yield* Effect.promise(() =>
+            p.createIdentityFixture({
+              email: provider + "@example.test",
+              provider,
+            }),
+          );
+          const identities = yield* Effect.promise(() =>
+            sdk.userManagement.getUserIdentities(user.id),
+          );
+          assert.equal(identities.length, 1);
+          assert.equal(identities[0].type, provider);
+          assert.equal(identities[0].provider, provider);
+          yield* Effect.promise(() =>
+            assert.rejects(
+              sdk.userManagement.authenticateWithPassword({
+                clientId: p.clientId,
+                email: user.email,
+                password,
+              }),
+            ),
+          );
+        }
+        const ids: string[] = [];
+        let after: string | undefined;
+        do {
+          const page = yield* Effect.promise(() =>
+            sdk.userManagement.listUsers({
+              limit: 1,
+              ...(after === undefined ? {} : { after }),
+            }),
+          );
+          ids.push(...page.data.map((user) => user.id));
+          after = page.listMetadata.after ?? undefined;
+        } while (after);
+        assert.equal(new Set(ids).size, 3);
+        assert.equal(ids.length, 3);
+        const duplicates = yield* Effect.promise(() =>
+          Promise.allSettled(
+            [1, 2].map(() =>
+              sdk.userManagement.createUser({
+                email: "race@example.test",
+                password,
+              }),
+            ),
+          ),
+        );
+        assert.equal(
+          duplicates.filter((r) => r.status === "fulfilled").length,
+          1,
+        );
+        const databaseInfo = yield* Effect.promise(() =>
+          stat(options.database),
+        );
+        assert.equal(databaseInfo.mode & 0o777, 0o600);
+      }),
+  );
+});
 it.live(
   "existing sidecars require owner-only permissions and concurrent initialization agrees",
   () =>

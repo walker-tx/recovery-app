@@ -136,27 +136,26 @@ for (const kind of ["encoded", "long", "dot", "encoded-dot"] as const) {
   );
 }
 
-it.live("HEAD retains unsupported routing and bearer precedence", () =>
-  Effect.gen(function* () {
-    const { base, headers } = yield* fixture;
-    for (const path of [
-      "/instance-info",
-      "/user_management/users",
-      "/missing",
-    ]) {
-      for (const authorized of [false, true]) {
-        const response = yield* HttpClient.head(base + path, {
-          headers: authorized ? headers : {},
-        });
-        assert.equal(response.status, authorized ? 404 : 401);
-        assert.equal(yield* response.text, "");
+it.layer(FetchHttpClient.layer, { excludeTestServices: true })((test) => {
+  test.effect("HEAD retains unsupported routing and bearer precedence", () =>
+    Effect.gen(function* () {
+      const { base, headers } = yield* fixture;
+      for (const path of [
+        "/instance-info",
+        "/user_management/users",
+        "/missing",
+      ]) {
+        for (const authorized of [false, true]) {
+          const response = yield* HttpClient.head(base + path, {
+            headers: authorized ? headers : {},
+          });
+          assert.equal(response.status, authorized ? 404 : 401);
+          assert.equal(yield* response.text, "");
+        }
       }
-    }
-  }).pipe(
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- The live test is the HTTP client layer entry point.
-    Effect.provide(FetchHttpClient.layer),
-  ),
-);
+    }),
+  );
+});
 
 it.live("raw dot segments cannot normalize user lookup", () =>
   Effect.gen(function* () {

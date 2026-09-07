@@ -8,78 +8,79 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigurationError } from "../../src/server/config.ts";
 import { startProvider } from "../../src/server/provider.ts";
-it.live(
-  "bootstrap-owned generation and port survive restart and reject mismatched state",
-  () =>
-    Effect.gen(function* () {
-      const dir = yield* Effect.acquireRelease(
-        Effect.promise(() => mkdtemp(join(tmpdir(), "workos-startup-"))),
-        (resource) =>
-          Effect.promise(() => rm(resource, { recursive: true, force: true })),
-      );
-      const generation = randomUUID();
-      const options = {
-        database: join(dir, "state.sqlite"),
-        apiKey: `sk_test_local_${"02".repeat(32)}`,
-        providerGeneration: generation,
-      };
-      let provider = yield* Effect.acquireRelease(
-        Effect.promise(() => startProvider(options)),
-        (resource) => Effect.promise(() => resource.close()),
-      );
-      assert.equal(
-        provider.issuer,
-        `https://local-workos.invalid/instances/${generation}`,
-      );
-      assert.equal(provider.providerGeneration, generation);
-      const infoResponse = yield* HttpClient.get(
-        `http://127.0.0.1:${provider.port}/instance-info`,
-      );
-      assert.equal(infoResponse.status, 200);
-      const info = yield* infoResponse.json;
-      assert.deepEqual(info, {
-        providerGeneration: generation,
-        issuer: provider.issuer,
-        clientId: provider.clientId,
-        port: provider.port,
-      });
-      assert.ok(
-        !(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
-          info,
-        )).includes(options.apiKey),
-      );
-      const port = provider.port;
-      yield* Effect.promise(() => provider.close());
-      yield* Effect.promise(() =>
-        assert.rejects(
-          startProvider({ ...options, providerGeneration: randomUUID() }),
-          /generation/i,
-        ),
-      );
-      provider = yield* Effect.acquireRelease(
-        Effect.promise(() => startProvider({ ...options, port })),
-        (resource) => Effect.promise(() => resource.close()),
-      );
-      assert.equal(provider.port, port);
-      assert.equal(
-        provider.issuer,
-        `https://local-workos.invalid/instances/${generation}`,
-      );
-      yield* Effect.promise(() =>
-        assert.rejects(
-          startProvider({ ...options, port }),
-          (error: unknown) =>
-            error instanceof Error &&
-            error.cause instanceof Error &&
-            "code" in error.cause &&
-            error.cause.code === "EADDRINUSE",
-        ),
-      );
-    }).pipe(
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- Test entrypoint owns the HTTP client layer.
-      Effect.provide(FetchHttpClient.layer),
-    ),
-);
+it.layer(FetchHttpClient.layer, { excludeTestServices: true })((test) => {
+  test.effect(
+    "bootstrap-owned generation and port survive restart and reject mismatched state",
+    () =>
+      Effect.gen(function* () {
+        const dir = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(join(tmpdir(), "workos-startup-"))),
+          (resource) =>
+            Effect.promise(() =>
+              rm(resource, { recursive: true, force: true }),
+            ),
+        );
+        const generation = randomUUID();
+        const options = {
+          database: join(dir, "state.sqlite"),
+          apiKey: `sk_test_local_${"02".repeat(32)}`,
+          providerGeneration: generation,
+        };
+        let provider = yield* Effect.acquireRelease(
+          Effect.promise(() => startProvider(options)),
+          (resource) => Effect.promise(() => resource.close()),
+        );
+        assert.equal(
+          provider.issuer,
+          `https://local-workos.invalid/instances/${generation}`,
+        );
+        assert.equal(provider.providerGeneration, generation);
+        const infoResponse = yield* HttpClient.get(
+          `http://127.0.0.1:${provider.port}/instance-info`,
+        );
+        assert.equal(infoResponse.status, 200);
+        const info = yield* infoResponse.json;
+        assert.deepEqual(info, {
+          providerGeneration: generation,
+          issuer: provider.issuer,
+          clientId: provider.clientId,
+          port: provider.port,
+        });
+        assert.ok(
+          !(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+            info,
+          )).includes(options.apiKey),
+        );
+        const port = provider.port;
+        yield* Effect.promise(() => provider.close());
+        yield* Effect.promise(() =>
+          assert.rejects(
+            startProvider({ ...options, providerGeneration: randomUUID() }),
+            /generation/i,
+          ),
+        );
+        provider = yield* Effect.acquireRelease(
+          Effect.promise(() => startProvider({ ...options, port })),
+          (resource) => Effect.promise(() => resource.close()),
+        );
+        assert.equal(provider.port, port);
+        assert.equal(
+          provider.issuer,
+          `https://local-workos.invalid/instances/${generation}`,
+        );
+        yield* Effect.promise(() =>
+          assert.rejects(
+            startProvider({ ...options, port }),
+            (error: unknown) =>
+              error instanceof Error &&
+              error.cause instanceof Error &&
+              "code" in error.cause &&
+              error.cause.code === "EADDRINUSE",
+          ),
+        );
+      }),
+  );
+});
 it.live("invalid explicit startup generation and ports are rejected", () =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(

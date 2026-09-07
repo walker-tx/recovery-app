@@ -20,19 +20,30 @@ import {
 const run = <A>(effect: Effect.Effect<A, InboxError, Scope.Scope>) =>
   Effect.runPromise(Effect.scoped(effect).pipe(Effect.timeout(4000)));
 const ok = Effect.void;
-// oxlint-disable-next-line effecttsgo/async-function -- Native integration harness deliberately runs outside the Effect runtime under test to observe cleanup and interruption.
-async function port() {
-  const server = createServer();
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
+const port = Effect.fn("inboxFixture.port")(function* () {
+  const server = yield* Effect.acquireRelease(
+    Effect.callback<ReturnType<typeof createServer>, Error>((resume) => {
+      const listener = createServer();
+      const onError = (error: Error) => resume(Effect.fail(error));
+      listener.once("error", onError);
+      listener.listen(0, "127.0.0.1", () => {
+        listener.off("error", onError);
+        resume(Effect.succeed(listener));
+      });
+    }),
+    (listener) =>
+      Effect.callback<void, Error>((resume) => {
+        listener.close((error) =>
+          resume(error ? Effect.fail(error) : Effect.void),
+        );
+      }).pipe(Effect.orDie),
+  );
   const address = server.address();
   if (!address || typeof address === "string") {
     throw new Error("No port");
   }
-  server.close();
-  await once(server, "close");
   return address.port;
-}
+}, Effect.scoped);
 const owned: {
   child: ReturnType<typeof spawn>;
   closed: Promise<unknown>;
@@ -48,7 +59,7 @@ async function start(
   const dir = await realpath(await mkdtemp(join(tmpdir(), "admin-inbox-")));
   await chmod(dir, 0o700);
   await mkdir(join(dir, "home"));
-  const http = forcedHttpPort ?? (await port());
+  const http = forcedHttpPort ?? (await Effect.runPromise(port()));
   const binary = execFileSync("mise", ["which", "mailpit"], {
     encoding: "utf8",
   }).trim();

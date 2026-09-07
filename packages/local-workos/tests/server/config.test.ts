@@ -112,59 +112,60 @@ it.effect(
     }),
 );
 
-it.live(
-  "concurrent HTTP providers expose only their persisted generation identity",
-  () =>
-    Effect.gen(function* () {
-      const dir = yield* Effect.acquireRelease(
-        Effect.promise(() => mkdtemp(join(tmpdir(), "workos-config-"))),
-        (resource) =>
-          Effect.promise(() => rm(resource, { recursive: true, force: true })),
-      );
-      const providers = yield* Effect.all(
-        ["first", "second"].map((name) =>
-          Effect.acquireRelease(
+it.layer(FetchHttpClient.layer, { excludeTestServices: true })((test) => {
+  test.effect(
+    "concurrent HTTP providers expose only their persisted generation identity",
+    () =>
+      Effect.gen(function* () {
+        const dir = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(join(tmpdir(), "workos-config-"))),
+          (resource) =>
             Effect.promise(() =>
-              startProvider({
-                database: join(dir, `${name}.sqlite`),
-                apiKey: key,
-              }),
+              rm(resource, { recursive: true, force: true }),
             ),
-            (resource) => Effect.promise(() => resource.close()),
-          ),
-        ),
-        { concurrency: "unbounded" },
-      );
-      assert.notEqual(providers[0].clientId, providers[1].clientId);
-      for (const [index, provider] of providers.entries()) {
-        const base = `http://127.0.0.1:${provider.port}`;
-        const info = yield* HttpClient.get(`${base}/instance-info`).pipe(
-          Effect.flatMap((response) => response.json),
-          Effect.flatMap(
-            Schema.decodeUnknownEffect(
-              Schema.Struct({ clientId: Schema.String }),
+        );
+        const providers = yield* Effect.all(
+          ["first", "second"].map((name) =>
+            Effect.acquireRelease(
+              Effect.promise(() =>
+                startProvider({
+                  database: join(dir, `${name}.sqlite`),
+                  apiKey: key,
+                }),
+              ),
+              (resource) => Effect.promise(() => resource.close()),
             ),
           ),
+          { concurrency: "unbounded" },
         );
-        assert.equal(
-          info.clientId,
-          `client_local${provider.providerGeneration.replaceAll("-", "")}`,
-        );
-        const own = yield* HttpClient.get(
-          `${base}/sso/jwks/${provider.clientId}`,
-        );
-        assert.equal(own.status, 200);
-        const other = yield* HttpClient.get(
-          `${base}/sso/jwks/${providers[1 - index].clientId}`,
-          { headers: { authorization: `Bearer ${key}` } },
-        );
-        assert.equal(other.status, 404);
-      }
-    }).pipe(
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- The live test owns its HTTP client layer.
-      Effect.provide(FetchHttpClient.layer),
-    ),
-);
+        assert.notEqual(providers[0].clientId, providers[1].clientId);
+        for (const [index, provider] of providers.entries()) {
+          const base = `http://127.0.0.1:${provider.port}`;
+          const info = yield* HttpClient.get(`${base}/instance-info`).pipe(
+            Effect.flatMap((response) => response.json),
+            Effect.flatMap(
+              Schema.decodeUnknownEffect(
+                Schema.Struct({ clientId: Schema.String }),
+              ),
+            ),
+          );
+          assert.equal(
+            info.clientId,
+            `client_local${provider.providerGeneration.replaceAll("-", "")}`,
+          );
+          const own = yield* HttpClient.get(
+            `${base}/sso/jwks/${provider.clientId}`,
+          );
+          assert.equal(own.status, 200);
+          const other = yield* HttpClient.get(
+            `${base}/sso/jwks/${providers[1 - index].clientId}`,
+            { headers: { authorization: `Bearer ${key}` } },
+          );
+          assert.equal(other.status, 404);
+        }
+      }),
+  );
+});
 
 it.effect(
   "isolates concurrent bootstrap ConfigProviders without a global handoff",

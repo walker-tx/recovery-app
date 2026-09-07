@@ -202,57 +202,58 @@ it.live(
       }
     }),
 );
-it.live(
-  "generated signing identity is unchanged on restart and publishes only public fields",
-  () =>
-    Effect.gen(function* () {
-      const dir = yield* directory;
-      const options = {
-        database: join(dir, "state.sqlite"),
-        apiKey: `sk_test_local_${"03".repeat(32)}`,
-      };
-      const first = yield* Effect.acquireRelease(
-        Effect.promise(() => startProvider(options)),
-        (p) => Effect.promise(() => p.close()),
-      );
-      yield* Effect.promise(() => first.close());
-      const db = yield* Effect.acquireRelease(
-        Effect.sync(() => new DatabaseSync(options.database)),
-        (resource) => Effect.sync(() => resource.close()),
-      );
-      const saved = db.prepare("SELECT body FROM instance").get()?.body;
-      assert.ok(typeof saved === "string");
-      const identity = yield* Schema.decodeUnknownEffect(
-        Schema.fromJsonString(
-          Schema.Struct({
-            publicKey: Schema.Struct({ n: Schema.String, e: Schema.String }),
-          }),
-        ),
-      )(saved);
-      const second = yield* Effect.acquireRelease(
-        Effect.promise(() => startProvider(options)),
-        (p) => Effect.promise(() => p.close()),
-      );
-      assert.equal(second.providerGeneration, first.providerGeneration);
-      assert.equal(db.prepare("SELECT body FROM instance").get()?.body, saved);
-      const jwks = yield* HttpClient.get(
-        `http://127.0.0.1:${second.port}/sso/jwks/${second.clientId}`,
-      ).pipe(
-        Effect.flatMap((response) => response.json),
-        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- Test entry point supplies its isolated HTTP client layer.
-        Effect.provide(FetchHttpClient.layer),
-      );
-      assert.deepEqual(jwks, {
-        keys: [
-          {
-            kty: "RSA",
-            n: identity.publicKey.n,
-            e: identity.publicKey.e,
-            kid: first.providerGeneration,
-            alg: "RS256",
-            use: "sig",
-          },
-        ],
-      });
-    }),
-);
+it.layer(FetchHttpClient.layer, { excludeTestServices: true })((test) => {
+  test.effect(
+    "generated signing identity is unchanged on restart and publishes only public fields",
+    () =>
+      Effect.gen(function* () {
+        const dir = yield* directory;
+        const options = {
+          database: join(dir, "state.sqlite"),
+          apiKey: `sk_test_local_${"03".repeat(32)}`,
+        };
+        const first = yield* Effect.acquireRelease(
+          Effect.promise(() => startProvider(options)),
+          (p) => Effect.promise(() => p.close()),
+        );
+        yield* Effect.promise(() => first.close());
+        const db = yield* Effect.acquireRelease(
+          Effect.sync(() => new DatabaseSync(options.database)),
+          (resource) => Effect.sync(() => resource.close()),
+        );
+        const saved = db.prepare("SELECT body FROM instance").get()?.body;
+        assert.ok(typeof saved === "string");
+        const identity = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(
+            Schema.Struct({
+              publicKey: Schema.Struct({ n: Schema.String, e: Schema.String }),
+            }),
+          ),
+        )(saved);
+        const second = yield* Effect.acquireRelease(
+          Effect.promise(() => startProvider(options)),
+          (p) => Effect.promise(() => p.close()),
+        );
+        assert.equal(second.providerGeneration, first.providerGeneration);
+        assert.equal(
+          db.prepare("SELECT body FROM instance").get()?.body,
+          saved,
+        );
+        const jwks = yield* HttpClient.get(
+          `http://127.0.0.1:${second.port}/sso/jwks/${second.clientId}`,
+        ).pipe(Effect.flatMap((response) => response.json));
+        assert.deepEqual(jwks, {
+          keys: [
+            {
+              kty: "RSA",
+              n: identity.publicKey.n,
+              e: identity.publicKey.e,
+              kid: first.providerGeneration,
+              alg: "RS256",
+              use: "sig",
+            },
+          ],
+        });
+      }),
+  );
+});
