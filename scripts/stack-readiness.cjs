@@ -157,12 +157,10 @@ function createReadiness({
         }
         greeting = Buffer.concat([greeting, chunk]);
         const text = greeting.toString("ascii");
-        if (text.includes("\r\n")) {
-          finish(
-            /^220 [^\r\n]*\r\n$/.test(text)
-              ? undefined
-              : Error("Invalid SMTP greeting"),
-          );
+        if (/^(?:220-[^\r\n]*\r\n)*220 [^\r\n]*\r\n$/.test(text)) {
+          finish();
+        } else if (!/^(?:220-[^\r\n]*\r\n)*[^\r\n]*\r?$/.test(text)) {
+          finish(Error("Invalid SMTP greeting"));
         }
       };
       socket.on("data", data);

@@ -4,7 +4,8 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 cd "$ROOT"
 FIXTURE=$(mktemp -d "$ROOT/.code-style-test.XXXXXX")
-trap 'rm -rf "$FIXTURE"' EXIT HUP INT TERM
+EFFECT_FIXTURE=$(mktemp -d "$ROOT/packages/local-workos/tests/effect-style-test.XXXXXX")
+trap 'rm -rf "$FIXTURE" "$EFFECT_FIXTURE"' EXIT HUP INT TERM
 OXFMT="$ROOT/node_modules/.bin/oxfmt"
 OXLINT="$ROOT/node_modules/.bin/oxlint"
 
@@ -45,4 +46,25 @@ done
 "$OXFMT" --check "$FIXTURE" > /dev/null
 "$OXLINT" --deny-warnings --report-unused-disable-directives "$FIXTURE" > /dev/null
 
-echo 'Code-style rejection, repair, and exclusion checks passed'
+# Effect rules must also reject regressions in tests, not only production code.
+for rule in floating-effect prefer-schema-over-json async-function; do
+  case "$rule" in
+    floating-effect) source='Effect.succeed(1);' ;;
+    prefer-schema-over-json) source='export const program = Effect.sync(() => JSON.stringify({ valid: true }));' ;;
+    async-function) source='export const program = Effect.promise(async () => 1);' ;;
+  esac
+  printf 'import { Effect } from "effect";\n%s\n' "$source" > "$EFFECT_FIXTURE/lint.ts"
+  if pnpm --filter @recovery/local-workos run lint > "$FIXTURE/effect.log" 2>&1; then
+    echo "Effect linter accepted forbidden test code: $rule" >&2
+    exit 1
+  fi
+  if ! grep -q "effecttsgo($rule)" "$FIXTURE/effect.log"; then
+    cat "$FIXTURE/effect.log" >&2
+    echo "Effect lint failed without detecting $rule" >&2
+    exit 1
+  fi
+done
+printf 'import { Effect } from "effect";\nexport const program = Effect.void;\n' > "$EFFECT_FIXTURE/lint.ts"
+pnpm --filter @recovery/local-workos run lint > /dev/null
+
+echo 'Code-style and Effect rejection, repair, and exclusion checks passed'

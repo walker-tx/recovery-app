@@ -11,6 +11,45 @@ mise exec -- pnpm --filter @recovery/local-workos test
 mise exec -- pnpm --filter @recovery/local-workos check
 ```
 
+## Effect linting
+
+`check` runs TypeScript and then Oxlint with zero warnings allowed. `.oxlintrc.json`
+inherits the repository lint rules and adds the Effect correctness, antipattern,
+and Effect-native presets for source and tests; the Effect style preset is
+intentionally not enabled. Unused suppression comments also fail lint.
+
+Workspace `lint` delegates this package to its own type-aware lint command while
+checking other packages normally. This is necessary because nested Oxlint configs
+do not activate type-aware mode for a non-type-aware root invocation. No package
+is excluded from the combined check.
+
+The pinned `@effect/tsgo`, `oxlint`, and `oxlint-tsgolint` versions are a compatible
+set. The package `prepare` script patches only Oxlint after installation, leaving
+TypeScript unchanged. Upgrade these three together and rerun `prepare`, `check`,
+and `test`; the patcher rejects unsupported versions. If lifecycle scripts were
+skipped during installation, run:
+
+```sh
+mise exec -- pnpm --filter @recovery/local-workos run prepare
+mise exec -- pnpm --filter @recovery/local-workos run lint
+```
+
+Tests enforce the same Effect presets as source, including JSON, async-function,
+Promise, fetch, and date rules. The only configuration override is native Node
+imports in the explicitly listed black-box harness files: these tests inspect
+SQLite files, filesystem permissions, child processes, and raw HTTP transport.
+New test files do not inherit that exception automatically.
+
+Other exceptions are local, explained suppression comments for deliberate
+interop/security boundaries (for example, the shutdown watchdog must work even
+when Effect cleanup cannot finish, and native Promise mocks must settle after
+an Effect consumer is interrupted). HTTP client Layers are supplied at test
+entry points. Do not suppress a finding merely to pass lint.
+
+`pnpm run test:style` also injects forbidden Effect code into a temporary test
+file and verifies that floating Effects, raw JSON, and async wrappers are rejected.
+The fixture is removed on exit.
+
 ## Effect implementation and tests
 
 The CLI uses the pinned Effect 4 `effect/unstable/cli` command and flag APIs.

@@ -1,8 +1,11 @@
 import { Predicate } from "effect";
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- Owner/mode checks and O_NOFOLLOW require the low-level Node filesystem boundary.
 import { lstatSync, openSync, closeSync, constants } from "node:fs";
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- dirname is pure; no filesystem service is needed.
 import { dirname } from "node:path";
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- NodeHttpServer.make requires the native server factory.
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import {
@@ -11,7 +14,6 @@ import {
   importJWK,
   CompactSign,
   compactVerify,
-  type JWK,
 } from "jose";
 import {
   Effect,
@@ -20,6 +22,7 @@ import {
   Layer,
   Context,
   Clock,
+  DateTime,
   Data,
   Schema,
 } from "effect";
@@ -111,13 +114,20 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
           const file = lstatSync(path);
           if (
             !file.isFile() ||
+            file.nlink !== 1 ||
             file.uid !== process.getuid?.() ||
             (file.mode & 0o077) !== 0
           ) {
             throw new Error("State must be an owner-only regular file");
           }
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          if (
+            !(
+              error instanceof Error &&
+              "code" in error &&
+              error.code === "ENOENT"
+            )
+          ) {
             throw error;
           }
         }
@@ -196,7 +206,9 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
     const keys = yield* Effect.tryPromise(() =>
       generateKeyPair("RS256", { extractable: true }),
     );
-    const body = JSON.stringify({
+    const body = yield* Schema.encodeEffect(
+      Schema.fromJsonString(Schema.Unknown),
+    )({
       generation: options.providerGeneration ?? randomUUID(),
       privateKey: yield* Effect.tryPromise(() => exportJWK(keys.privateKey)),
       publicKey: yield* Effect.tryPromise(() => exportJWK(keys.publicKey)),
@@ -214,46 +226,42 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
       }),
     );
   }
-  const identity = yield* Effect.try({
-    try: () => {
-      const persistedIdentity: {
-        generation: string;
-        privateKey: JWK;
-        publicKey: JWK;
-      } = JSON.parse(saved.body);
-      if (
-        !persistedIdentity ||
-        typeof persistedIdentity.generation !== "string" ||
-        !generationPattern.test(persistedIdentity.generation) ||
-        persistedIdentity.privateKey?.kty !== "RSA" ||
-        persistedIdentity.publicKey?.kty !== "RSA" ||
-        typeof persistedIdentity.privateKey.d !== "string" ||
-        typeof persistedIdentity.publicKey.n !== "string" ||
-        typeof persistedIdentity.publicKey.e !== "string" ||
-        persistedIdentity.privateKey.n !== persistedIdentity.publicKey.n ||
-        persistedIdentity.privateKey.e !== persistedIdentity.publicKey.e ||
-        ["d", "p", "q", "dp", "dq", "qi", "oth"].some(
-          (field) => field in persistedIdentity.publicKey,
-        )
-      ) {
-        throw new ProviderStartupError({
+  const identity = yield* Schema.decodeUnknownEffect(
+    Schema.fromJsonString(
+      Schema.Struct({
+        generation: Schema.String.check(Schema.isPattern(generationPattern)),
+        privateKey: Schema.Struct({
+          kty: Schema.Literal("RSA"),
+          n: Schema.String,
+          e: Schema.String,
+          d: Schema.String,
+        }),
+        publicKey: Schema.Struct({
+          kty: Schema.Literal("RSA"),
+          n: Schema.String,
+          e: Schema.String,
+        }),
+      }).check(
+        Schema.makeFilter(
+          (persisted) =>
+            persisted.privateKey.n === persisted.publicKey.n &&
+            persisted.privateKey.e === persisted.publicKey.e &&
+            !["d", "p", "q", "dp", "dq", "qi", "oth"].some(
+              (field) => field in persisted.publicKey,
+            ),
+        ),
+      ),
+    ),
+    // Retain all signing parameters and expose private public-key material to the check.
+    { onExcessProperty: "preserve" },
+  )(saved.body).pipe(
+    Effect.mapError(
+      () =>
+        new ProviderStartupError({
           message: "Invalid persisted signing identity",
-        });
-      }
-      return {
-        ...persistedIdentity,
-        publicKey: {
-          ...persistedIdentity.publicKey,
-          n: persistedIdentity.publicKey.n,
-          e: persistedIdentity.publicKey.e,
-        },
-      };
-    },
-    catch: () =>
-      new ProviderStartupError({
-        message: "Invalid persisted signing identity",
-      }),
-  });
+        }),
+    ),
+  );
   const { key } = yield* Effect.gen(function* () {
     const publicKey = yield* Effect.tryPromise(() =>
       importJWK(identity.publicKey, "RS256"),
@@ -312,6 +320,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
     port: options.port ?? 0,
   }).pipe(Effect.uninterruptible);
   const app = yield* makeHttpApp(scope).pipe(
+    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- Server entrypoint assembles services in the caller-owned scope.
     Effect.provide(
       workosLayer.pipe(
         Layer.provide(Layer.succeedContext(databaseContext)),
@@ -479,7 +488,8 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
             new FixtureError({ message: "Invalid fixture" }),
           );
         }
-        const now = new Date(yield* Clock.currentTimeMillis).toISOString();
+        const now = yield* Clock.currentTimeMillis;
+        const timestamp = DateTime.formatIso(DateTime.makeUnsafe(now));
         const user: User = {
           id: yield* Schema.decodeUnknownEffect(UserId)(
             `user_${randomUUID()}`,
@@ -489,8 +499,8 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
           email_verified: true,
           first_name: null,
           last_name: null,
-          created_at: now,
-          updated_at: now,
+          created_at: timestamp,
+          updated_at: timestamp,
           profile_picture_url: null,
           external_id: null,
           metadata: {},
@@ -503,7 +513,13 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
             provider: input.provider,
           },
         ];
-        yield* sql`INSERT INTO users VALUES(${user.id},${email},${JSON.stringify(user)},${null},${null},${JSON.stringify(identities)})`.pipe(
+        const userBody = yield* Schema.encodeEffect(
+          Schema.fromJsonString(Schema.Unknown),
+        )(user);
+        const identitiesBody = yield* Schema.encodeEffect(
+          Schema.fromJsonString(Schema.Unknown),
+        )(identities);
+        yield* sql`INSERT INTO users VALUES(${user.id},${email},${userBody},${null},${null},${identitiesBody})`.pipe(
           Effect.mapError(
             () =>
               new FixtureError({
@@ -518,6 +534,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
 });
 
 /** Promise compatibility boundary for launchers and non-Effect callers. */
+// oxlint-disable-next-line effecttsgo/async-function -- Public Promise adapter owns acquisition-failure cleanup for non-Effect callers.
 export async function startProvider(
   options: Parameters<typeof acquireProvider>[0],
 ) {
@@ -539,6 +556,7 @@ export async function startProvider(
         Effect.runPromise(
           provider
             .createIdentityFixture(input)
+            // oxlint-disable-next-line effecttsgo/global-error-in-effect-failure -- Preserve native Error rejections for Promise API compatibility.
             .pipe(Effect.mapError((error) => new Error(error.message))),
         ),
       close: () =>

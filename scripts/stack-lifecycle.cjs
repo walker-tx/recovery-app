@@ -165,6 +165,16 @@ function createLifecycle({
         const record = await bounded("reservation", () =>
           registry.reserve(canonical),
         );
+        const initial = await status(canonical);
+        if (
+          initial.state !== "reserved" ||
+          !initial.services ||
+          names.some((name) => initial.services[name] !== "stopped")
+        ) {
+          throw Error(
+            "Stack start requires all services stopped; active or uncertain stack refused",
+          );
+        }
         const prepared = prepare
           ? await bounded(
               "preparation",
@@ -275,17 +285,27 @@ function createLifecycle({
                 { cwd: service.cwd ?? canonical, env, signal, timeoutMs },
               ),
             );
-            const identity = await bounded("identity", (signal) =>
-              identify(id, { signal }),
-            );
-            await bounded("record ownership", () =>
-              registry.recordProcess(
-                canonical,
-                record.stackId,
-                group,
-                identity,
-              ),
-            );
+            try {
+              const identity = await bounded("identity", (signal) =>
+                identify(id, { signal }),
+              );
+              await bounded("record ownership", () =>
+                registry.recordProcess(
+                  canonical,
+                  record.stackId,
+                  group,
+                  identity,
+                ),
+              );
+            } catch {
+              // A launched daemon may survive without recorded ownership.
+              throw Object.assign(
+                Error(
+                  "Started process ownership unverified; manual reconciliation required",
+                ),
+                { ambiguous: true },
+              );
+            }
           }
           for (const name of group) {
             const endpoint = services.find(

@@ -30,7 +30,9 @@ function validateSeed(seed) {
   if (
     !seed ||
     Object.keys(seed).length !== seedKeys.length ||
-    !seedKeys.every((k) => typeof seed[k] === "string") ||
+    !seedKeys.every(
+      (k) => Object.hasOwn(seed, k) && typeof seed[k] === "string",
+    ) ||
     !uuid(seed.RECOVERY_STACK_ID) ||
     !uuid(seed.RECOVERY_PROVIDER_GENERATION) ||
     seed.RECOVERY_STACK_ID === seed.RECOVERY_PROVIDER_GENERATION ||
@@ -191,7 +193,8 @@ function persistLocalConfig({
   };
   let lock,
     temporary,
-    locked = false;
+    locked = false,
+    retainLock = false;
   try {
     let values = validate(owned);
     if (typeof file !== "string" || !path.isAbsolute(file)) {
@@ -264,7 +267,9 @@ function persistLocalConfig({
     checkDeadline(); // Synchronous Mise calls cannot deliver an AbortSignal timer.
     fs.renameSync(temporary, file);
     temporary = undefined;
+    retainLock = true; // Keep ambiguous publication fenced until manual recovery.
     checkDeadline(); // Publication cannot be undone if the atomic syscall crossed the deadline.
+    retainLock = false;
   } catch (error) {
     if (error?.ambiguousTimeout === true) {
       throw Object.assign(Error("Local stack config persistence rejected"), {
@@ -276,7 +281,7 @@ function persistLocalConfig({
     if (temporary) {
       fs.rmSync(temporary, { force: true });
     }
-    if (locked) {
+    if (locked && !retainLock) {
       fs.rmdirSync(lock);
     }
   }
@@ -322,6 +327,8 @@ function checkForbidden(file, run) {
     "CONVEX_DEPLOY_KEY",
     "CONVEX_DEPLOYMENT",
     "CONVEX_SELF_HOSTED_ADMIN_KEY",
+    "CONVEX_SELF_HOSTED_URL",
+    "CONVEX_ADMIN_KEY",
     "WORKOS_ADMIN_API_KEY",
   ]) {
     if (readScalar(file, key, run, true) !== null) {

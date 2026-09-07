@@ -38,6 +38,9 @@ async function fixture(t, overrides = {}) {
       ids.set(args[1], identity.pid);
       const record = await registry.reserve(options.cwd);
       const name = args[1].split("-").at(-1);
+      const portIndex = args.indexOf("--expected-port");
+      assert.ok(portIndex >= 0);
+      assert.equal(args[portIndex + 1], String(record.ports[name]));
       const endpoints =
         name === "mailpitHttp"
           ? ["mailpitHttp", "mailpitSmtp"]
@@ -76,21 +79,29 @@ async function fixture(t, overrides = {}) {
   ];
   return { registry, lifecycle, worktree, sibling, services, calls, processes };
 }
-test("parallel stacks start independently; healthy resume runs no command; stop preserves sibling and reservation", async (t) => {
+test("parallel stacks start independently; active restart refuses; stop preserves sibling and reservation", async (t) => {
   const f = await fixture(t);
   const [a, b] = await Promise.all([
     f.lifecycle.start(f.worktree, f.services),
     f.lifecycle.start(f.sibling, f.services),
   ]);
   assert.notEqual(a.stackId, b.stackId);
-  await f.lifecycle.start(f.worktree, f.services);
+  await assert.rejects(f.lifecycle.start(f.worktree, f.services), /stopped/);
   assert.equal(f.calls.length, 2);
   await f.lifecycle.stop(f.worktree, a.stackId);
+  assert.equal(
+    (await f.registry.status(f.worktree)).services.provider,
+    "stopped",
+  );
   assert.equal(
     (await f.registry.status(f.sibling)).services.provider,
     "running",
   );
   assert.equal((await f.registry.reserve(f.worktree)).stackId, a.stackId);
+  assert.equal(
+    (await f.lifecycle.start(f.worktree, f.services)).stackId,
+    a.stackId,
+  );
   assert.ok(
     f.calls.every(
       (c) =>
@@ -265,7 +276,7 @@ test("paired endpoints share one process and are both probed with occupied ports
     "convexCloud",
     "convexSite",
   ]);
-  await f.lifecycle.start(f.worktree, definitions);
+  await assert.rejects(f.lifecycle.start(f.worktree, definitions), /stopped/);
   assert.equal(f.calls.length, 2);
   await f.lifecycle.stop(f.worktree, status.stackId);
   assert.equal(f.calls.length, 4);
@@ -322,4 +333,74 @@ test("only Metro receives public config after independent generation validation"
     f.calls[1].options.env.EXPO_PUBLIC_AUTH_ENVIRONMENT_ID,
     `${record.stackId}:${record.providerGeneration}`,
   );
+});
+
+for (const phase of ["identity", "record ownership"]) {
+  test(`failed ${phase} after launch retains exclusion and sanitizes errors`, async (t) => {
+    let reads = 0;
+    const f = await fixture(
+      t,
+      phase === "identity"
+        ? {
+            identify: async () => {
+              if (++reads === 1) {
+                return null;
+              }
+              throw Error("private-identity-detail");
+            },
+          }
+        : {},
+    );
+    if (phase === "record ownership") {
+      f.registry.recordProcess = async () => {
+        throw Error("private-identity-detail");
+      };
+    }
+    await assert.rejects(
+      f.lifecycle.start(f.worktree, f.services),
+      (error) =>
+        error.ambiguous === true &&
+        !error.message.includes("private-identity-detail"),
+    );
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.processes.size, 1);
+    await assert.rejects(
+      f.lifecycle.start(f.worktree, f.services),
+      /Lifecycle locked/,
+    );
+    assert.equal(f.calls.length, 1);
+  });
+}
+
+test("concurrent canonical-path start refuses before preparation", async (t) => {
+  let release;
+  let entered;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const prepared = new Promise((resolve) => {
+    entered = resolve;
+  });
+  let count = 0;
+  const f = await fixture(t, {
+    prepare: async () => {
+      count++;
+      entered();
+      await gate;
+    },
+  });
+  const alias = f.worktree + "-alias";
+  await fs.symlink(f.worktree, alias);
+  const first = f.lifecycle.start(f.worktree, f.services);
+  await prepared;
+  try {
+    await assert.rejects(f.lifecycle.start(alias, f.services), /locked/);
+    assert.equal(count, 1);
+    assert.equal(f.calls.length, 0);
+  } finally {
+    release();
+  }
+  await first;
+  await assert.rejects(f.lifecycle.start(alias, f.services), /stopped/);
+  assert.equal(count, 1);
 });

@@ -44,7 +44,7 @@ export const openReplay = (
 ) =>
   Effect.try(() => {
     const bytes = Buffer.from(sealed, "base64url");
-    if (bytes.length < 29) {
+    if (bytes.length < 28) {
       throw new Error("Invalid replay envelope");
     }
     const decipher = createDecipheriv(

@@ -280,18 +280,6 @@ for (const [name, change, code] of [
     },
     "routes-unknown",
   ],
-  [
-    "foreign route evidence",
-    (f) => {
-      f.options.routeEvidence = async () => ({
-        ...f.options.target,
-        stackId: randomUUID(),
-        state: "absent",
-        scope: "whole-stack",
-      });
-    },
-    "routes-unknown",
-  ],
 ]) {
   test(name, async (t) => {
     const f = fixture(t);
@@ -369,6 +357,17 @@ for (const adapter of ["inspectProcess", "portAvailable"]) {
     ]);
     clearTimeout(timer);
     assert.notEqual(result, null, "preflight must return before watchdog");
+    const code =
+      adapter === "inspectProcess" ? "process-not-stopped" : "ports-unknown";
+    const domains = adapter === "inspectProcess" ? ["provider"] : names;
+    for (const domain of domains) {
+      assert.ok(
+        result.blockers.some(
+          (blocker) => blocker.code === code && blocker.domain === domain,
+        ),
+        JSON.stringify(result),
+      );
+    }
     assert.equal(result.readyForTeardown, false);
     assert.equal(result.destructionImplemented, false);
     assert.equal(result.reservationReleaseAllowed, false);
@@ -377,6 +376,19 @@ for (const adapter of ["inspectProcess", "portAvailable"]) {
 
 test("runtime defaults to the existing port observer when omitted", async (t) => {
   const f = fixture(t);
+  const { EventEmitter } = require("node:events");
+  const net = require("node:net");
+  const observed = [];
+  t.mock.method(net, "createServer", () => {
+    const server = new EventEmitter();
+    server.listen = (options, listening) => {
+      observed.push(options);
+      queueMicrotask(listening);
+      return server;
+    };
+    server.close = (closed) => queueMicrotask(closed);
+    return server;
+  });
   const { createRuntime } = require("./stack-runtime.cjs");
   const runtime = await createRuntime({
     worktree: f.worktree,
@@ -390,8 +402,18 @@ test("runtime defaults to the existing port observer when omitted", async (t) =>
     f.options.confirmation,
   );
   assert.equal(
-    result.blockers.some((b) => b.code === "ports-unknown"),
+    result.blockers.some((b) =>
+      ["ports-unknown", "port-not-free"].includes(b.code),
+    ),
     false,
+  );
+  assert.deepEqual(
+    observed,
+    names.map((name) => ({
+      host: "127.0.0.1",
+      port: f.record.ports[name],
+      exclusive: true,
+    })),
   );
   assert.ok(result.blockers.some((b) => b.code === "routes-unknown"));
 });
@@ -562,3 +584,62 @@ for (const changed of ["generation", "process", "routes"]) {
     assert.deepEqual(snapshot(f.root), before);
   });
 }
+
+for (const processes of [[], "", 1, true]) {
+  test(`malformed process map ${JSON.stringify(processes)} fails registry validation`, async (t) => {
+    const f = fixture(t);
+    f.record.processes = processes;
+    f.save();
+    const result = await preflightDestruction(f.options);
+    assert.ok(
+      result.blockers.some((blocker) => blocker.code === "target-mismatch"),
+    );
+    assert.equal(result.destructionImplemented, false);
+    assert.equal(result.reservationReleaseAllowed, false);
+  });
+}
+
+test("unsupported route evidence stays unobserved and cannot enable teardown", async (t) => {
+  const f = fixture(t);
+  let observations = 0;
+  f.options.routeEvidence = async () => {
+    observations++;
+    return { ...f.options.target, state: "absent", scope: "whole-stack" };
+  };
+  const before = snapshot(f.root);
+  const result = await preflightDestruction(f.options);
+  assert.equal(observations, 0);
+  assert.equal(result.readyForTeardown, false);
+  assert.equal(result.destructionImplemented, false);
+  assert.equal(result.reservationReleaseAllowed, false);
+  assert.ok(
+    result.blockers.some((blocker) => blocker.code === "routes-unknown"),
+  );
+  assert.deepEqual(snapshot(f.root), before);
+});
+
+test("NUL-bearing process start identity fails closed before observation", async (t) => {
+  const f = fixture(t);
+  f.record.processes.provider = {
+    pid: 123,
+    startedAt: "boot\0start",
+    stackId: f.record.stackId,
+    worktree: f.worktree,
+  };
+  f.save();
+  let observations = 0;
+  f.options.inspectProcess = async () => {
+    observations += 1;
+    return null;
+  };
+  const result = await preflightDestruction(f.options);
+  assert.ok(
+    result.blockers.some(
+      ({ code, domain }) =>
+        code === "process-not-stopped" && domain === "provider",
+    ),
+  );
+  assert.equal(observations, 0);
+  assert.equal(result.readyForTeardown, false);
+  assert.equal(result.reservationReleaseAllowed, false);
+});

@@ -51,6 +51,14 @@ test("six endpoint definitions, loopback and explicit state", (t) => {
     ],
   );
   const cloud = defs[0].command;
+  for (const [flag, port] of [
+    ["--port", "24001"],
+    ["--site-proxy-port", "24002"],
+  ]) {
+    const index = cloud.indexOf(flag);
+    assert.ok(index >= 0);
+    assert.equal(cloud[index + 1], port);
+  }
   assert.ok(cloud[0] === "/bin/sh" && cloud[2] === 'umask 077; exec "$@"');
   assert.ok(
     cloud.includes("--interface") &&
@@ -71,7 +79,14 @@ test("six endpoint definitions, loopback and explicit state", (t) => {
       defs[2].command.includes("24003"),
   );
   assert.ok(defs[3].readiness.http === "http://127.0.0.1:24004/instance-info");
-  assert.ok(defs[4].command.includes("127.0.0.1:24006"));
+  for (const [flag, address] of [
+    ["--listen", "127.0.0.1:24005"],
+    ["--smtp", "127.0.0.1:24006"],
+  ]) {
+    const index = defs[4].command.indexOf(flag);
+    assert.ok(index >= 0);
+    assert.equal(defs[4].command[index + 1], address);
+  }
   assert.ok(!fs.existsSync(path.join(o.worktree, ".recovery-stack")));
 });
 test("Metro uses an explicit mobile project with its exact allocated port", (t) => {
@@ -184,4 +199,14 @@ test("refuses unsafe existing data files inside marked state", (t) => {
     path.join(state.root, "mailpit.sqlite"),
   );
   assert.throws(() => prepareOwnedStateDirectories(o));
+});
+
+test("refuses hardlinked database files inside marked state", (t) => {
+  const o = fixture(t),
+    state = prepareOwnedStateDirectories(o);
+  const outside = path.join(o.worktree, "outside.sqlite");
+  fs.writeFileSync(outside, "preserve", { mode: 0o600 });
+  fs.linkSync(outside, path.join(state.root, "mailpit.sqlite"));
+  assert.throws(() => prepareOwnedStateDirectories(o));
+  assert.equal(fs.readFileSync(outside, "utf8"), "preserve");
 });

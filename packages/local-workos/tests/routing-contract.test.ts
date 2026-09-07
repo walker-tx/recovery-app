@@ -1,5 +1,6 @@
 import { it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Data, Effect, Schema } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { request } from "node:http";
@@ -27,32 +28,47 @@ const fixture = Effect.gen(function* () {
   };
 });
 
+class RawRequestError extends Data.TaggedError("RawRequestError")<{
+  cause: unknown;
+}> {}
+
 // node:http sends `path` verbatim; fetch removes dot segments before the wire.
 function rawRequest(
   base: string,
   path: string,
   headers: Record<string, string>,
 ) {
-  return new Promise<{ status: number; body: unknown }>((resolve, reject) => {
-    const req = request(base, { path, headers }, (response) => {
-      let body = "";
-      response.setEncoding("utf8");
-      response.on("data", (chunk) => {
-        body += chunk;
+  return Effect.callback<{ status: number; body: string }, RawRequestError>(
+    (resume) => {
+      const reject = (error: Error) =>
+        resume(Effect.fail(new RawRequestError({ cause: error })));
+      const req = request(base, { path, headers }, (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          resume(Effect.succeed({ status: response.statusCode!, body }));
+        });
+        response.on("error", reject);
       });
-      response.on("end", () => {
-        try {
-          resolve({ status: response.statusCode!, body: JSON.parse(body) });
-        } catch (error) {
-          reject(error);
-        }
+      req.setTimeout(5000, () =>
+        req.destroy(new RawRequestError({ cause: "Request timed out" })),
+      );
+      req.on("error", reject);
+      req.end();
+      return Effect.sync(() => {
+        req.destroy();
       });
-      response.on("error", reject);
-    });
-    req.setTimeout(5000, () => req.destroy(new Error("Request timed out")));
-    req.on("error", reject);
-    req.end();
-  });
+    },
+  ).pipe(
+    Effect.flatMap((response) =>
+      Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(
+        response.body,
+      ).pipe(Effect.map((body) => ({ status: response.status, body }))),
+    ),
+  );
 }
 
 for (const path of [
@@ -70,8 +86,10 @@ for (const path of [
     Effect.gen(function* () {
       const { base, headers } = yield* fixture;
       for (const authorized of [false, true]) {
-        const response = yield* Effect.promise(() =>
-          rawRequest(base, path, authorized ? headers : {}),
+        const response = yield* rawRequest(
+          base,
+          path,
+          authorized ? headers : {},
         );
         const code = authorized ? "unsupported_operation" : "unauthorized";
         assert.equal(response.status, authorized ? 404 : 401);
@@ -103,8 +121,10 @@ for (const kind of ["encoded", "long", "dot", "encoded-dot"] as const) {
               ? "%2e%2e"
               : "x".repeat(101);
       for (const suffix of ["", "/identities"]) {
-        const response = yield* Effect.promise(() =>
-          rawRequest(base, `/user_management/users/${id}${suffix}`, headers),
+        const response = yield* rawRequest(
+          base,
+          `/user_management/users/${id}${suffix}`,
+          headers,
         );
         assert.equal(response.status, 404);
         assert.deepEqual(response.body, {
@@ -125,17 +145,17 @@ it.live("HEAD retains unsupported routing and bearer precedence", () =>
       "/missing",
     ]) {
       for (const authorized of [false, true]) {
-        const response = yield* Effect.promise(() =>
-          fetch(base + path, {
-            method: "HEAD",
-            headers: authorized ? headers : {},
-          }),
-        );
+        const response = yield* HttpClient.head(base + path, {
+          headers: authorized ? headers : {},
+        });
         assert.equal(response.status, authorized ? 404 : 401);
-        assert.equal(yield* Effect.promise(() => response.text()), "");
+        assert.equal(yield* response.text, "");
       }
     }
-  }),
+  }).pipe(
+    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- The live test is the HTTP client layer entry point.
+    Effect.provide(FetchHttpClient.layer),
+  ),
 );
 
 it.live("raw dot segments cannot normalize user lookup", () =>
@@ -149,12 +169,10 @@ it.live("raw dot segments cannot normalize user lookup", () =>
     );
     for (const dot of ["..", "%2e%2e", ".%2E", "%2e."]) {
       for (const suffix of ["", "/identities"]) {
-        const response = yield* Effect.promise(() =>
-          rawRequest(
-            base,
-            `/user_management/users/prefix/${dot}/${user.id}${suffix}`,
-            headers,
-          ),
+        const response = yield* rawRequest(
+          base,
+          `/user_management/users/prefix/${dot}/${user.id}${suffix}`,
+          headers,
         );
         assert.equal(response.status, 404);
         assert.deepEqual(response.body, {
@@ -175,18 +193,19 @@ it.live("canonical raw paths ignore query dot segments", () =>
         provider: "GoogleOAuth",
       }),
     );
-    const info = yield* Effect.promise(() =>
-      rawRequest(base, "/instance-info?path=/../%2e%2e", {}),
-    );
+    const info = yield* rawRequest(base, "/instance-info?path=/../%2e%2e", {});
     assert.equal(info.status, 200);
-    const response = yield* Effect.promise(() =>
-      rawRequest(
-        base,
-        `/user_management/users/${user.id}?path=/../%2e%2e`,
-        headers,
-      ),
+    const response = yield* rawRequest(
+      base,
+      `/user_management/users/${user.id}?path=/../%2e%2e`,
+      headers,
     );
     assert.equal(response.status, 200);
-    assert.equal((response.body as { id: string }).id, user.id);
+    assert.ok(
+      typeof response.body === "object" &&
+        response.body !== null &&
+        "id" in response.body,
+    );
+    assert.equal(response.body.id, user.id);
   }),
 );

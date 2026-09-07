@@ -216,7 +216,13 @@ test("composed stop verifies owned PID and sends only the exact stack daemon ID"
     registryPath,
     portAvailable: async () => true,
     inspector: { inspect: inspectProcess, close: async () => {} },
-    identity: { inspectProcess, identify: async () => processIdentity },
+    identity: {
+      inspectProcess,
+      identify: async (id) => {
+        assert.equal(id, `recovery-local/recovery-${record.stackId}-provider`);
+        return processIdentity;
+      },
+    },
     fetchImpl: async () => new Response("{}"),
     connect: () => {
       throw Error("Unexpected socket");
@@ -279,7 +285,10 @@ async function startupFixture(t, failure) {
   const runtime = await createRuntime({
     now: () => clock,
     worktree,
-    backendBinary,
+    backendBinary:
+      failure === "unnormalized"
+        ? `${worktree}/bin/../fake-backend`
+        : backendBinary,
     registryPath: path.join(root, "registry"),
     inherited: {
       PATH: path.join(worktree, "bin"),
@@ -320,6 +329,17 @@ async function startupFixture(t, failure) {
     portAvailable: async (port) => !busy.has(port),
     run: async (_command, args, options) => {
       const name = args[1].split("-").at(-1);
+      if (args[0] === "stop") {
+        processes.delete(args[1]);
+        const endpoints =
+          name === "mailpitHttp"
+            ? ["mailpitHttp", "mailpitSmtp"]
+            : name === "convexCloud"
+              ? ["convexCloud", "convexSite"]
+              : [name];
+        endpoints.forEach((endpoint) => busy.delete(record.ports[endpoint]));
+        return;
+      }
       events.push("start:" + name);
       environments[name] = options.env;
       const endpoints =
@@ -374,6 +394,7 @@ async function startupFixture(t, failure) {
       prepareSeed: async (options) => {
         record = options.registry;
         await fs.access(path.join(worktree, ".recovery-stack-lifecycle.lock"));
+        assert.equal(options.searchPath, path.join(worktree, "bin"));
         events.push("seed");
         return {
           LOCAL_WORKOS_API_KEY: "sk_test_local_" + "a".repeat(64),
@@ -467,8 +488,31 @@ for (const failure of [
 ]) {
   test(`runtime ${failure} failure prevents Metro`, async (t) => {
     const f = await startupFixture(t, failure);
-    await assert.rejects(f.runtime.start());
+    const message = {
+      generation: "Local stack configuration rejected",
+      issuer: "Local stack configuration rejected",
+      clientId: "Local stack configuration rejected",
+      port: "Local stack configuration rejected",
+      push: "fake push failure",
+      persist: "fake persist failure",
+      ambiguous: "fake ambiguous failure",
+      timeout:
+        "service setup timed out; manual reconciliation required; lifecycle lock retained",
+      syncDeadline:
+        "service setup timed out; manual reconciliation required; lifecycle lock retained",
+      selector: "Inherited deployment selector rejected",
+      readiness: "Readiness timeout",
+    }[failure];
+    await assert.rejects(f.runtime.start(), { message });
     assert.ok(!f.events.includes("start:metro"));
+    if (failure === "push") {
+      assert.ok(f.events.includes("bootstrap"));
+      assert.ok(!f.events.includes("persist"));
+    }
+    if (failure === "persist") {
+      assert.ok(f.events.includes("bootstrap"));
+      assert.ok(f.events.includes("persist"));
+    }
     if (failure === "selector") {
       assert.deepEqual(f.events, []);
     }
@@ -534,7 +578,190 @@ for (const missing of [
   test(`missing dependency ${missing} fails before daemon startup`, async (t) => {
     const f = await startupFixture(t);
     await fs.unlink(path.join(f.worktree, missing));
-    await assert.rejects(f.runtime.start(), /preflight/);
+    const checkpoint = missing.startsWith("bin/")
+      ? path.basename(missing)
+      : missing;
+    await assert.rejects(f.runtime.start(), (error) => {
+      assert.ok(error.message.includes(`preflight failed at ${checkpoint}`));
+      assert.ok(!error.message.includes(f.worktree));
+      return true;
+    });
     assert.deepEqual(f.events, []);
+  });
+}
+
+for (const alias of [false, true]) {
+  test(`Darwin startup rejects non-ASCII canonical worktree before side effects (alias=${alias})`, async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "runtime-unicode-"));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const canonical = path.join(root, "caf\u00e9");
+    await fs.mkdir(canonical);
+    const worktree = alias ? path.join(root, "ascii-alias") : canonical;
+    if (alias) {
+      await fs.symlink(canonical, worktree);
+    }
+    const effects = [];
+    const runtime = await createRuntime({
+      platform: "darwin",
+      worktree,
+      registryPath: path.join(root, "registry"),
+      backendBinary: path.join(root, "missing-backend"),
+      inherited: {},
+      inspector: { inspect: async () => null, close: async () => {} },
+      identity: {
+        inspectProcess: async () => null,
+        identify: async () => null,
+      },
+      run: async () => effects.push("run"),
+      startup: { prepareSeed: async () => effects.push("seed") },
+    });
+    t.after(() => runtime.close());
+    await assert.rejects(runtime.start(), {
+      message: "Darwin startup requires an ASCII canonical worktree path",
+    });
+    assert.deepEqual(effects, []);
+    assert.deepEqual(await fs.readdir(canonical), []);
+    await assert.rejects(fs.stat(path.join(root, "registry")), {
+      code: "ENOENT",
+    });
+  });
+}
+
+test("startup rejects an unnormalized absolute executable before effects", async (t) => {
+  const f = await startupFixture(t, "unnormalized");
+  await assert.rejects(f.runtime.start(), /absolute backend executable/);
+  assert.deepEqual(f.events, []);
+  await assert.rejects(fs.stat(path.join(f.worktree, "registry")), {
+    code: "ENOENT",
+  });
+});
+
+test("previously started stack refuses missing persisted identity before seed", async (t) => {
+  const f = await startupFixture(t);
+  await f.runtime.start();
+  await f.runtime.stop((await f.runtime.reserve()).stackId);
+  const before = [...f.events];
+  await assert.rejects(f.runtime.start(), /persisted identity/);
+  assert.deepEqual(f.events, before);
+});
+
+for (const invalid of [
+  "generation",
+  "keys",
+  "config",
+  "hardlink",
+  "file-mode",
+  "directory-mode",
+  "symlink",
+  "owner",
+  null,
+]) {
+  test(`stopped restart validates retained persisted identity (${invalid ?? "compatible"})`, async (t) => {
+    const f = await startupFixture(t);
+    await f.runtime.start();
+    const record = await f.runtime.reserve();
+    await f.runtime.stop(record.stackId);
+    const { DatabaseSync } = require("node:sqlite");
+    const { generateKeyPairSync } = require("node:crypto");
+    const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const database = new DatabaseSync(
+      path.join(f.worktree, ".recovery-stack/provider/state.sqlite"),
+    );
+    database.exec(
+      "CREATE TABLE instance (id INTEGER PRIMARY KEY, body TEXT NOT NULL)",
+    );
+    database.prepare("INSERT INTO instance VALUES (1, ?)").run(
+      JSON.stringify({
+        generation:
+          invalid === "generation" ? "wrong" : record.providerGeneration,
+        privateKey:
+          invalid === "keys" ? {} : keys.privateKey.export({ format: "jwk" }),
+        publicKey: keys.publicKey.export({ format: "jwk" }),
+      }),
+    );
+    database.close();
+    await fs.chmod(
+      path.join(f.worktree, ".recovery-stack/provider/state.sqlite"),
+      0o600,
+    );
+    const seed = {
+      RECOVERY_STACK_ID: invalid === "config" ? "wrong" : record.stackId,
+      RECOVERY_PROVIDER_GENERATION: record.providerGeneration,
+      LOCAL_WORKOS_API_KEY: "sk_test_local_" + "a".repeat(64),
+      LOCAL_CONVEX_INSTANCE_NAME:
+        "recovery_" + record.stackId.replaceAll("-", ""),
+      LOCAL_CONVEX_INSTANCE_SECRET: "a".repeat(64),
+      LOCAL_CONVEX_ADMIN_KEY: "synthetic-admin",
+      WORKOS_EMAIL_HMAC_KEY: Buffer.alloc(32).toString("base64"),
+      WORKOS_INTENT_ENCRYPTION_KEY: Buffer.alloc(32).toString("base64"),
+    };
+    await fs.writeFile(
+      path.join(f.worktree, "mise.local.toml"),
+      "[env]\n" +
+        Object.entries(seed)
+          .map(([key, value]) => `${key} = ${JSON.stringify(value)}`)
+          .join("\n") +
+        "\n",
+      { mode: 0o600 },
+    );
+    const databaseFile = path.join(
+      f.worktree,
+      ".recovery-stack/provider/state.sqlite",
+    );
+    if (invalid === "hardlink") {
+      await fs.link(databaseFile, path.join(f.worktree, "linked.sqlite"));
+    }
+    if (invalid === "file-mode") {
+      await fs.chmod(databaseFile, 0o640);
+    }
+    if (invalid === "directory-mode") {
+      await fs.chmod(path.dirname(databaseFile), 0o750);
+    }
+    if (invalid === "symlink") {
+      const target = path.join(f.worktree, "target.sqlite");
+      await fs.rename(databaseFile, target);
+      await fs.symlink(target, databaseFile);
+    }
+    if (invalid === "owner") {
+      const lstat = fs.lstat;
+      t.mock.method(fs, "lstat", async (file, ...args) => {
+        const stat = await lstat(file, ...args);
+        if (file === databaseFile) {
+          stat.uid = process.getuid() + 1;
+        }
+        return stat;
+      });
+    }
+    let reads = 0;
+    const prepare = DatabaseSync.prototype.prepare;
+    t.mock.method(DatabaseSync.prototype, "prepare", function (...args) {
+      reads++;
+      return prepare.apply(this, args);
+    });
+    const before = [...f.events];
+    if (invalid) {
+      await assert.rejects(f.runtime.start(), /persisted identity/);
+      assert.deepEqual(f.events, before);
+      if (
+        [
+          "hardlink",
+          "file-mode",
+          "directory-mode",
+          "symlink",
+          "owner",
+        ].includes(invalid)
+      ) {
+        assert.equal(
+          reads,
+          0,
+          "unsafe persisted state must be refused before SQLite reads",
+        );
+      }
+    } else {
+      await f.runtime.start();
+      const resumed = await f.runtime.reserve();
+      assert.equal(resumed.stackId, record.stackId);
+      assert.equal(resumed.providerGeneration, record.providerGeneration);
+    }
   });
 }

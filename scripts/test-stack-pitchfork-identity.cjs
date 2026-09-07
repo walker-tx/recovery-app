@@ -149,7 +149,10 @@ test("real lifecycle + registry uses queried daemon ID for initial registration 
   ];
   const first = await lifecycle.start(worktree, definitions);
   assert.equal(first.services.provider, "running");
-  await lifecycle.start(worktree, definitions);
+  await assert.rejects(
+    lifecycle.start(worktree, definitions),
+    /requires all services stopped/,
+  );
   assert.equal(starts, 1);
   f.os = { ...f.os, startedAt: "darwin:1:123457" };
   assert.equal((await lifecycle.status(worktree)).state, "conflict");

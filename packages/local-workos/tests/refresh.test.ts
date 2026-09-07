@@ -32,7 +32,7 @@ const fixture = (sessionSeconds = 604800, accessTokenSeconds = 300) =>
         apiHostname: "127.0.0.1",
         port: provider.port,
         https: false,
-        maxRetries,
+        ...(maxRetries === undefined ? {} : { maxRetries }),
       });
     const db = yield* Effect.acquireRelease(
       Effect.sync(() => new DatabaseSync(options.database)),
@@ -190,13 +190,18 @@ it.live(
       const f = yield* fixture();
       for (const action of ["reset", "revoke"]) {
         const original = yield* Effect.promise(f.signIn);
-        const reset = yield* Effect.promise(() =>
-          f.sdk().userManagement.createPasswordReset({ email: f.user.email }),
-        );
+        const reset =
+          action === "reset"
+            ? yield* Effect.promise(() =>
+                f
+                  .sdk()
+                  .userManagement.createPasswordReset({ email: f.user.email }),
+              )
+            : null;
         const outcomes = yield* Effect.promise(() =>
           Promise.allSettled([
             f.refresh(original.refreshToken),
-            action === "reset"
+            reset !== null
               ? f.sdk().userManagement.resetPassword({
                   token: reset.passwordResetToken,
                   newPassword: "Synthetic-password-refresh-48",

@@ -117,6 +117,8 @@ async function preflightDestruction({
       record.worktree !== worktree ||
       record.owner !== `${st.dev}:${st.ino}` ||
       !record.processes ||
+      typeof record.processes !== "object" ||
+      Array.isArray(record.processes) ||
       !record.ports ||
       Object.keys(record.ports).length !== names.length ||
       !names.every(
@@ -252,6 +254,7 @@ async function preflightDestruction({
           identity.pid <= 0 ||
           typeof identity.startedAt !== "string" ||
           !identity.startedAt.trim() ||
+          identity.startedAt.includes("\0") ||
           identity.stackId !== record.stackId ||
           identity.worktree !== worktree ||
           (await observe(() => inspectProcess(identity.pid))) !== null)

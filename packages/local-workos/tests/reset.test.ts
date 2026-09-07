@@ -34,7 +34,7 @@ const fixture = (passwordResetSeconds = 1800) =>
         apiHostname: "127.0.0.1",
         port: provider.port,
         https: false,
-        maxRetries,
+        ...(maxRetries === undefined ? {} : { maxRetries }),
       });
     const db = yield* Effect.acquireRelease(
       Effect.sync(() => new DatabaseSync(options.database)),

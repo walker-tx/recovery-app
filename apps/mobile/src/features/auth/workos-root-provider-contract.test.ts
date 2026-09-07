@@ -10,7 +10,7 @@ const source = await readFile(
 test("WorkOS root nests session, Convex custom auth hook, signup flow, and protected routes", () => {
   assert.match(
     source,
-    /<WorkOSSessionProvider client=\{client\}>[\s\S]*?<ConvexProviderWithAuth\s+client=\{client\}\s+useAuth=\{useWorkOSConvexAuth\}\s*>[\s\S]*?<SignupFlowProvider>[\s\S]*?<WorkOSProtectedRoutes \/>[\s\S]*?<\/SignupFlowProvider>[\s\S]*?<\/ConvexProviderWithAuth>[\s\S]*?<\/WorkOSSessionProvider>/,
+    /<WorkOSSessionProvider\s+key=\{getWorkOSSessionScope\(config\)\}\s+client=\{client\}\s+config=\{config\}\s*>[\s\S]*?<ConvexProviderWithAuth\s+client=\{client\}\s+useAuth=\{useWorkOSConvexAuth\}\s*>[\s\S]*?<SignupFlowProvider>[\s\S]*?<WorkOSProtectedRoutes \/>[\s\S]*?<\/SignupFlowProvider>[\s\S]*?<\/ConvexProviderWithAuth>[\s\S]*?<\/WorkOSSessionProvider>/,
   );
 });
 

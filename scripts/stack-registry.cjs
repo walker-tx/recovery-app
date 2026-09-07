@@ -51,13 +51,15 @@ function validateRegistry(data) {
   }
   const ports = new Set(),
     stackIds = new Set(),
-    generations = new Set();
+    generations = new Set(),
+    names = new Set();
   for (const [key, record] of Object.entries(data.stacks)) {
     if (
       !object(record) ||
       Object.keys(record).length !== 6 ||
       !absolutePath(key) ||
       record.worktree !== key ||
+      names.has(path.basename(key)) ||
       !uuid(record.stackId) ||
       !uuid(record.providerGeneration) ||
       stackIds.has(record.stackId) ||
@@ -75,6 +77,7 @@ function validateRegistry(data) {
     ) {
       throw Error("Invalid reservation; manual repair required");
     }
+    names.add(path.basename(key));
     stackIds.add(record.stackId);
     generations.add(record.providerGeneration);
     for (const service of services) {
@@ -129,9 +132,12 @@ function createRegistry({
     await fs.rm(path.join(lock, "owner.json"));
     await fs.rmdir(lock);
   }
-  async function transact(worktree, change) {
+  async function transact(worktree, change, renewOwner = false) {
     const canonical = await fs.realpath(worktree);
     const stat = await fs.stat(canonical);
+    if (!stat.isDirectory()) {
+      throw Error("Worktree must be a directory");
+    }
     const owner = `${stat.dev}:${stat.ino}`;
     await fs.mkdir(registryPath, { recursive: true, mode: 0o700 });
     const rootStat = await fs.lstat(registryPath);
@@ -178,7 +184,18 @@ function createRegistry({
       }
       validateRegistry(data);
       const record = data.stacks[canonical];
-      if (record && record.owner !== owner) {
+      if (
+        Object.values(data.stacks).some(
+          (entry) =>
+            entry.worktree !== canonical &&
+            path.basename(entry.worktree) === path.basename(canonical),
+        )
+      ) {
+        throw Error(
+          "Stack name already claimed by another worktree; manual repair required",
+        );
+      }
+      if (record && record.owner !== owner && !renewOwner) {
         throw Error("Worktree ownership mismatch; manual repair required");
       }
       const before = JSON.stringify(data);
@@ -213,7 +230,7 @@ function createRegistry({
             : "mismatched";
       if (
         states[service] === "stopped" &&
-        !(await available(record.ports[service]))
+        (await available(record.ports[service])) !== true
       ) {
         states[service] = "occupied";
       }
@@ -235,47 +252,59 @@ function createRegistry({
         return record;
       }),
     reserve: (worktree) =>
-      transact(worktree, async (data, record, canonical, owner) => {
-        if (record) {
-          const states = Object.values(await observe(record));
-          if (states.includes("mismatched")) {
-            throw Error("Process ownership mismatch; manual repair required");
+      transact(
+        worktree,
+        async (data, record, canonical, owner) => {
+          if (record) {
+            const states = Object.values(await observe(record));
+            if (states.includes("mismatched")) {
+              throw Error("Process ownership mismatch; manual repair required");
+            }
+            if (states.includes("occupied")) {
+              throw Error("Reserved port occupied; manual repair required");
+            }
+            if (record.owner !== owner) {
+              if (states.some((state) => state !== "stopped")) {
+                throw Error(
+                  "Worktree ownership changed with live resources; manual repair required",
+                );
+              }
+              record.owner = owner;
+            }
+            return record;
           }
-          if (states.includes("occupied")) {
-            throw Error("Reserved port occupied; manual repair required");
+          const used = new Set(
+            Object.values(data.stacks).flatMap((r) => Object.values(r.ports)),
+          );
+          const ports = {};
+          let candidate = 24000;
+          for (const service of services) {
+            while (
+              candidate < 25000 &&
+              (used.has(candidate) || (await available(candidate)) !== true)
+            ) {
+              candidate++;
+            }
+            if (candidate >= 25000) {
+              throw Error(
+                "Port allocation exhausted (24000-24999); no reservations changed",
+              );
+            }
+            ports[service] = candidate++;
           }
+          record = {
+            stackId: randomUUID(),
+            providerGeneration: randomUUID(),
+            worktree: canonical,
+            owner,
+            ports,
+            processes: {},
+          };
+          data.stacks[canonical] = record;
           return record;
-        }
-        const used = new Set(
-          Object.values(data.stacks).flatMap((r) => Object.values(r.ports)),
-        );
-        const ports = {};
-        let candidate = 24000;
-        for (const service of services) {
-          while (
-            candidate < 25000 &&
-            (used.has(candidate) || !(await available(candidate)))
-          ) {
-            candidate++;
-          }
-          if (candidate >= 25000) {
-            throw Error(
-              "Port allocation exhausted (24000-24999); no reservations changed",
-            );
-          }
-          ports[service] = candidate++;
-        }
-        record = {
-          stackId: randomUUID(),
-          providerGeneration: randomUUID(),
-          worktree: canonical,
-          owner,
-          ports,
-          processes: {},
-        };
-        data.stacks[canonical] = record;
-        return record;
-      }),
+        },
+        true,
+      ),
     status: (worktree) =>
       transact(worktree, async (_data, record) => {
         if (!record) {
@@ -331,7 +360,7 @@ function createRegistry({
         }
       }),
     release: (worktree, stackId) =>
-      transact(worktree, async (data, record, canonical) => {
+      transact(worktree, async (_data, record) => {
         owned(record, stackId);
         if (!record) {
           return { released: false };
@@ -341,24 +370,75 @@ function createRegistry({
             "Cannot release: process/port remains occupied or ownership mismatched",
           );
         }
-        delete data.stacks[canonical];
-        return { released: true };
+        // Process/port absence is not proof that every owned domain is gone.
+        throw Error(
+          "Reservation release unavailable: complete domain teardown not implemented",
+        );
       }),
   };
 }
-module.exports = { createRegistry, portAvailable };
-
-// These commands manipulate reservations only; release does not destroy stack
-// data or stop services. Integration must verify those domains before release.
-if (require.main === module) {
-  (async () => {
-    const [command, stackId] = process.argv.slice(2);
+async function resolveRegistryPath(worktree) {
+  const canonical = await fs.realpath(worktree);
+  const run = require("node:util").promisify(
+    require("node:child_process").execFile,
+  );
+  const { stdout: topLevel } = await run(
+    "git",
+    ["rev-parse", "--show-toplevel"],
+    { cwd: canonical, timeout: 3000 },
+  );
+  if (canonical !== (await fs.realpath(topLevel.trim()))) {
+    throw Error("Supplied directory must be the Git worktree root");
+  }
+  const legacyFile = path.join(
+    require("node:os").homedir(),
+    ".local",
+    "state",
+    "recovery",
+    "stacks",
+    "registry.json",
+  );
+  let legacy;
+  try {
+    legacy = JSON.parse(await fs.readFile(legacyFile, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+  if (legacy !== undefined) {
+    validateRegistry(legacy);
     if (
-      !["reserve", "status", "release"].includes(command) ||
-      (command === "release" && !stackId)
+      Object.values(legacy.stacks).some(
+        (record) => path.basename(record.worktree) === path.basename(canonical),
+      )
     ) {
       throw Error(
-        "Usage: node scripts/stack-registry.cjs reserve|status|release <stack-uuid> (reservation bookkeeping only)",
+        "Legacy registry claims this stack name; manual ownership investigation required",
+      );
+    }
+  }
+  const { stdout } = await run(
+    "git",
+    ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    { cwd: canonical, timeout: 3000 },
+  );
+  return path.join(await fs.realpath(stdout.trim()), "recovery-stacks");
+}
+module.exports = { createRegistry, portAvailable, resolveRegistryPath };
+
+// Release is deliberately unavailable for existing reservations until complete
+// domain teardown can be revalidated, including route ownership.
+if (require.main === module) {
+  (async () => {
+    const [command, stackId, ...extra] = process.argv.slice(2);
+    if (
+      !["reserve", "status", "release"].includes(command) ||
+      extra.length !== 0 ||
+      (command === "release" ? !stackId : stackId !== undefined)
+    ) {
+      throw Error(
+        "Usage: node scripts/stack-registry.cjs reserve|status OR release <stack-uuid> (reservation bookkeeping only)",
       );
     }
     const { execFile } = require("node:child_process");
@@ -366,13 +446,8 @@ if (require.main === module) {
     const git = async (args) =>
       (await run("git", args, { timeout: 3000 })).stdout.trim();
     const worktree = await git(["rev-parse", "--show-toplevel"]);
-    const common = await git([
-      "rev-parse",
-      "--path-format=absolute",
-      "--git-common-dir",
-    ]);
     const registry = createRegistry({
-      registryPath: path.join(common, "recovery-stacks"),
+      registryPath: await resolveRegistryPath(worktree),
     });
     console.log(JSON.stringify(await registry[command](worktree, stackId)));
   })().catch((error) => {

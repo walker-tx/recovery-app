@@ -4,7 +4,12 @@ const path = require("node:path");
 const { isDeepStrictEqual } = require("node:util");
 const retirementName = "provider-retirement.json";
 const markerName = ".recovery-stack-owner.json";
-const files = ["state.sqlite-wal", "state.sqlite-shm", "state.sqlite"];
+const files = [
+  "state.sqlite-journal",
+  "state.sqlite-wal",
+  "state.sqlite-shm",
+  "state.sqlite",
+];
 async function assertProviderNotRetired(worktree) {
   try {
     await fs.lstat(path.join(worktree, ".recovery-stack", retirementName));

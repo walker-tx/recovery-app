@@ -1,3 +1,10 @@
+import { Schema } from "effect";
+import {
+  FetchHttpClient,
+  HttpBody,
+  HttpClient,
+  HttpClientRequest,
+} from "effect/unstable/http";
 import { it, vi } from "@effect/vitest";
 import { Effect } from "effect";
 import assert from "node:assert/strict";
@@ -67,16 +74,18 @@ it.live("lock failures are bounded and corrupt startup can recover", () =>
       "synchronous lock wait must be short",
     );
     db.exec("ROLLBACK");
-    const original = (
-      db.prepare("SELECT body FROM instance").get() as {
-        body: string;
-      }
-    ).body;
+    const original = db.prepare("SELECT body FROM instance").get()?.body;
+    assert.ok(typeof original === "string");
     for (const body of [
       "{",
       "null",
       "{}",
-      JSON.stringify({ ...JSON.parse(original), privateKey: { kty: "RSA" } }),
+      yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+        ...(yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),
+        )(original)),
+        privateKey: { kty: "RSA" },
+      }),
     ]) {
       db.prepare("UPDATE instance SET body=?").run(body);
       const closedBefore = close.mock.calls.length;
@@ -103,11 +112,24 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
       port: p.port,
       https: false,
     });
-    const request = (path: string, init: RequestInit = {}) =>
-      fetch(`http://127.0.0.1:${p.port}${path}`, {
-        ...init,
-        signal: AbortSignal.timeout(3000),
-      });
+    const request = (
+      path: string,
+      init: {
+        method?: "GET" | "POST" | "DELETE";
+        body?: string;
+        headers?: Record<string, string>;
+      } = {},
+    ) =>
+      HttpClient.execute(
+        HttpClientRequest.make(init.method ?? "GET")(
+          `http://127.0.0.1:${p.port}${path}`,
+          {
+            headers: init.headers,
+            body:
+              init.body === undefined ? undefined : HttpBody.text(init.body),
+          },
+        ),
+      ).pipe(Effect.timeout("3 seconds"));
     for (const body of [
       "",
       "{",
@@ -116,36 +138,41 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
       '"secret-marker"',
       "x".repeat(17000),
     ]) {
-      const r = yield* Effect.promise(() =>
-        request("/user_management/users", { method: "POST", body }),
-      );
+      const r = yield* request("/user_management/users", {
+        method: "POST",
+        body,
+      });
       assert.ok(r.status >= 400 && r.status < 500);
-      const responseBody = yield* Effect.promise(() => r.text());
+      const responseBody = yield* r.text.pipe(Effect.timeout("3 seconds"));
       assert.ok(!responseBody.includes("secret-marker"));
     }
     for (const secret of [undefined, "wrong"]) {
-      const authenticationResponse = yield* Effect.promise(() =>
-        request("/user_management/authenticate", {
+      const body = yield* Schema.encodeEffect(
+        Schema.fromJsonString(Schema.Unknown),
+      )({
+        client_id: p.clientId,
+        client_secret: secret,
+        grant_type: "password",
+      });
+      const authenticationResponse = yield* request(
+        "/user_management/authenticate",
+        {
           method: "POST",
-          body: JSON.stringify({
-            client_id: p.clientId,
-            client_secret: secret,
-            grant_type: "password",
-          }),
-        }),
+          body,
+        },
       );
       assert.equal(authenticationResponse.status, 401);
+      yield* authenticationResponse.text.pipe(Effect.timeout("3 seconds"));
     }
     for (const authorization of ["", "Bearer wrong"]) {
-      for (const method of ["GET", "POST", "DELETE"]) {
-        const unauthorizedResponse = yield* Effect.promise(() =>
-          request("/user_management/users", {
-            method,
-            headers: { authorization },
-            ...(method === "POST" ? { body: "{}" } : {}),
-          }),
-        );
+      for (const method of ["GET", "POST", "DELETE"] as const) {
+        const unauthorizedResponse = yield* request("/user_management/users", {
+          method,
+          headers: { authorization },
+          ...(method === "POST" ? { body: "{}" } : {}),
+        });
         assert.equal(unauthorizedResponse.status, 401);
+        yield* unauthorizedResponse.text.pipe(Effect.timeout("3 seconds"));
       }
     }
     for (const query of [
@@ -156,12 +183,11 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
       "limit=101",
       "limit=no",
     ]) {
-      const pagingResponse = yield* Effect.promise(() =>
-        request("/user_management/users?" + query, {
-          headers: { authorization: `Bearer ${options.apiKey}` },
-        }),
-      );
+      const pagingResponse = yield* request("/user_management/users?" + query, {
+        headers: { authorization: `Bearer ${options.apiKey}` },
+      });
       assert.equal(pagingResponse.status, 422);
+      yield* pagingResponse.text.pipe(Effect.timeout("3 seconds"));
     }
     const password = "Synthetic-password-42";
     const u = yield* Effect.promise(() =>
@@ -211,7 +237,10 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
     let after: string | undefined;
     do {
       const page = yield* Effect.promise(() =>
-        sdk.userManagement.listUsers({ limit: 1, after }),
+        sdk.userManagement.listUsers({
+          limit: 1,
+          ...(after === undefined ? {} : { after }),
+        }),
       );
       ids.push(...page.data.map((user) => user.id));
       after = page.listMetadata.after ?? undefined;
@@ -231,7 +260,10 @@ it.live("bounded requests, explicit paging and trusted social fixtures", () =>
     assert.equal(duplicates.filter((r) => r.status === "fulfilled").length, 1);
     const databaseInfo = yield* Effect.promise(() => stat(options.database));
     assert.equal(databaseInfo.mode & 0o777, 0o600);
-  }),
+  }).pipe(
+    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- The live test owns its HTTP client layer.
+    Effect.provide(FetchHttpClient.layer),
+  ),
 );
 it.live(
   "existing sidecars require owner-only permissions and concurrent initialization agrees",

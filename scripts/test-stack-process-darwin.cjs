@@ -10,7 +10,7 @@ test(
   { skip: process.platform !== "darwin" },
   async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-darwin-"));
-    let child;
+    let child, exited;
     try {
       const source = path.join(__dirname, "stack-process-darwin.c");
       const compile = (input, output) => {
@@ -30,6 +30,7 @@ test(
         ["-e", 'process.stdout.write("ready\\n"); setInterval(() => {}, 1000)'],
         { cwd: dir, stdio: ["ignore", "pipe", "ignore"] },
       );
+      exited = once(child, "exit");
       await once(child.stdout, "data");
       const first = run(binary, child.pid);
       assert.equal(first.status, 0, first.stderr);
@@ -43,7 +44,6 @@ test(
       assert.match(evidence.startedAt, /^darwin:\d+:\d+$/);
       assert.equal(evidence.worktree, fs.realpathSync(dir));
       assert.deepEqual(JSON.parse(run(binary, child.pid).stdout), evidence);
-      const exited = once(child, "exit");
       child.kill();
       await exited;
       assert.equal(run(binary, child.pid).stdout.trim(), "null");
@@ -60,6 +60,10 @@ test(
 #include <string.h>
 #include <stdlib.h>
 static int mode, reads;
+static char *fake_realpath(const char *input, char *output) {
+ if (mode == 9) { strcpy(output, input); return output; }
+ return realpath(input, output);
+}
 static int fake_kill(pid_t p, int s) { (void)p; (void)s; errno = mode == 6 ? EPERM : ESRCH; return -1; }
 static int fake_info(int pid, int flavor, uint64_t arg, void *buffer, int size) {
  (void)arg;
@@ -73,10 +77,12 @@ static int fake_info(int pid, int flavor, uint64_t arg, void *buffer, int size) 
  } else {
    struct proc_vnodepathinfo *v = buffer;
    if (mode == 4) memset(v->pvi_cdir.vip_path, 'a', sizeof(v->pvi_cdir.vip_path));
+   else if (mode == 9) { memset(v->pvi_cdir.vip_path, 'a', sizeof(v->pvi_cdir.vip_path)); v->pvi_cdir.vip_path[0] = '/'; v->pvi_cdir.vip_path[sizeof(v->pvi_cdir.vip_path) - 1] = 0; }
    else strcpy(v->pvi_cdir.vip_path, mode == 8 ? "/no-such-stack-test-directory" : "/tmp");
  }
  return size;
 }
+#define realpath fake_realpath
 #define proc_pidinfo fake_info
 #define kill fake_kill
 #define main inspection_main
@@ -88,6 +94,13 @@ int main(int argc, char **argv) { if (argc != 2) return 99; mode = atoi(argv[1])
       const fakeBinary = path.join(dir, "fake");
       compile(fake, fakeBinary);
       assert.equal(run(fakeBinary, 0).status, 0);
+      const maximumPath = run(fakeBinary, 9);
+      assert.equal(
+        maximumPath.status,
+        0,
+        "final-byte NUL is a valid terminated cwd",
+      );
+      assert.match(JSON.parse(maximumPath.stdout).worktree, /^\/a+$/);
       for (const mode of [1, 2, 3, 4, 6, 7, 8]) {
         const r = run(fakeBinary, mode);
         assert.notEqual(r.status, 0, `fault ${mode}`);
@@ -97,6 +110,9 @@ int main(int argc, char **argv) { if (argc != 2) return 99; mode = atoi(argv[1])
     } finally {
       if (child && child.exitCode === null && child.signalCode === null) {
         child.kill();
+      }
+      if (exited) {
+        await exited;
       }
       fs.rmSync(dir, { recursive: true, force: true });
     }

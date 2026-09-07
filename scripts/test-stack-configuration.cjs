@@ -52,12 +52,10 @@ test("constructs matching backend, provider and public mobile configuration", ()
   assert.ok(result.backend.WORKOS_API_KEY === credentials.apiKey);
   assert.ok(result.backend.LOCAL_WORKOS_API_KEY === credentials.apiKey);
   assert.ok(result.provider.LOCAL_WORKOS_API_KEY === credentials.apiKey);
-  assert.ok(
-    result.mobile.EXPO_PUBLIC_AUTH_ENVIRONMENT_ID ===
-      `${stackId}:${providerGeneration}`,
-  );
-  assert.ok(result.mobile.EXPO_PUBLIC_CONVEX_URL === expected.CONVEX_URL);
-  assert.ok(!JSON.stringify(result.mobile).includes(credentials.apiKey));
+  assert.deepEqual(result.mobile, {
+    EXPO_PUBLIC_AUTH_ENVIRONMENT_ID: `${stackId}:${providerGeneration}`,
+    EXPO_PUBLIC_CONVEX_URL: expected.CONVEX_URL,
+  });
   assert.ok(!("CONVEX_DEPLOY_KEY" in result.owned));
 });
 test("independently verifies every bootstrap claim and exact allocated port", () => {
@@ -97,8 +95,20 @@ test("rejects inherited deploy credentials, real targets and unowned credentials
 test("preserves unrelated keys without mutating inputs and accepts owned resume", () => {
   const existing = { ...build().owned, UNRELATED: "preserved" };
   const before = JSON.stringify(existing);
-  const result = build({ existing, inherited: existing });
+  const inherited = { ...existing, INHERITED_ONLY: "must-not-publish" };
+  const inheritedBefore = JSON.stringify(inherited);
+  const result = build({ existing, inherited });
   assert.ok(result.environment.UNRELATED === "preserved");
+  assert.ok(!("INHERITED_ONLY" in result.environment));
   assert.ok(JSON.stringify(existing) === before);
+  assert.ok(JSON.stringify(inherited) === inheritedBefore);
   assert.ok(!("UNRELATED" in result.owned));
 });
+
+for (const key of ["CONVEX_SELF_HOSTED_URL", "CONVEX_ADMIN_KEY"]) {
+  test(`rejects ${key} from either configuration input`, () => {
+    for (const source of ["existing", "inherited"]) {
+      rejects({ [source]: { [key]: "synthetic-selector" } });
+    }
+  });
+}

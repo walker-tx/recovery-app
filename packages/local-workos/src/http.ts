@@ -190,7 +190,7 @@ const api = HttpApi.make("localWorkOS").add(
   ),
 );
 function workosResponse<A>(
-  apiKey: Redacted.Redacted<string>,
+  apiKey: Redacted.Redacted,
   run: (
     body: Record<string, unknown>,
     request: HttpServerRequest,
@@ -391,6 +391,8 @@ export function makeHttpApp(scope: Scope.Scope) {
       );
     }).pipe(sanitizeDefects);
 
+    // The scoped factory returns a request Effect; it must not execute a request here.
+    // oxlint-disable-next-line effecttsgo/return-effect-in-gen
     return app.pipe(
       Effect.provideService(MaxBodySize, FileSystem.Size(MAX_BODY_BYTES)),
     );

@@ -72,6 +72,7 @@ it.live(
         Effect.sync(() => new DatabaseSync(options.database)),
         (ownedDb) => Effect.sync(() => ownedDb.close()),
       );
+      db.exec("PRAGMA busy_timeout = 5000");
       yield* Effect.promise(() =>
         assert.rejects(
           sdk().userManagement.authenticateWithPassword({

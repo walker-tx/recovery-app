@@ -1,7 +1,8 @@
 // Explicit local-only boundary. Legacy zero/status/stop scripts remain unchanged.
 const path = require("node:path");
 const { isDeepStrictEqual } = require("node:util");
-const os = require("node:os");
+const { DatabaseSync } = require("node:sqlite");
+const { createPrivateKey, createPublicKey } = require("node:crypto");
 const fs = require("node:fs/promises");
 const { constants } = require("node:fs");
 const { preflightDestruction } = require("./stack-destruction-preflight.cjs");
@@ -13,12 +14,16 @@ const {
 } = require("./stack-services.cjs");
 const { buildStackConfiguration } = require("./stack-configuration.cjs");
 const { bootstrapLocalConvex } = require("./stack-convex-bootstrap.cjs");
-const { persistLocalConfig } = require("./stack-local-config.cjs");
+const {
+  persistLocalConfig,
+  readLocalSeed,
+} = require("./stack-local-config.cjs");
 const { createProcessInspector } = require("./stack-process-inspector.cjs");
 const { createPitchforkIdentity } = require("./stack-pitchfork-identity.cjs");
 const { createPitchforkRunner } = require("./stack-adapters.cjs");
 const {
   createRegistry,
+  resolveRegistryPath,
   portAvailable: observePort,
 } = require("./stack-registry.cjs");
 const {
@@ -34,13 +39,8 @@ const uuid = (value) =>
   );
 async function createRuntime({
   worktree = process.cwd(),
-  registryPath = path.join(
-    os.homedir(),
-    ".local",
-    "state",
-    "recovery",
-    "stacks",
-  ),
+  platform = process.platform,
+  registryPath = undefined,
   inspector,
   identity,
   run,
@@ -54,7 +54,8 @@ async function createRuntime({
   startup = {},
   now,
 } = {}) {
-  inspector ??= await createProcessInspector();
+  registryPath ??= await resolveRegistryPath(worktree);
+  inspector ??= await createProcessInspector({ platform });
   try {
     identity ??= createPitchforkIdentity({
       inspectOS: inspector.inspect,
@@ -109,15 +110,85 @@ async function createRuntime({
             throw Error("Inherited deployment selector rejected");
           }
         }
+        const file = path.join(record.worktree, "mise.local.toml");
+        if (Object.keys(record.processes).length > 0) {
+          let database;
+          try {
+            const root = path.join(record.worktree, ".recovery-stack");
+            const provider = path.join(root, "provider");
+            const databaseFile = path.join(provider, "state.sqlite");
+            for (const directory of [root, provider]) {
+              const stat = await fs.lstat(directory);
+              if (
+                !stat.isDirectory() ||
+                stat.uid !== process.getuid() ||
+                (stat.mode & 0o077) !== 0
+              ) {
+                throw Error();
+              }
+            }
+            for (const existing of [file, databaseFile]) {
+              const stat = await fs.lstat(existing);
+              if (
+                !stat.isFile() ||
+                stat.nlink !== 1 ||
+                stat.uid !== process.getuid() ||
+                (stat.mode & 0o077) !== 0
+              ) {
+                throw Error();
+              }
+            }
+            database = new DatabaseSync(databaseFile, { readOnly: true });
+            const persisted = JSON.parse(
+              database.prepare("SELECT body FROM instance WHERE id=1").get()
+                .body,
+            );
+            if (persisted.generation !== record.providerGeneration) {
+              throw Error();
+            }
+            const privateKey = createPrivateKey({
+              key: persisted.privateKey,
+              format: "jwk",
+            });
+            const publicKey = createPublicKey({
+              key: persisted.publicKey,
+              format: "jwk",
+            });
+            if (
+              privateKey.asymmetricKeyType !== "rsa" ||
+              ["d", "p", "q", "dp", "dq", "qi", "oth"].some(
+                (key) => key in persisted.publicKey,
+              ) ||
+              !createPublicKey(privateKey).equals(publicKey)
+            ) {
+              throw Error();
+            }
+            if (
+              !readLocalSeed({
+                file,
+                stackId: record.stackId,
+                providerGeneration: record.providerGeneration,
+              })
+            ) {
+              throw Error();
+            }
+          } catch {
+            throw Error(
+              "Previously started stack persisted identity missing or incompatible; restore original state before restart",
+            );
+          } finally {
+            database?.close();
+          }
+        }
         prepareOwnedStateDirectories({
           registry: record,
           worktree: record.worktree,
         });
-        const file = path.join(record.worktree, "mise.local.toml");
         const seed = await prepareSeed({
           registry: record,
           file,
           backendBinary,
+          searchPath: inherited.PATH,
         });
         return { seed, file };
       },
@@ -309,20 +380,32 @@ async function createRuntime({
         return lifecycle.stop(worktree, stackId);
       },
       start: async () => {
+        // Match the Darwin inspector's conservative JSON serialization boundary.
+        if (
+          platform === "darwin" &&
+          /\P{ASCII}/u.test(await fs.realpath(worktree))
+        ) {
+          throw Error(
+            "Darwin startup requires an ASCII canonical worktree path",
+          );
+        }
         if (
           typeof backendBinary !== "string" ||
           !path.isAbsolute(backendBinary) ||
-          backendBinary.includes("\0")
+          backendBinary.includes("\0") ||
+          path.normalize(backendBinary) !== backendBinary
         ) {
           throw Error(
             "Startup preflight requires an absolute backend executable",
           );
         }
+        let checkpoint = "backend executable";
         try {
           if (!(await fs.stat(backendBinary)).isFile()) {
             throw Error();
           }
           await fs.access(backendBinary, constants.X_OK);
+          checkpoint = "provider source";
           const providerFile = path.join(
             worktree,
             "packages/local-workos/src/cli.ts",
@@ -335,6 +418,7 @@ async function createRuntime({
             "apps/mobile/node_modules/expo/bin/cli",
             "packages/backend/node_modules/.bin/convex",
           ]) {
+            checkpoint = relative;
             const file = path.join(worktree, relative);
             if (!(await fs.stat(file)).isFile()) {
               throw Error();
@@ -345,6 +429,7 @@ async function createRuntime({
             );
           }
           for (const command of ["node", "pnpm", "mailpit"]) {
+            checkpoint = command;
             let found = false;
             for (const directory of (inherited.PATH ?? "").split(
               path.delimiter,
@@ -370,7 +455,7 @@ async function createRuntime({
           }
         } catch {
           throw Error(
-            "Startup preflight requires provider source, backend executable, and installed node/pnpm/mailpit/Expo/Convex dependencies",
+            `Startup preflight failed at ${checkpoint}; requires readable provider/Expo source and executable backend/Convex/node/pnpm/mailpit dependencies. PATH lookup uses only absolute entries.`,
           );
         }
         return lifecycle.start(worktree, (record, prepared) =>

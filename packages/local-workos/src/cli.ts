@@ -1,3 +1,5 @@
+// Pure schema predicate; no filesystem access or Effect service is needed.
+// oxlint-disable-next-line effecttsgo/node-builtin-import
 import { isAbsolute } from "node:path";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Cause, ConfigProvider, Effect, Exit, Schema } from "effect";
@@ -34,6 +36,8 @@ const command = Command.make(
         Effect.sync(() => {
           let deadline: ReturnType<typeof setTimeout> | undefined;
           const onSignal = () => {
+            // Must fire even if the Effect runtime is stuck in uninterruptible cleanup.
+            // oxlint-disable-next-line effecttsgo/global-timers
             deadline ??= setTimeout(() => process.exit(1), 3000);
           };
           process.on("SIGINT", onSignal);
@@ -49,26 +53,28 @@ const command = Command.make(
       const provider = yield* acquireConfiguredProvider.pipe(
         Effect.provideService(ConfigService, config),
       );
-      yield* Effect.sync(() =>
-        process.stdout.write(
-          JSON.stringify({
-            providerGeneration: provider.providerGeneration,
-            issuer: provider.issuer,
-            clientId: provider.clientId,
-            port: provider.port,
-          }) + "\n",
-        ),
-      );
-      yield* Effect.never;
+      const ready = yield* Schema.encodeEffect(
+        Schema.fromJsonString(Schema.Json),
+      )({
+        providerGeneration: provider.providerGeneration,
+        issuer: provider.issuer,
+        clientId: provider.clientId,
+        port: provider.port,
+      });
+      yield* Effect.sync(() => process.stdout.write(ready + "\n"));
+      return yield* Effect.never;
     }),
 );
 
 Effect.suspend(() => {
   const snapshot = {
+    // Snapshot once; Config consumes this snapshot after removing ambient access.
+    // oxlint-disable-next-line effecttsgo/process-env-in-effect
     LOCAL_WORKOS_API_KEY: process.env.LOCAL_WORKOS_API_KEY,
   };
   // CLI-only consumption prevents later ambient reads/default child inheritance;
   // it does not erase the initial OS environment or zeroize credential memory.
+  // oxlint-disable-next-line effecttsgo/process-env-in-effect -- CLI credential consumption boundary.
   delete process.env.LOCAL_WORKOS_API_KEY;
   return Command.run(command, { version: "0.0.0", renderErrors: false }).pipe(
     Effect.provideService(
@@ -78,6 +84,7 @@ Effect.suspend(() => {
   );
 }).pipe(
   Effect.scoped,
+  // oxlint-disable-next-line effecttsgo/strict-effect-provide -- CLI application entry point.
   Effect.provide(NodeServices.layer),
   Effect.tapCause((cause) =>
     Cause.hasInterruptsOnly(cause)

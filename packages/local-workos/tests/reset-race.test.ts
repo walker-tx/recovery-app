@@ -11,7 +11,6 @@ import { WorkOS } from "@workos-inc/node";
 import { startProvider } from "../src/provider.ts";
 const gate = vi.hoisted(() => ({
   pause: false,
-  entered: undefined as undefined | (() => void),
   release: undefined as undefined | (() => void),
 }));
 vi.mock("node:crypto", async (importOriginal) => {
@@ -28,7 +27,6 @@ vi.mock("node:crypto", async (importOriginal) => {
         // Real crypto result, gated delivery only in this isolated test module.
         if (gate.pause && password === "Synthetic-before-race-48") {
           gate.release = () => callback(error, key);
-          gate.entered?.();
         } else {
           callback(error, key);
         }
@@ -66,9 +64,6 @@ it.live(
         const reset = await sdk.userManagement.createPasswordReset({
           email: user.email,
         });
-        const entered = new Promise<void>((resolve) => {
-          gate.entered = resolve;
-        });
         gate.pause = true;
         const signIn = sdk.userManagement.authenticateWithPassword({
           clientId: provider.clientId,
@@ -83,7 +78,14 @@ it.live(
             error.error === "invalid_grant",
         );
         try {
-          await entered;
+          await vi.waitFor(
+            () =>
+              assert.ok(
+                gate.release,
+                "old-password scrypt did not reach the gate",
+              ),
+            { timeout: 2000 },
+          );
           await sdk.userManagement.resetPassword({
             token: reset.passwordResetToken,
             newPassword: "Synthetic-after-race-48",

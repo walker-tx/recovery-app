@@ -52,3 +52,25 @@ it.effect(
       );
     }),
 );
+
+it.effect(
+  "replay envelopes round-trip empty plaintext and reject truncation",
+  () =>
+    Effect.gen(function* () {
+      const key = deriveReplayKey("c3ludGhldGlj", "generation");
+      const sealed = yield* sealReplay(key, "", "row");
+      assert.equal(Buffer.from(sealed, "base64url").length, 28);
+      assert.equal(yield* openReplay(key, sealed, "row"), "");
+      assert.ok(
+        Exit.isFailure(
+          yield* Effect.exit(openReplay(key, sealed, "other-row")),
+        ),
+      );
+      const truncated = Buffer.from(sealed, "base64url")
+        .subarray(0, 27)
+        .toString("base64url");
+      assert.ok(
+        Exit.isFailure(yield* Effect.exit(openReplay(key, truncated, "row"))),
+      );
+    }),
+);

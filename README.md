@@ -21,7 +21,27 @@ mise run zero
 
 The generated `EXPO_PUBLIC_CONVEX_URL` is safe to expose to the mobile client because every `EXPO_PUBLIC_*` value is bundled into the app. Treat that prefix as public configuration, never as a place for secrets. The bootstrap rejects cloud Convex configuration and accepts only a loopback local deployment.
 
-Local development remains staging-only and still calls WorkOS staging. Mailpit provides only local delivery of Recovery verification and password-reset email. Pitchfork starts Mailpit, the Convex backend, and Expo in dependency order. Open Mailpit at <http://127.0.0.1:8025> to read those messages. Mailpit listens only on loopback and keeps its inbox in memory, so messages remain on this machine and disappear when Mailpit restarts.
+### Mobile authentication identity (#50 / bootstrap #47 contract)
+
+Mobile requires **both** public values supplied together by bootstrap:
+
+- `EXPO_PUBLIC_AUTH_ENVIRONMENT_ID`: `<stack UUID>:<provider-generation UUID>` (two UUIDs separated by `:`). Bootstrap generates and persists these nonsecret UUIDs, preserves them across restarts and backend port changes, and rotates the provider-generation UUID when the signing/provider identity is replaced. Never infer this value from a URL, port, branch, or a staging constant.
+- `EXPO_PUBLIC_CONVEX_URL`: the actual paired Convex destination, preserving the configured backend and real WorkOS staging trust source.
+
+Mobile fences saved sessions by the explicit environment ID only, preserving credentials across same-identity port and Tailscale reachability changes. It replaces its in-memory session/provider subtree when either member of the trusted pair changes, so restoration uses a newly created owner and the configured backend client. Missing or malformed setup displays an explicit configuration failure before restoration; it is not a retryable token-storage error. Restart Expo after public configuration changes. Bootstrap #47 must provision the ID before this mobile phase can authenticate; existing `zero` scripts do not yet supply it. Do not manually copy credentials or create `.env` files.
+
+### Local backend trust contract (integration in progress)
+
+The backend supports an explicit `WORKOS_MODE=local` configuration; it never falls back between local and staging providers. Bootstrap must supply:
+
+- `LOCAL_AUTH_STACK_ID` and `LOCAL_AUTH_PROVIDER_GENERATION`, paired to the registry.
+- `WORKOS_CLIENT_ID=client_local<generation UUID without hyphens>`, `WORKOS_AUDIENCE` equal to that client ID, and `WORKOS_ISSUER=https://local-workos.invalid/instances/<generation UUID>`.
+- Loopback `WORKOS_API_URL` and `WORKOS_JWKS_URL`. The backend additionally validates Convex's built-in `CONVEX_CLOUD_URL` and `CONVEX_SITE_URL` (not the CLI's `CONVEX_URL`). Phone-facing Tailscale addresses are not backend runtime destinations.
+- A launcher-generated `LOCAL_WORKOS_API_KEY`: `sk_test_local_` plus 64 lowercase hex characters from 32 cryptographically random bytes. Local mode never falls back to `WORKOS_API_KEY`; a differing generic key is rejected. Never copy a real WorkOS key into local configuration.
+
+Local trust rejects inherited cloud deploy keys and nonlocal deployment selectors. Convex enforces the local audience through `applicationID`; Recovery separately checks canonical issuer, client claim, and subject, with resource ownership unchanged. Staging retains its fixed real-WorkOS issuer/JWKS and rejects local overrides. SDK clients are constructed from current validated configuration rather than retaining an old destination.
+
+These are tested configuration and session-ownership contracts, not completed HTTP/WebSocket/native end-to-end proof. Bootstrap integration (#47) and verification/reset/refresh lifecycle (#48) remain dependencies. Existing default scripts still use staging and call WorkOS staging. Mailpit provides only local delivery of Recovery verification and password-reset email. Pitchfork starts Mailpit, the Convex backend, and Expo in dependency order. Open Mailpit at <http://127.0.0.1:8025> to read those messages. Mailpit listens only on loopback and keeps its inbox in memory, so messages remain on this machine and disappear when Mailpit restarts.
 
 ## Daily development cycle
 
@@ -95,11 +115,38 @@ changes are not altered or reauthorized by this local-only dispatch.
 Startup requires the local provider
 package, installed Expo/Convex dependencies, Node, pnpm, Mailpit, and Pitchfork.
 
+Each local/test stack is named by the canonical worktree directory basename,
+within the repository's shared Git common-directory registry. Branch names are
+not stack keys. A name stays bound to one canonical path; a competing path with
+the same name is refused, even when the first stack is stopped. Different
+repositories have separate name scopes; occupied sockets still block launch.
+Starting an already-running stack is refused before preparation or extra launches.
+Stopped stacks may restart with their existing identity and state. Recreating a
+directory at the same path does not require the same historical inode, but does
+not restore deleted data: an established stack with missing or incompatible
+provider identity refuses startup. Names never authorize killing or deleting
+resources. Process identity, file ownership, lifecycle locks, and unknown-route
+and reservation-release gates remain in force.
+
+Previously host-wide same-name reservations require explicit reconciliation
+before default repository-scoped selection. No automatic migration, identity
+recreation, state copying, or reservation release is performed.
+
 The runtime reserves separate ports/state, prepares private bootstrap values,
 validates provider identity, synchronizes and pushes functions to the paired local
 Convex instance, publishes paired mobile configuration, then starts Metro. That
 `start` command performs local writes; tests use injected I/O instead. It never
 targets a cloud deployment or falls back to staging credentials.
+
+**Accepted local Convex exception:** the generated `LOCAL_CONVEX_INSTANCE_SECRET`
+remains in vendor-required `--instance-secret` arguments for keygen and server
+startup, only for explicitly local development/test backends. The user accepts
+its visibility in same-host process arguments and process-inspection output.
+This is an accepted exposure, not a fixed input mechanism or permission to add
+secret logging. Other credentials, tokens, passwords, and production/remote
+targets are excluded. Existing diagnostic redaction, private deploy-credential
+environment transport, owner-only `mise.local.toml`, and runtime guards remain
+unchanged. See the [security contract](docs/superpowers/specs/local-workos-development-provider-design.md#architecture-and-configuration).
 
 Status probes only verified original owned-running processes whose paired daemon
 mapping still matches. Stopped, conflicted, or unknown endpoints stay
@@ -117,9 +164,9 @@ There is no automatic repair command: never clear locks, kill unknown processes,
 or reset state to bypass refusal.
 SMTP readiness uses its own greeting; Convex site readiness reports `transport`
 evidence for its own TCP listener only, not application health.
-Ambiguous command/publication timeouts
-retain the lifecycle lock for manual ownership reconciliation. Never remove locks
-or reset state merely to retry a failed start. Existing daily-development scripts
+Ambiguous command/publication timeouts retain the lifecycle lock
+for manual ownership reconciliation. Never remove locks or reset state
+merely to retry a failed start. Existing daily-development scripts
 and previews are not managed by these commands.
 
 This remains a development checkpoint: fake-I/O tests do not establish successful
@@ -156,9 +203,10 @@ The explicit local runtime API also exposes `destroyProvider(confirmation)` for 
 **stopped** isolated provider. It is not exposed by a CLI, HTTP route, or console.
 Confirmation names `operation: "destroy-provider-identity"`, the exact canonical
 `worktree`, `stackId`, `providerGeneration`, and both `affectedDomains`:
-`["provider-data", "provider-signing-identity"]`. This removes only the owned
-provider SQLite database and its present WAL/SHM files, which contain provider
-records and signing keys. It does not clear Convex, Mailpit, device state, admin
+`["provider-data", "provider-signing-identity"]`.
+This removes only the owned provider SQLite database
+and its present rollback journal/WAL/SHM files,
+which contain provider records and signing keys. It does not clear Convex, Mailpit, device state, admin
 seed, ownership markers, routes, or reservations, and does not rotate registry
 identity or re-pair trust.
 
