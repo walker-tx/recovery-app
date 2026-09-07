@@ -569,3 +569,40 @@ for (const missing of [
     assert.deepEqual(f.events, []);
   });
 }
+
+for (const alias of [false, true]) {
+  test(`Darwin startup rejects non-ASCII canonical worktree before side effects (alias=${alias})`, async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "runtime-unicode-"));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const canonical = path.join(root, "caf\u00e9");
+    await fs.mkdir(canonical);
+    const worktree = alias ? path.join(root, "ascii-alias") : canonical;
+    if (alias) {
+      await fs.symlink(canonical, worktree);
+    }
+    const effects = [];
+    const runtime = await createRuntime({
+      platform: "darwin",
+      worktree,
+      registryPath: path.join(root, "registry"),
+      backendBinary: path.join(root, "missing-backend"),
+      inherited: {},
+      inspector: { inspect: async () => null, close: async () => {} },
+      identity: {
+        inspectProcess: async () => null,
+        identify: async () => null,
+      },
+      run: async () => effects.push("run"),
+      startup: { prepareSeed: async () => effects.push("seed") },
+    });
+    t.after(() => runtime.close());
+    await assert.rejects(runtime.start(), {
+      message: "Darwin startup requires an ASCII canonical worktree path",
+    });
+    assert.deepEqual(effects, []);
+    assert.deepEqual(await fs.readdir(canonical), []);
+    await assert.rejects(fs.stat(path.join(root, "registry")), {
+      code: "ENOENT",
+    });
+  });
+}

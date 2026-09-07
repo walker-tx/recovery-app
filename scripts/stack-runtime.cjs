@@ -34,6 +34,7 @@ const uuid = (value) =>
   );
 async function createRuntime({
   worktree = process.cwd(),
+  platform = process.platform,
   registryPath = path.join(
     os.homedir(),
     ".local",
@@ -54,7 +55,7 @@ async function createRuntime({
   startup = {},
   now,
 } = {}) {
-  inspector ??= await createProcessInspector();
+  inspector ??= await createProcessInspector({ platform });
   try {
     identity ??= createPitchforkIdentity({
       inspectOS: inspector.inspect,
@@ -310,6 +311,15 @@ async function createRuntime({
         return lifecycle.stop(worktree, stackId);
       },
       start: async () => {
+        // Match the Darwin inspector's conservative JSON serialization boundary.
+        if (
+          platform === "darwin" &&
+          /\P{ASCII}/u.test(await fs.realpath(worktree))
+        ) {
+          throw Error(
+            "Darwin startup requires an ASCII canonical worktree path",
+          );
+        }
         if (
           typeof backendBinary !== "string" ||
           !path.isAbsolute(backendBinary) ||

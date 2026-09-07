@@ -280,18 +280,6 @@ for (const [name, change, code] of [
     },
     "routes-unknown",
   ],
-  [
-    "foreign route evidence",
-    (f) => {
-      f.options.routeEvidence = async () => ({
-        ...f.options.target,
-        stackId: randomUUID(),
-        state: "absent",
-        scope: "whole-stack",
-      });
-    },
-    "routes-unknown",
-  ],
 ]) {
   test(name, async (t) => {
     const f = fixture(t);
@@ -610,3 +598,22 @@ for (const processes of [[], "", 1, true]) {
     assert.equal(result.reservationReleaseAllowed, false);
   });
 }
+
+test("unsupported route evidence stays unobserved and cannot enable teardown", async (t) => {
+  const f = fixture(t);
+  let observations = 0;
+  f.options.routeEvidence = async () => {
+    observations++;
+    return { ...f.options.target, state: "absent", scope: "whole-stack" };
+  };
+  const before = snapshot(f.root);
+  const result = await preflightDestruction(f.options);
+  assert.equal(observations, 0);
+  assert.equal(result.readyForTeardown, false);
+  assert.equal(result.destructionImplemented, false);
+  assert.equal(result.reservationReleaseAllowed, false);
+  assert.ok(
+    result.blockers.some((blocker) => blocker.code === "routes-unknown"),
+  );
+  assert.deepEqual(snapshot(f.root), before);
+});
