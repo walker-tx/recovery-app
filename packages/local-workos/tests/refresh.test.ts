@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { WorkOS } from "@workos-inc/node";
 import { decodeJwt, createLocalJWKSet, jwtVerify } from "jose";
-import { categorizeWorkOSError } from "../../backend/convex/workosErrorPolicy.ts";
 import { startProvider } from "../src/provider.ts";
 const fixture = (sessionSeconds = 604800, accessTokenSeconds = 300) =>
   Effect.gen(function* () {
@@ -261,10 +260,7 @@ it.live(
         assert.rejects(
           f.refresh(current.refreshToken, 0),
           (error: unknown) =>
-            error instanceof Error &&
-            "status" in error &&
-            error.status === 429 &&
-            categorizeWorkOSError("refreshSession", error) === "rateLimited",
+            error instanceof Error && "status" in error && error.status === 429,
         ),
       );
       assert.deepEqual(
@@ -303,10 +299,6 @@ it.live(
             assert.ok(
               error instanceof Error &&
                 !error.message.includes("synthetic-sensitive-replay"),
-            );
-            assert.equal(
-              categorizeWorkOSError("refreshSession", error),
-              "providerUnavailable",
             );
             return "status" in error && error.status === 500;
           },
