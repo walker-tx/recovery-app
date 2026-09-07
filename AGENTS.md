@@ -49,8 +49,8 @@
 ## Agent GitHub identity
 
 - Preserve the repository owner's commit author and committer attribution. Do not add AI co-author trailers.
-- Authenticate agent-created GitHub activity and agent pushes using the designated GitHub App; authentication must not change commit attribution.
-- Keep authentication configuration local. Before GitHub operations, read `AGENTS.local.md` if present. If app authentication is unavailable, stop rather than falling back to personal credentials or separately authenticated tools.
+- Authenticate agent-created GitHub activity and agent pushes using the designated GitHub App unless otherwise instructed by the user; authentication must not change commit attribution.
+- Keep authentication configuration local. Before GitHub operations, read `AGENTS.local.md` if present. If app authentication is unavailable, stop rather than falling back to personal credentials or separately authenticated tools unless otherwise instructed by the user.
 - Never print credentials or enable credential tracing. Existing review and deployment safeguards still apply; app credentials do not authorize merges, deployments, production changes, or safeguard bypasses.
 
 ## Working agreement
