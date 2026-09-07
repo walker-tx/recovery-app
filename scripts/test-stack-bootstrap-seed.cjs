@@ -29,6 +29,7 @@ function fixture(t) {
     registry,
     file: path.join(worktree, "mise.local.toml"),
     backendBinary: "/synthetic/backend",
+    searchPath: "/synthetic/bin",
     exec: (binary, args) => {
       calls++;
       assert.ok(
@@ -175,3 +176,75 @@ test("ready persistence rejects partial seed and seed replacement", (t) => {
   );
   assert.throws(() => persistLocalConfig({ file: options.file, owned: seed }));
 });
+
+test("keygen scripts resolve interpreters only through explicit absolute PATH entries", (t) => {
+  const { options } = fixture(t);
+  const bin = path.join(options.registry.worktree, "bin");
+  fs.mkdirSync(bin);
+  fs.symlinkSync(process.execPath, path.join(bin, "pr55-node"));
+  const backendBinary = path.join(options.registry.worktree, "backend");
+  fs.writeFileSync(
+    backendBinary,
+    '#!/usr/bin/env pr55-node\nprocess.stdout.write("synthetic-admin-key\\n");\n',
+    { mode: 0o700 },
+  );
+  const searchPath = ["", "relative-canary", bin, ""].join(path.delimiter);
+  const seed = prepareBootstrapSeed({
+    ...options,
+    backendBinary,
+    searchPath,
+    exec: undefined,
+  });
+  assert.equal(seed.LOCAL_CONVEX_ADMIN_KEY, "synthetic-admin-key");
+});
+
+test("keygen receives only an absolute-entry PATH allowlist", (t) => {
+  const { options } = fixture(t);
+  const searchPath = [
+    "relative-canary",
+    "",
+    "/explicit/bin",
+    "/another/bin",
+  ].join(path.delimiter);
+  prepareBootstrapSeed({
+    ...options,
+    searchPath,
+    exec: (_binary, _args, settings) => {
+      assert.deepEqual(settings.env, {
+        PATH: ["/explicit/bin", "/another/bin"].join(path.delimiter),
+      });
+      return { status: 0, stdout: "synthetic-admin-key\n" };
+    },
+  });
+});
+
+for (const searchPath of [
+  undefined,
+  "",
+  ["relative-canary", ""].join(path.delimiter),
+]) {
+  test(`keygen rejects unusable PATH without searching cwd: ${searchPath}`, (t) => {
+    const { options } = fixture(t);
+    const backendBinary = path.join(options.registry.worktree, "backend");
+    fs.symlinkSync(
+      process.execPath,
+      path.join(options.registry.worktree, "pr55-node"),
+    );
+    fs.writeFileSync(
+      backendBinary,
+      '#!/usr/bin/env pr55-node\nprocess.stdout.write("synthetic-admin-key\\n");\n',
+      { mode: 0o700 },
+    );
+    assert.throws(
+      () =>
+        prepareBootstrapSeed({
+          ...options,
+          backendBinary,
+          searchPath,
+          exec: undefined,
+        }),
+      /bootstrap seed rejected/,
+    );
+    assert.equal(fs.existsSync(options.file), false);
+  });
+}

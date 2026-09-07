@@ -374,6 +374,7 @@ async function startupFixture(t, failure) {
       prepareSeed: async (options) => {
         record = options.registry;
         await fs.access(path.join(worktree, ".recovery-stack-lifecycle.lock"));
+        assert.equal(options.searchPath, path.join(worktree, "bin"));
         events.push("seed");
         return {
           LOCAL_WORKOS_API_KEY: "sk_test_local_" + "a".repeat(64),
@@ -467,7 +468,22 @@ for (const failure of [
 ]) {
   test(`runtime ${failure} failure prevents Metro`, async (t) => {
     const f = await startupFixture(t, failure);
-    await assert.rejects(f.runtime.start());
+    const message = {
+      generation: "Local stack configuration rejected",
+      issuer: "Local stack configuration rejected",
+      clientId: "Local stack configuration rejected",
+      port: "Local stack configuration rejected",
+      push: "fake push failure",
+      persist: "fake persist failure",
+      ambiguous: "fake ambiguous failure",
+      timeout:
+        "service setup timed out; manual reconciliation required; lifecycle lock retained",
+      syncDeadline:
+        "service setup timed out; manual reconciliation required; lifecycle lock retained",
+      selector: "Inherited deployment selector rejected",
+      readiness: "Readiness timeout",
+    }[failure];
+    await assert.rejects(f.runtime.start(), { message });
     assert.ok(!f.events.includes("start:metro"));
     if (failure === "push") {
       assert.ok(f.events.includes("bootstrap"));

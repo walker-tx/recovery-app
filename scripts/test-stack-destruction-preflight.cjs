@@ -388,6 +388,19 @@ for (const adapter of ["inspectProcess", "portAvailable"]) {
 
 test("runtime defaults to the existing port observer when omitted", async (t) => {
   const f = fixture(t);
+  const { EventEmitter } = require("node:events");
+  const net = require("node:net");
+  const observed = [];
+  t.mock.method(net, "createServer", () => {
+    const server = new EventEmitter();
+    server.listen = (options, listening) => {
+      observed.push(options);
+      queueMicrotask(listening);
+      return server;
+    };
+    server.close = (closed) => queueMicrotask(closed);
+    return server;
+  });
   const { createRuntime } = require("./stack-runtime.cjs");
   const runtime = await createRuntime({
     worktree: f.worktree,
@@ -401,8 +414,18 @@ test("runtime defaults to the existing port observer when omitted", async (t) =>
     f.options.confirmation,
   );
   assert.equal(
-    result.blockers.some((b) => b.code === "ports-unknown"),
+    result.blockers.some((b) =>
+      ["ports-unknown", "port-not-free"].includes(b.code),
+    ),
     false,
+  );
+  assert.deepEqual(
+    observed,
+    names.map((name) => ({
+      host: "127.0.0.1",
+      port: f.record.ports[name],
+      exclusive: true,
+    })),
   );
   assert.ok(result.blockers.some((b) => b.code === "routes-unknown"));
 });

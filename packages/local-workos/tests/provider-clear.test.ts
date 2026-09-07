@@ -105,16 +105,20 @@ it.live(
         const exit = yield* Effect.exit(f.provider.clearData(confirmation));
         assert.ok(Exit.isFailure(exit));
         if (Exit.isFailure(exit)) {
-          assert.equal(
-            (Cause.squash(exit.cause) as { reason: string }).reason,
-            "confirmation",
-          );
+          const error = Cause.squash(exit.cause);
+          assert.ok(error instanceof ProviderClearError);
+          assert.equal(error.reason, "confirmation");
         }
         assert.deepEqual(f.counts(), [1, 1, 1]);
       }
       f.db.prepare("UPDATE instance SET body=?").run("{}");
       const exit = yield* Effect.exit(f.provider.clearData(f.confirmation));
       assert.ok(Exit.isFailure(exit));
+      if (Exit.isFailure(exit)) {
+        const error = Cause.squash(exit.cause);
+        assert.ok(error instanceof ProviderClearError);
+        assert.equal(error.reason, "identity");
+      }
       assert.deepEqual(f.counts(), [1, 1, 1]);
     }),
 );

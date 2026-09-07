@@ -13,6 +13,7 @@ function prepareBootstrapSeed({
   registry,
   file,
   backendBinary,
+  searchPath = "",
   exec = spawnSync,
   run,
 } = {}) {
@@ -34,6 +35,12 @@ function prepareBootstrapSeed({
     });
     if (existing) {
       return existing;
+    }
+    const directories = searchPath
+      .split(path.delimiter)
+      .filter((entry) => path.isAbsolute(entry));
+    if (directories.length === 0) {
+      throw Error();
     }
     const seed = {
       RECOVERY_STACK_ID: registry.stackId,
@@ -59,7 +66,9 @@ function prepareBootstrapSeed({
       ],
       {
         cwd: registry.worktree,
-        env: {},
+        env: {
+          PATH: directories.join(path.delimiter),
+        },
         encoding: "utf8",
         timeout: 5000,
         maxBuffer: 8192,

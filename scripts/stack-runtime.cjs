@@ -118,6 +118,7 @@ async function createRuntime({
           registry: record,
           file,
           backendBinary,
+          searchPath: inherited.PATH,
         });
         return { seed, file };
       },
