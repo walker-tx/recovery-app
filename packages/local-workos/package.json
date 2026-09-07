@@ -22,7 +22,7 @@
     "lint": "oxlint --deny-warnings --report-unused-disable-directives src tests",
     "prepare": "effect-tsgo patch --no-typescript --oxlint",
     "start": "node --experimental-strip-types src/cli.ts",
-    "test": "vitest run && pnpm --filter @recovery/backend exec vitest run convex/localWorkOSGateway.test.ts"
+    "test": "vitest run"
   },
   "type": "module",
   "version": "0.0.0"
