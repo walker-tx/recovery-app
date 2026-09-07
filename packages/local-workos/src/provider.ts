@@ -93,6 +93,7 @@ export const acquireConfiguredProvider = Effect.gen(function* () {
           const file = lstatSync(path);
           if (
             !file.isFile() ||
+            file.nlink !== 1 ||
             file.uid !== process.getuid?.() ||
             (file.mode & 0o077) !== 0
           ) {
