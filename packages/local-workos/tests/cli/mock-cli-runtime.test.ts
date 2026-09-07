@@ -40,6 +40,8 @@ const runFixture = Effect.fn(function* (options: {
   openInput?: boolean;
   stall?: "status" | "mutation" | "output" | "mutation-output";
   discoveryDefect?: boolean;
+  blockedFinalizer?: boolean;
+  timeoutMs?: number;
   bridgeError?: "TARGET_MISMATCH" | "SERVICE_UNAVAILABLE" | "unexpected";
   bridgeVerify?: boolean;
   inboxInvalidResponse?: boolean;
@@ -123,7 +125,7 @@ const runFixture = Effect.fn(function* (options: {
   yield* Effect.callback<void>((resume) => {
     server.listen(target.adminSocket, () => resume(Effect.void));
   });
-  const replacement = `export * from ${encode(clientUrl + "?actual")}; import {Effect} from ${encode(effectUrl)}; import {failure} from ${encode(new URL("../../src/cli/output.ts", import.meta.url).href)}; export const selectTarget=()=>${options.discoveryDefect ? 'Effect.die(new Error("secret-canary"))' : `Effect.succeed(${encode(target)})`}; let verifications=0; export const verifyTarget=()=>{verifications++;return ${options.ownershipChange ? 'verifications===2 ? Effect.fail(failure("TARGET_MISMATCH")) : Effect.void' : "Effect.void"};};`;
+  const replacement = `export * from ${encode(clientUrl + "?actual")}; import {Effect} from ${encode(effectUrl)}; import {failure} from ${encode(new URL("../../src/cli/output.ts", import.meta.url).href)}; export const selectTarget=()=>${options.discoveryDefect ? 'Effect.die(new Error("secret-canary"))' : options.blockedFinalizer ? `Effect.addFinalizer(()=>Effect.sync(()=>process.stderr.write("FINALIZER_ENTERED\\n")).pipe(Effect.andThen(Effect.never))).pipe(Effect.andThen(Effect.succeed(${encode(target)})))` : `Effect.succeed(${encode(target)})`}; let verifications=0; export const verifyTarget=()=>{verifications++;return ${options.ownershipChange ? 'verifications===2 ? Effect.fail(failure("TARGET_MISMATCH")) : Effect.void' : "Effect.void"};};`;
   const bridgeUrl = new URL(
     "../../../../scripts/mock-target.cjs",
     import.meta.url,
@@ -165,7 +167,7 @@ const runFixture = Effect.fn(function* (options: {
       ...(options.extraArgs ?? []),
       "--json",
       "--timeout-ms",
-      "400",
+      String(options.timeoutMs ?? 400),
     ];
     const ptyDriver = `import os,pty,sys
 pid,fd=pty.fork()
@@ -213,7 +215,10 @@ sys.exit(os.waitstatus_to_exitcode(status))`;
       child.stdin.end(options.input ?? Buffer.from("password-fixture"));
     }
     // oxlint-disable-next-line effecttsgo/global-timers-in-effect -- Test watchdog detects leaked stdout handles after the invocation deadline.
-    const watchdog = setTimeout(() => child.kill("SIGKILL"), 2400);
+    const watchdog = setTimeout(
+      () => child.kill("SIGKILL"),
+      options.blockedFinalizer ? 5400 : (options.timeoutMs ?? 400) + 2000,
+    );
     return Effect.sync(() => {
       clearTimeout(watchdog);
       child.kill();
@@ -437,4 +442,41 @@ it.effect("preserves inbox INVALID_RESPONSE classification", () =>
       error: { code: "INVALID_RESPONSE", outcome: "not-applied" },
     });
   }),
+);
+
+// Characterizes the process boundary with a real scoped finalizer, not a timer mock.
+it.effect.each([false, true])(
+  "hard-exits after entering blocked cleanup (SIGINT=%s)",
+  (interrupt) =>
+    Effect.gen(function* () {
+      const result = yield* runFixture({
+        stall: "mutation",
+        blockedFinalizer: true,
+        interrupt,
+      });
+      expect(result.stderr).toBe("FINALIZER_ENTERED\n");
+      expect(result.signal).toBe(null);
+      expect(result.code).toBe(interrupt ? 130 : 5);
+      expect(result.requests.map((request) => request.operation)).toEqual([
+        "status",
+        "users.create",
+      ]);
+    }),
+  { timeout: 7000 },
+);
+
+it.effect(
+  "rearms beyond the bootstrap deadline without leaving its old fiber live",
+  () =>
+    Effect.gen(function* () {
+      const result = yield* runFixture({ statusDelay: 5100, timeoutMs: 6000 });
+      expect(result.signal).toBe(null);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.requests.map((request) => request.operation)).toEqual([
+        "status",
+        "users.create",
+      ]);
+    }),
+  { timeout: 10000 },
 );
